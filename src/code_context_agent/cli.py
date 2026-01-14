@@ -76,6 +76,10 @@ def analyze(
         bool,
         Parameter(help="Suppress live display output."),
     ] = False,
+    debug: Annotated[
+        bool,
+        Parameter(help="Enable debug logging for troubleshooting."),
+    ] = False,
 ) -> None:
     """Analyze a codebase and produce a narrated context bundle.
 
@@ -102,8 +106,20 @@ def analyze(
         $ code-context-agent analyze . --output-dir ./output
     """
     import asyncio
+    import logging
 
     from code_context_agent.agent import run_analysis
+
+    # Enable debug logging if requested
+    if debug:
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        )
+        # Also enable strands debug logging
+        logging.getLogger("strands").setLevel(logging.DEBUG)
+        logging.getLogger("code_context_agent").setLevel(logging.DEBUG)
+        console.print("[dim]Debug logging enabled[/dim]")
 
     repo_path = path.resolve()
 
@@ -134,9 +150,19 @@ def analyze(
         console.print(f"  Output directory: [cyan]{result['output_dir']}[/cyan]")
         if result.get("context_path"):
             console.print(f"  Context file: [cyan]{result['context_path']}[/cyan]")
+    elif result["status"] == "stopped":
+        console.print()
+        console.print(f"[yellow]⚠[/yellow] Analysis stopped: {result.get('exceeded_limit', 'limit exceeded')}")
+        console.print(f"  Turns: {result.get('turn_count', '?')}, Duration: {result.get('duration_seconds', 0):.1f}s")
+        if result.get("context_path"):
+            console.print(f"  Partial output: [cyan]{result['context_path']}[/cyan]")
+        raise SystemExit(1)
     else:
         console.print()
-        console.print(f"[red]✗[/red] Analysis failed: {result.get('error', 'Unknown error')}")
+        error = result.get("error") or "Unknown error (no error message captured)"
+        console.print(f"[red]✗[/red] Analysis failed: {error}")
+        if debug:
+            console.print(f"[dim]Status: {result.get('status')}, Turns: {result.get('turn_count', 0)}[/dim]")
         raise SystemExit(1)
 
 

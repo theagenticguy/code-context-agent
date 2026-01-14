@@ -143,9 +143,12 @@ Start with Phase 0 (create_file_manifest) and proceed through all phases.
                 break
 
     except Exception as e:
-        logger.error(f"Analysis error: {e}")
-        error_message = str(e)
-        await consumer.on_error(str(e))
+        import traceback
+
+        tb = traceback.format_exc()
+        logger.error(f"Analysis error: {e}\n{tb}")
+        error_message = str(e) if str(e) else f"{type(e).__name__}: {tb}"
+        await consumer.on_error(error_message)
 
     finally:
         await consumer.stop()
