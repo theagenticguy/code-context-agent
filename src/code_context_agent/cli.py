@@ -10,15 +10,21 @@ Example:
         $ python -m code_context_agent.cli
         $ code-context-agent --debug
         $ code-context-agent --output-format=json
+        $ code-context-agent analyze /path/to/repo
+        $ code-context-agent analyze /path/to/repo --deep
 """
 
+from pathlib import Path
 from typing import Annotated, Literal
 
 from cyclopts import App, Parameter
+from rich.console import Console
 
 from code_context_agent import __version__
 from code_context_agent.config import Settings, get_settings
 from code_context_agent.display import display_welcome
+
+console = Console()
 
 app = App(
     name="code-context-agent",
@@ -49,6 +55,89 @@ def main(
         settings = Settings(debug=debug, output_format=output_format)
 
     display_welcome(settings)
+
+
+@app.command
+def analyze(
+    path: Annotated[
+        Path,
+        Parameter(help="Path to the repository to analyze."),
+    ] = Path(),
+    *,
+    deep: Annotated[
+        bool,
+        Parameter(help="Enable DEEP mode for comprehensive analysis (~50+ tool calls)."),
+    ] = False,
+    output_dir: Annotated[
+        Path | None,
+        Parameter(help="Output directory for context files. Defaults to <repo>/.agent"),
+    ] = None,
+    quiet: Annotated[
+        bool,
+        Parameter(help="Suppress live display output."),
+    ] = False,
+) -> None:
+    """Analyze a codebase and produce a narrated context bundle.
+
+    This command runs the code context analysis agent on the specified
+    repository. The agent uses a combination of static analysis tools
+    (ripgrep, repomix, ast-grep) and LSP semantic analysis to understand
+    the codebase structure and produce a narrated markdown bundle.
+
+    Modes:
+        FAST (default): Quick overview for starting work safely.
+            ~10-15 tool calls, minimal LSP, 5-15 business logic candidates.
+
+        DEEP (--deep): Thorough analysis for onboarding or safe refactoring.
+            ~50+ tool calls, full dependency cones, comprehensive analysis.
+
+    Outputs:
+        .agent/CONTEXT.md - The narrated context bundle
+        .agent/CONTEXT.orientation.md - Token distribution tree
+        .agent/CONTEXT.bundle.md - Curated source code pack
+
+    Example:
+        $ code-context-agent analyze /path/to/repo
+        $ code-context-agent analyze . --deep
+        $ code-context-agent analyze . --output-dir ./output
+    """
+    import asyncio
+
+    from code_context_agent.agent import run_analysis
+
+    repo_path = path.resolve()
+
+    if not repo_path.exists():
+        console.print(f"[red]Error:[/red] Path does not exist: {repo_path}")
+        raise SystemExit(1)
+
+    if not repo_path.is_dir():
+        console.print(f"[red]Error:[/red] Path is not a directory: {repo_path}")
+        raise SystemExit(1)
+
+    mode = "deep" if deep else "fast"
+
+    # Run the analysis
+    result = asyncio.run(
+        run_analysis(
+            repo_path=repo_path,
+            output_dir=output_dir,
+            mode=mode,
+            quiet=quiet,
+        )
+    )
+
+    # Display results
+    if result["status"] == "completed":
+        console.print()
+        console.print("[green]✓[/green] Analysis completed successfully")
+        console.print(f"  Output directory: [cyan]{result['output_dir']}[/cyan]")
+        if result.get("context_path"):
+            console.print(f"  Context file: [cyan]{result['context_path']}[/cyan]")
+    else:
+        console.print()
+        console.print(f"[red]✗[/red] Analysis failed: {result.get('error', 'Unknown error')}")
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

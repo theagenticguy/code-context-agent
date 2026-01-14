@@ -1,0 +1,432 @@
+# Python Business Logic Detection Rules
+# Heuristic patterns for finding DB calls, state mutations, and HTTP interactions
+# Severity levels:
+#   - error: Write operations, mutations, critical business logic
+#   - warning: Read operations, queries
+#   - hint: Optional/informational patterns
+
+# =============================================================================
+# DATABASE WRITE OPERATIONS (severity: error)
+# =============================================================================
+
+id: py-db-write-operation
+language: Python
+severity: error
+message: "Database WRITE operation - critical business logic"
+rule:
+  any:
+    - pattern: $SESSION.commit()
+    - pattern: $SESSION.add($OBJ)
+    - pattern: $SESSION.add_all($$$)
+    - pattern: $SESSION.delete($$$)
+    - pattern: $SESSION.merge($$$)
+    - pattern: $SESSION.flush()
+    - pattern: $OBJ.save($$$)
+    - pattern: $QUERYSET.create($$$)
+    - pattern: $QUERYSET.update($$$)
+    - pattern: $QUERYSET.delete()
+    - pattern: $QUERYSET.bulk_create($$$)
+    - pattern: $QUERYSET.bulk_update($$$)
+
+---
+id: py-raw-sql-write
+language: Python
+severity: error
+message: "Raw SQL WRITE operation"
+rule:
+  pattern: $CURSOR.$METHOD($SQL)
+constraints:
+  METHOD:
+    regex: "^(execute|executemany)$"
+
+---
+id: py-transaction-control
+language: Python
+severity: error
+message: "Transaction control operation"
+rule:
+  any:
+    - pattern: $SESSION.begin($$$)
+    - pattern: $SESSION.rollback()
+    - pattern: $CONN.commit()
+    - pattern: $CONN.rollback()
+    - pattern: $DB.transaction($$$)
+
+# =============================================================================
+# DATABASE READ OPERATIONS (severity: warning)
+# =============================================================================
+
+---
+id: py-sqlalchemy-query
+language: Python
+severity: warning
+message: "SQLAlchemy query operation"
+rule:
+  any:
+    - pattern: $SESSION.query($$$)
+    - pattern: $SESSION.execute($$$)
+    - pattern: $DB.session.query($$$)
+    - pattern: select($$$)
+    - pattern: $SESSION.get($MODEL, $ID)
+
+---
+id: py-django-orm-read
+language: Python
+severity: warning
+message: "Django ORM READ operation"
+rule:
+  any:
+    - pattern: $MODEL.objects.get($$$)
+    - pattern: $MODEL.objects.filter($$$)
+    - pattern: $MODEL.objects.exclude($$$)
+    - pattern: $MODEL.objects.all()
+    - pattern: $MODEL.objects.first()
+    - pattern: $MODEL.objects.last()
+    - pattern: $MODEL.objects.count()
+    - pattern: $MODEL.objects.exists()
+    - pattern: $QUERYSET.filter($$$)
+    - pattern: $QUERYSET.exclude($$$)
+    - pattern: $QUERYSET.get($$$)
+    - pattern: $QUERYSET.values($$$)
+    - pattern: $QUERYSET.values_list($$$)
+
+---
+id: py-db-fetch
+language: Python
+severity: warning
+message: "Database fetch operation"
+rule:
+  pattern: $CURSOR.$METHOD($$$)
+constraints:
+  METHOD:
+    regex: "^(fetchone|fetchall|fetchmany)$"
+
+# =============================================================================
+# AUTHENTICATION & AUTHORIZATION (severity: error)
+# =============================================================================
+
+---
+id: py-auth-decorator
+language: Python
+severity: error
+message: "Authentication/authorization decorator"
+rule:
+  any:
+    - pattern: "@login_required"
+    - pattern: "@login_required($$$)"
+    - pattern: "@permission_required($$$)"
+    - pattern: "@permissions_required($$$)"
+    - pattern: "@requires_auth"
+    - pattern: "@requires_auth($$$)"
+    - pattern: "@authenticated"
+    - pattern: "@jwt_required($$$)"
+    - pattern: "@token_required"
+    - pattern: "@api_key_required"
+
+---
+id: py-auth-check
+language: Python
+severity: error
+message: "Authorization/authentication check"
+rule:
+  any:
+    - pattern: "if not $USER.is_authenticated"
+    - pattern: "if $USER.is_authenticated"
+    - pattern: "if not request.user.is_authenticated"
+    - pattern: "$USER.has_perm($$$)"
+    - pattern: "$USER.has_perms($$$)"
+    - pattern: "check_permission($$$)"
+    - pattern: "verify_token($$$)"
+    - pattern: "validate_token($$$)"
+    - pattern: "decode_token($$$)"
+
+---
+id: py-permission-class
+language: Python
+severity: error
+message: "Permission/authentication class definition"
+rule:
+  any:
+    - pattern: |
+        class $NAME(IsAuthenticated):
+            $$$
+    - pattern: |
+        class $NAME(BasePermission):
+            $$$
+    - pattern: "permission_classes = [$$$]"
+
+# =============================================================================
+# STATE MUTATIONS (severity: error)
+# =============================================================================
+
+---
+id: py-state-mutation-assign
+language: Python
+severity: error
+message: "State/status mutation via assignment"
+rule:
+  pattern: $OBJ.$FIELD = $VAL
+constraints:
+  FIELD:
+    regex: "^(status|state|phase|stage|lifecycle|enabled|active|deleted|archived|approved|paid|shipped|role|tier|plan|is_active|is_deleted|is_approved|is_verified|is_locked|is_suspended)$"
+
+---
+id: py-state-transition-method
+language: Python
+severity: error
+message: "State transition via method call"
+rule:
+  pattern: $OBJ.$METHOD($$$)
+constraints:
+  METHOD:
+    regex: "^(transition|transition_to|set_status|set_state|approve|reject|cancel|refund|activate|deactivate|archive|restore|mark_paid|mark_shipped|mark_complete|suspend|unsuspend|lock|unlock|verify|unverify)$"
+
+# =============================================================================
+# HTTP WRITE OPERATIONS (severity: error)
+# =============================================================================
+
+---
+id: py-requests-http-write
+language: Python
+severity: error
+message: "External HTTP WRITE call via requests"
+rule:
+  pattern: requests.$METHOD($$$)
+constraints:
+  METHOD:
+    regex: "^(post|put|patch|delete)$"
+
+---
+id: py-httpx-http-write
+language: Python
+severity: error
+message: "External HTTP WRITE call via httpx"
+rule:
+  any:
+    - pattern: httpx.$METHOD($$$)
+    - pattern: $CLIENT.$METHOD($$$)
+constraints:
+  METHOD:
+    regex: "^(post|put|patch|delete)$"
+
+# =============================================================================
+# HTTP READ OPERATIONS (severity: warning)
+# =============================================================================
+
+---
+id: py-requests-http-read
+language: Python
+severity: warning
+message: "External HTTP GET call via requests"
+rule:
+  any:
+    - pattern: requests.get($$$)
+    - pattern: requests.head($$$)
+    - pattern: requests.options($$$)
+
+---
+id: py-httpx-http-read
+language: Python
+severity: warning
+message: "External HTTP GET call via httpx"
+rule:
+  any:
+    - pattern: httpx.get($$$)
+    - pattern: $CLIENT.get($$$)
+
+---
+id: py-aiohttp-http
+language: Python
+severity: warning
+message: "External HTTP call via aiohttp"
+rule:
+  any:
+    - pattern: $SESSION.get($$$)
+    - pattern: $SESSION.post($$$)
+    - pattern: $SESSION.put($$$)
+    - pattern: $SESSION.delete($$$)
+    - pattern: aiohttp.ClientSession($$$)
+
+# =============================================================================
+# gRPC PATTERNS (severity: error for service definitions)
+# =============================================================================
+
+---
+id: py-grpc-service
+language: Python
+severity: error
+message: "gRPC service implementation"
+rule:
+  any:
+    - pattern: |
+        class $NAME($SERVICE):
+            $$$
+    - pattern: "add_$SERVICE_to_server($$$)"
+
+---
+id: py-grpc-stub-call
+language: Python
+severity: warning
+message: "gRPC client stub call"
+rule:
+  any:
+    - pattern: $STUB.$METHOD($$$)
+    - pattern: grpc.insecure_channel($$$)
+    - pattern: grpc.secure_channel($$$)
+
+# =============================================================================
+# API ROUTE HANDLERS (severity: varies by method)
+# =============================================================================
+
+---
+id: py-fastapi-route-write
+language: Python
+severity: error
+message: "FastAPI WRITE route handler"
+rule:
+  any:
+    - pattern: "@$APP.post($$$)"
+    - pattern: "@$APP.put($$$)"
+    - pattern: "@$APP.patch($$$)"
+    - pattern: "@$APP.delete($$$)"
+    - pattern: "@router.post($$$)"
+    - pattern: "@router.put($$$)"
+    - pattern: "@router.patch($$$)"
+    - pattern: "@router.delete($$$)"
+
+---
+id: py-fastapi-route-read
+language: Python
+severity: warning
+message: "FastAPI GET route handler"
+rule:
+  any:
+    - pattern: "@$APP.get($$$)"
+    - pattern: "@router.get($$$)"
+
+---
+id: py-flask-route
+language: Python
+severity: warning
+message: "Flask route handler"
+rule:
+  any:
+    - pattern: "@$APP.route($$$)"
+    - pattern: "@$BP.route($$$)"
+
+---
+id: py-django-view
+language: Python
+severity: warning
+message: "Django view class"
+rule:
+  any:
+    - pattern: |
+        class $NAME(APIView):
+            $$$
+    - pattern: |
+        class $NAME(ViewSet):
+            $$$
+    - pattern: |
+        class $NAME(ModelViewSet):
+            $$$
+    - pattern: |
+        class $NAME(View):
+            $$$
+
+# =============================================================================
+# MODEL & SCHEMA DEFINITIONS (severity: hint)
+# =============================================================================
+
+---
+id: py-pydantic-model
+language: Python
+severity: hint
+message: "Pydantic model definition"
+rule:
+  any:
+    - pattern: |
+        class $NAME(BaseModel):
+            $$$
+    - pattern: |
+        class $NAME(BaseSettings):
+            $$$
+
+---
+id: py-django-model
+language: Python
+severity: hint
+message: "Django model definition"
+rule:
+  pattern: |
+    class $NAME(models.Model):
+        $$$
+
+---
+id: py-sqlalchemy-model
+language: Python
+severity: hint
+message: "SQLAlchemy model definition"
+rule:
+  any:
+    - pattern: |
+        class $NAME(Base):
+            $$$
+    - pattern: |
+        class $NAME($DECLARATIVE):
+            __tablename__ = $$$
+
+# =============================================================================
+# BACKGROUND TASKS (severity: error)
+# =============================================================================
+
+---
+id: py-celery-task
+language: Python
+severity: error
+message: "Celery task definition"
+rule:
+  any:
+    - pattern: "@$APP.task($$$)"
+    - pattern: "@shared_task($$$)"
+    - pattern: "@celery.task($$$)"
+    - pattern: "@task($$$)"
+
+---
+id: py-celery-task-call
+language: Python
+severity: error
+message: "Celery task invocation"
+rule:
+  any:
+    - pattern: $TASK.delay($$$)
+    - pattern: $TASK.apply_async($$$)
+    - pattern: $TASK.s($$$)
+
+# =============================================================================
+# EVENT & MESSAGE HANDLING (severity: error)
+# =============================================================================
+
+---
+id: py-event-publish
+language: Python
+severity: error
+message: "Event/message publishing"
+rule:
+  any:
+    - pattern: $PUBLISHER.publish($$$)
+    - pattern: $QUEUE.send($$$)
+    - pattern: $CHANNEL.basic_publish($$$)
+    - pattern: emit($EVENT, $$$)
+    - pattern: $EMITTER.emit($$$)
+
+---
+id: py-signal-handler
+language: Python
+severity: warning
+message: "Django signal handler"
+rule:
+  any:
+    - pattern: "@receiver($SIGNAL)"
+    - pattern: "@receiver($SIGNAL, sender=$$$)"
+    - pattern: "$SIGNAL.connect($$$)"

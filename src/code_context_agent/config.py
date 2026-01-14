@@ -15,6 +15,16 @@ Environment Variables:
     CODE_CONTEXT_DEBUG: Enable debug mode (default: False)
     CODE_CONTEXT_LOG_LEVEL: Logging level (default: "INFO")
     CODE_CONTEXT_OUTPUT_FORMAT: Output format - "rich", "json", or "plain" (default: "rich")
+    CODE_CONTEXT_MODEL_ID: Bedrock model ID for the agent
+    CODE_CONTEXT_REGION: AWS region for Bedrock
+    CODE_CONTEXT_TEMPERATURE: Model temperature (0.0-1.0)
+    CODE_CONTEXT_LSP_TS_COMMAND: Command to start TypeScript LSP
+    CODE_CONTEXT_LSP_PY_COMMAND: Command to start Python LSP
+    CODE_CONTEXT_LSP_TIMEOUT: LSP operation timeout in seconds
+    CODE_CONTEXT_LSP_STARTUP_TIMEOUT: Maximum seconds to wait for LSP server to initialize
+    CODE_CONTEXT_LSP_MAX_FILES: Maximum files before LSP analysis is skipped
+    CODE_CONTEXT_AGENT_MAX_TURNS: Maximum agent turns before stopping (default: 100)
+    CODE_CONTEXT_AGENT_MAX_DURATION: Maximum agent duration in seconds (default: 600)
 """
 
 from typing import Literal
@@ -57,6 +67,64 @@ class Settings(BaseSettings):
     output_format: Literal["rich", "json", "plain"] = Field(
         default="rich",
         description="Output format for CLI responses",
+    )
+
+    # Agent model settings
+    model_id: str = Field(
+        default="global.anthropic.claude-opus-4-5-20251101-v1:0",
+        description="Bedrock model ID for the analysis agent",
+    )
+    region: str = Field(
+        default="us-east-1",
+        description="AWS region for Bedrock API calls",
+    )
+    temperature: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        description="Model temperature (0.3 recommended for structured analysis)",
+    )
+
+    # LSP settings
+    lsp_ts_command: str = Field(
+        default="typescript-language-server --stdio",
+        description="Command to start TypeScript/JavaScript LSP server",
+    )
+    lsp_py_command: str = Field(
+        default="pyright-langserver --stdio",
+        description="Command to start Python LSP server (pyright-langserver)",
+    )
+    lsp_timeout: int = Field(
+        default=30,
+        ge=5,
+        le=300,
+        description="Timeout in seconds for LSP operations",
+    )
+    lsp_startup_timeout: int = Field(
+        default=30,
+        ge=5,
+        le=120,
+        description="Maximum seconds to wait for LSP server to initialize",
+    )
+    lsp_max_files: int = Field(
+        default=5000,
+        ge=100,
+        le=50000,
+        description="Maximum files before LSP analysis is skipped",
+    )
+
+    # Agent execution bounds
+    agent_max_turns: int = Field(
+        default=100,
+        ge=10,
+        le=500,
+        description="Maximum agent turns before stopping",
+    )
+    agent_max_duration: int = Field(
+        default=600,
+        ge=60,
+        le=3600,
+        description="Maximum agent duration in seconds",
     )
 
 

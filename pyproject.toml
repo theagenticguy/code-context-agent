@@ -16,6 +16,8 @@ dependencies = [
     "rich>=14.0.0",
     "strands-agents>=1.22.0",
     "strands-agents-tools>=0.2.19",
+    "ag-ui-strands>=0.1.0",
+    "ag-ui-protocol>=0.1.10",
 ]
 
 [project.scripts]
@@ -65,7 +67,18 @@ select = [
     "D",      # pydocstyle (docstrings)
     "S",      # flake8-bandit (security)
 ]
-ignore = ["D100", "D104"]  # Allow missing module/package docstrings
+ignore = [
+    "D100",    # Allow missing module docstrings
+    "D104",    # Allow missing package docstrings
+    "D301",    # Allow backslashes in docstrings (for LSP protocol docs)
+    "PLC0415", # Allow imports inside functions (for circular import avoidance)
+    "B027",    # Allow empty methods in ABCs (optional hook methods)
+    "S602",    # Allow subprocess shell=True (needed for shell commands)
+    "PLR0913", # Allow many function arguments (tool function design)
+    "PLW1510", # Allow subprocess.run without check (we handle errors)
+    "ARG002",  # Allow unused method arguments (protocol interface compliance)
+    "SIM105",  # Allow try-except-pass patterns (explicit is clearer)
+]
 fixable = ["ALL"]
 
 [tool.ruff.lint.pydocstyle]
@@ -73,7 +86,8 @@ convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["D", "S101", "ARG"]
-"__init__.py" = ["F401"]
+"**/__init__.py" = ["F401", "RUF022"]  # Allow unused imports and unsorted __all__ in init files
+"src/code_context_agent/tools/**/*.py" = ["PLR2004"]  # Allow magic numbers in tool implementations
 
 [tool.ruff.format]
 quote-style = "double"

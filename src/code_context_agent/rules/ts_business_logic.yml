@@ -1,0 +1,561 @@
+# TypeScript/JavaScript Business Logic Detection Rules
+# Heuristic patterns for finding DB calls, state mutations, and API interactions
+# Severity levels:
+#   - error: Write operations, mutations, critical business logic
+#   - warning: Read operations, queries
+#   - hint: Optional/informational patterns
+
+# =============================================================================
+# DATABASE WRITE OPERATIONS (severity: error)
+# =============================================================================
+
+id: ts-db-write-operation
+language: TypeScript
+severity: error
+message: "Database WRITE operation - critical business logic"
+rule:
+  pattern: $OBJ.$METHOD($$ARGS)
+constraints:
+  METHOD:
+    regex: "^(insert|update|delete|upsert|save|create|destroy|remove|bulkCreate|commit|execute)$"
+
+---
+id: ts-prisma-write
+language: TypeScript
+severity: error
+message: "Prisma WRITE operation"
+rule:
+  pattern: $CLIENT.$MODEL.$METHOD($$ARGS)
+constraints:
+  METHOD:
+    regex: "^(create|createMany|update|updateMany|upsert|delete|deleteMany)$"
+
+---
+id: ts-typeorm-write
+language: TypeScript
+severity: error
+message: "TypeORM WRITE operation"
+rule:
+  any:
+    - pattern: $REPO.save($$$)
+    - pattern: $REPO.insert($$$)
+    - pattern: $REPO.update($$$)
+    - pattern: $REPO.delete($$$)
+    - pattern: $REPO.remove($$$)
+    - pattern: $MANAGER.save($$$)
+    - pattern: $MANAGER.insert($$$)
+    - pattern: $MANAGER.update($$$)
+    - pattern: $MANAGER.delete($$$)
+
+---
+id: ts-sequelize-write
+language: TypeScript
+severity: error
+message: "Sequelize WRITE operation"
+rule:
+  any:
+    - pattern: $MODEL.create($$$)
+    - pattern: $MODEL.bulkCreate($$$)
+    - pattern: $MODEL.update($$$)
+    - pattern: $MODEL.destroy($$$)
+    - pattern: $INSTANCE.save($$$)
+    - pattern: $INSTANCE.destroy($$$)
+
+---
+id: ts-transaction-control
+language: TypeScript
+severity: error
+message: "Transaction control operation"
+rule:
+  any:
+    - pattern: $CLIENT.$transaction($$$)
+    - pattern: $MANAGER.transaction($$$)
+    - pattern: $DB.transaction($$$)
+    - pattern: $CONN.beginTransaction($$$)
+    - pattern: $CONN.commit($$$)
+    - pattern: $CONN.rollback($$$)
+
+# =============================================================================
+# DATABASE READ OPERATIONS (severity: warning)
+# =============================================================================
+
+---
+id: ts-prisma-read
+language: TypeScript
+severity: warning
+message: "Prisma READ operation"
+rule:
+  pattern: $CLIENT.$MODEL.$METHOD($$ARGS)
+constraints:
+  METHOD:
+    regex: "^(findUnique|findFirst|findMany|count|aggregate|groupBy)$"
+
+---
+id: ts-typeorm-read
+language: TypeScript
+severity: warning
+message: "TypeORM READ operation"
+rule:
+  any:
+    - pattern: $REPO.find($$$)
+    - pattern: $REPO.findOne($$$)
+    - pattern: $REPO.findOneBy($$$)
+    - pattern: $REPO.findBy($$$)
+    - pattern: $REPO.count($$$)
+    - pattern: $REPO.query($$$)
+    - pattern: $MANAGER.find($$$)
+    - pattern: $MANAGER.findOne($$$)
+
+---
+id: ts-sequelize-read
+language: TypeScript
+severity: warning
+message: "Sequelize READ operation"
+rule:
+  any:
+    - pattern: $MODEL.findAll($$$)
+    - pattern: $MODEL.findOne($$$)
+    - pattern: $MODEL.findByPk($$$)
+    - pattern: $MODEL.findAndCountAll($$$)
+    - pattern: $MODEL.count($$$)
+
+---
+id: ts-sql-tagged-template
+language: TypeScript
+severity: warning
+message: "Raw SQL via tagged template"
+rule:
+  any:
+    - pattern: sql`$$$`
+    - pattern: SQL`$$$`
+    - pattern: $DB.sql`$$$`
+    - pattern: $DB.$raw`$$$`
+    - pattern: Prisma.sql`$$$`
+
+# =============================================================================
+# AUTHENTICATION & AUTHORIZATION (severity: error)
+# =============================================================================
+
+---
+id: ts-middleware-auth
+language: TypeScript
+severity: error
+message: "Authentication middleware"
+rule:
+  any:
+    - pattern: isAuthenticated($$$)
+    - pattern: requireAuth($$$)
+    - pattern: checkPermission($$$)
+    - pattern: verifyToken($$$)
+    - pattern: validateToken($$$)
+    - pattern: authenticate($$$)
+    - pattern: authorize($$$)
+
+---
+id: ts-auth-decorator
+language: TypeScript
+severity: error
+message: "Authentication/authorization decorator"
+rule:
+  any:
+    - pattern: "@Authenticated()"
+    - pattern: "@Authenticated($$$)"
+    - pattern: "@Authorize($$$)"
+    - pattern: "@UseGuards($$$)"
+    - pattern: "@RequireAuth()"
+    - pattern: "@RequirePermission($$$)"
+    - pattern: "@Public()"
+
+---
+id: ts-auth-guard
+language: TypeScript
+severity: error
+message: "Auth guard implementation"
+rule:
+  any:
+    - pattern: |
+        class $NAME implements CanActivate {
+            $$$
+        }
+    - pattern: |
+        class $NAME extends AuthGuard($$$) {
+            $$$
+        }
+
+---
+id: ts-jwt-operations
+language: TypeScript
+severity: error
+message: "JWT token operations"
+rule:
+  any:
+    - pattern: jwt.sign($$$)
+    - pattern: jwt.verify($$$)
+    - pattern: jwt.decode($$$)
+    - pattern: $JWT.sign($$$)
+    - pattern: $JWT.verify($$$)
+    - pattern: jsonwebtoken.sign($$$)
+    - pattern: jsonwebtoken.verify($$$)
+
+---
+id: ts-session-auth
+language: TypeScript
+severity: error
+message: "Session authentication check"
+rule:
+  any:
+    - pattern: req.session.$USER
+    - pattern: req.user
+    - pattern: req.isAuthenticated()
+    - pattern: session.user
+    - pattern: $CTX.user
+
+# =============================================================================
+# STATE MUTATIONS (severity: error)
+# =============================================================================
+
+---
+id: ts-state-mutation-assign
+language: TypeScript
+severity: error
+message: "State/status mutation via assignment"
+rule:
+  pattern: $OBJ.$FIELD = $VAL
+constraints:
+  FIELD:
+    regex: "^(status|state|phase|stage|lifecycle|enabled|active|deleted|archived|approved|paid|shipped|role|tier|plan|isActive|isDeleted|isApproved|isVerified|isLocked|isSuspended)$"
+
+---
+id: ts-state-transition-call
+language: TypeScript
+severity: error
+message: "State transition via method call"
+rule:
+  pattern: $OBJ.$METHOD($$ARGS)
+constraints:
+  METHOD:
+    regex: "^(setState|setStatus|transition|transitionTo|advance|approve|reject|cancel|refund|activate|deactivate|archive|restore|markPaid|markShipped|markComplete|suspend|unsuspend|lock|unlock|verify|unverify)$"
+
+---
+id: ts-react-state-mutation
+language: TypeScript
+severity: warning
+message: "React state mutation"
+rule:
+  any:
+    - pattern: $SET_STATE($$$)
+    - pattern: dispatch($$$)
+    - pattern: $DISPATCH($ACTION)
+
+# =============================================================================
+# HTTP WRITE OPERATIONS (severity: error)
+# =============================================================================
+
+---
+id: ts-fetch-write
+language: TypeScript
+severity: error
+message: "HTTP WRITE via fetch"
+rule:
+  pattern: "fetch($URL, { method: $METHOD, $$$ })"
+constraints:
+  METHOD:
+    regex: "^['\"]?(POST|PUT|PATCH|DELETE)['\"]?$"
+
+---
+id: ts-axios-write
+language: TypeScript
+severity: error
+message: "HTTP WRITE via axios"
+rule:
+  pattern: axios.$METHOD($$ARGS)
+constraints:
+  METHOD:
+    regex: "^(post|put|patch|delete)$"
+
+---
+id: ts-got-write
+language: TypeScript
+severity: error
+message: "HTTP WRITE via got"
+rule:
+  pattern: got.$METHOD($$ARGS)
+constraints:
+  METHOD:
+    regex: "^(post|put|patch|delete)$"
+
+# =============================================================================
+# HTTP READ OPERATIONS (severity: warning)
+# =============================================================================
+
+---
+id: ts-fetch-read
+language: TypeScript
+severity: warning
+message: "HTTP GET via fetch"
+rule:
+  pattern: fetch($URL)
+
+---
+id: ts-axios-read
+language: TypeScript
+severity: warning
+message: "HTTP GET via axios"
+rule:
+  any:
+    - pattern: axios.get($$$)
+    - pattern: axios($$$)
+
+---
+id: ts-got-read
+language: TypeScript
+severity: warning
+message: "HTTP GET via got"
+rule:
+  pattern: got.get($$$)
+
+# =============================================================================
+# GraphQL PATTERNS
+# =============================================================================
+
+---
+id: ts-graphql-resolver
+language: TypeScript
+severity: error
+message: "GraphQL resolver definition"
+rule:
+  any:
+    - pattern: "@Resolver($$$)"
+    - pattern: "@Query($$$)"
+    - pattern: "@Mutation($$$)"
+    - pattern: "@Subscription($$$)"
+
+---
+id: ts-graphql-mutation
+language: TypeScript
+severity: error
+message: "GraphQL mutation operation"
+rule:
+  any:
+    - pattern: "mutation $NAME { $$$ }"
+    - pattern: useMutation($$$)
+    - pattern: $CLIENT.mutate($$$)
+    - pattern: graphql`mutation $$$`
+
+---
+id: ts-graphql-query
+language: TypeScript
+severity: warning
+message: "GraphQL query operation"
+rule:
+  any:
+    - pattern: "query $NAME { $$$ }"
+    - pattern: useQuery($$$)
+    - pattern: $CLIENT.query($$$)
+    - pattern: graphql`query $$$`
+
+---
+id: ts-graphql-schema
+language: TypeScript
+severity: hint
+message: "GraphQL schema/type definition"
+rule:
+  any:
+    - pattern: "@ObjectType($$$)"
+    - pattern: "@InputType($$$)"
+    - pattern: "@Field($$$)"
+    - pattern: buildSchema($$$)
+    - pattern: makeExecutableSchema($$$)
+
+# =============================================================================
+# API ROUTE HANDLERS (severity: varies by method)
+# =============================================================================
+
+---
+id: ts-express-route-write
+language: TypeScript
+severity: error
+message: "Express WRITE route handler"
+rule:
+  any:
+    - pattern: $APP.post($PATH, $$$)
+    - pattern: $APP.put($PATH, $$$)
+    - pattern: $APP.patch($PATH, $$$)
+    - pattern: $APP.delete($PATH, $$$)
+    - pattern: router.post($PATH, $$$)
+    - pattern: router.put($PATH, $$$)
+    - pattern: router.patch($PATH, $$$)
+    - pattern: router.delete($PATH, $$$)
+
+---
+id: ts-express-route-read
+language: TypeScript
+severity: warning
+message: "Express GET route handler"
+rule:
+  any:
+    - pattern: $APP.get($PATH, $$$)
+    - pattern: router.get($PATH, $$$)
+
+---
+id: ts-fastify-route-write
+language: TypeScript
+severity: error
+message: "Fastify WRITE route handler"
+rule:
+  any:
+    - pattern: fastify.post($PATH, $$$)
+    - pattern: fastify.put($PATH, $$$)
+    - pattern: fastify.patch($PATH, $$$)
+    - pattern: fastify.delete($PATH, $$$)
+
+---
+id: ts-fastify-route-read
+language: TypeScript
+severity: warning
+message: "Fastify GET route handler"
+rule:
+  pattern: fastify.get($PATH, $$$)
+
+---
+id: ts-nestjs-controller
+language: TypeScript
+severity: warning
+message: "NestJS controller endpoint"
+rule:
+  any:
+    - pattern: "@Get($$$)"
+    - pattern: "@Post($$$)"
+    - pattern: "@Put($$$)"
+    - pattern: "@Patch($$$)"
+    - pattern: "@Delete($$$)"
+    - pattern: "@Controller($$$)"
+
+---
+id: ts-nextjs-api
+language: TypeScript
+severity: warning
+message: "Next.js API route handler"
+rule:
+  any:
+    - pattern: "export async function GET($$$)"
+    - pattern: "export async function POST($$$)"
+    - pattern: "export async function PUT($$$)"
+    - pattern: "export async function DELETE($$$)"
+    - pattern: "export default async function handler($$$)"
+
+# =============================================================================
+# VALIDATION & SCHEMA (severity: hint)
+# =============================================================================
+
+---
+id: ts-validation-schema
+language: TypeScript
+severity: hint
+message: "Validation schema definition (zod/yup/joi)"
+rule:
+  any:
+    - pattern: z.object($$$)
+    - pattern: z.string()$$$
+    - pattern: z.number()$$$
+    - pattern: yup.object($$$)
+    - pattern: Joi.object($$$)
+
+---
+id: ts-class-validator
+language: TypeScript
+severity: hint
+message: "Class validator decorator"
+rule:
+  any:
+    - pattern: "@IsString()"
+    - pattern: "@IsNumber()"
+    - pattern: "@IsEmail()"
+    - pattern: "@IsNotEmpty()"
+    - pattern: "@ValidateNested($$$)"
+
+# =============================================================================
+# EVENT & MESSAGE HANDLING (severity: error)
+# =============================================================================
+
+---
+id: ts-event-emit
+language: TypeScript
+severity: error
+message: "Event emission"
+rule:
+  any:
+    - pattern: $EMITTER.emit($$$)
+    - pattern: emit($EVENT, $$$)
+    - pattern: $SOCKET.emit($$$)
+    - pattern: $CHANNEL.publish($$$)
+    - pattern: $QUEUE.send($$$)
+
+---
+id: ts-event-listener
+language: TypeScript
+severity: warning
+message: "Event listener registration"
+rule:
+  any:
+    - pattern: $EMITTER.on($$$)
+    - pattern: $EMITTER.addEventListener($$$)
+    - pattern: $SOCKET.on($$$)
+    - pattern: "@OnEvent($$$)"
+
+# =============================================================================
+# WEBSOCKET PATTERNS (severity: error for sends)
+# =============================================================================
+
+---
+id: ts-websocket-send
+language: TypeScript
+severity: error
+message: "WebSocket send operation"
+rule:
+  any:
+    - pattern: $WS.send($$$)
+    - pattern: $SOCKET.send($$$)
+    - pattern: $SOCKET.emit($$$)
+    - pattern: $IO.emit($$$)
+
+---
+id: ts-websocket-handler
+language: TypeScript
+severity: warning
+message: "WebSocket message handler"
+rule:
+  any:
+    - pattern: "@SubscribeMessage($$$)"
+    - pattern: "@WebSocketGateway($$$)"
+    - pattern: $WS.onmessage = $$$
+    - pattern: $SOCKET.on('message', $$$)
+
+# =============================================================================
+# CACHING OPERATIONS (severity: varies)
+# =============================================================================
+
+---
+id: ts-cache-write
+language: TypeScript
+severity: error
+message: "Cache write operation"
+rule:
+  any:
+    - pattern: $CACHE.set($$$)
+    - pattern: $REDIS.set($$$)
+    - pattern: $REDIS.hset($$$)
+    - pattern: $CACHE.del($$$)
+    - pattern: $REDIS.del($$$)
+    - pattern: $CACHE.invalidate($$$)
+
+---
+id: ts-cache-read
+language: TypeScript
+severity: warning
+message: "Cache read operation"
+rule:
+  any:
+    - pattern: $CACHE.get($$$)
+    - pattern: $REDIS.get($$$)
+    - pattern: $REDIS.hget($$$)
