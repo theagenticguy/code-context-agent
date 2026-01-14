@@ -17,7 +17,7 @@ Environment Variables:
     CODE_CONTEXT_OUTPUT_FORMAT: Output format - "rich", "json", or "plain" (default: "rich")
     CODE_CONTEXT_MODEL_ID: Bedrock model ID for the agent
     CODE_CONTEXT_REGION: AWS region for Bedrock
-    CODE_CONTEXT_TEMPERATURE: Model temperature (0.0-1.0)
+    CODE_CONTEXT_TEMPERATURE: Model temperature (default 1.0 for extended thinking)
     CODE_CONTEXT_LSP_TS_COMMAND: Command to start TypeScript LSP
     CODE_CONTEXT_LSP_PY_COMMAND: Command to start Python LSP
     CODE_CONTEXT_LSP_TIMEOUT: LSP operation timeout in seconds
@@ -79,10 +79,10 @@ class Settings(BaseSettings):
         description="AWS region for Bedrock API calls",
     )
     temperature: float = Field(
-        default=0.3,
+        default=1.0,
         ge=0.0,
         le=1.0,
-        description="Model temperature (0.3 recommended for structured analysis)",
+        description="Model temperature (must be 1.0 when extended thinking is enabled)",
     )
 
     # LSP settings
