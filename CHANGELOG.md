@@ -1,3 +1,10 @@
+## v0.3.1 (2026-01-14)
+
+### Fix
+
+- **docs**: add basic README content
+- **config**: use pep621 version_provider for commitizen
+
 ## v0.3.0 (2026-01-14)
 
 ### Feat
