@@ -25,6 +25,7 @@ Environment Variables:
     CODE_CONTEXT_LSP_MAX_FILES: Maximum files before LSP analysis is skipped
     CODE_CONTEXT_AGENT_MAX_TURNS: Maximum agent turns before stopping (default: 100)
     CODE_CONTEXT_AGENT_MAX_DURATION: Maximum agent duration in seconds (default: 600)
+    CODE_CONTEXT_OTEL_DISABLED: Disable OpenTelemetry tracing (default: True)
 """
 
 from typing import Literal
@@ -125,6 +126,12 @@ class Settings(BaseSettings):
         ge=60,
         le=3600,
         description="Maximum agent duration in seconds",
+    )
+
+    # Telemetry settings
+    otel_disabled: bool = Field(
+        default=True,
+        description="Disable OpenTelemetry tracing to avoid context detachment errors",
     )
 
 
