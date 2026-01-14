@@ -9,5 +9,5 @@ import os
 if os.environ.get("CODE_CONTEXT_OTEL_DISABLED", "true").lower() != "false":
     os.environ["OTEL_SDK_DISABLED"] = "true"
 
-__version__ = "0.3.2"
+__version__ = "0.3.3"
 __all__ = ["__version__"]

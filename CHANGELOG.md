@@ -1,3 +1,9 @@
+## v0.3.3 (2026-01-14)
+
+### Fix
+
+- **telemetry**: disable OpenTelemetry by default to avoid context detachment errors
+
 ## v0.3.2 (2026-01-14)
 
 ### Fix
