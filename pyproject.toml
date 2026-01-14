@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "code-context-agent"
-version = "0.1.0"
+version = "0.3.0"
 description = "A CLI tool for code context analysis"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -130,9 +130,8 @@ asyncio_default_fixture_loop_scope = "function"
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.3.0"
+version_provider = "pep621"
 version_files = [
-    "pyproject.toml:project.version",
     "src/code_context_agent/__init__.py:__version__"
 ]
 tag_format = "v$version"
