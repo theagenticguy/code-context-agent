@@ -1,3 +1,9 @@
+## v0.3.2 (2026-01-14)
+
+### Fix
+
+- **config**: set default temperature to 1.0 for extended thinking
+
 ## v0.3.1 (2026-01-14)
 
 ### Fix
