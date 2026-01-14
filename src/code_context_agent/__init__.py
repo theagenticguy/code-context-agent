@@ -9,5 +9,27 @@ import os
 if os.environ.get("CODE_CONTEXT_OTEL_DISABLED", "true").lower() != "false":
     os.environ["OTEL_SDK_DISABLED"] = "true"
 
+    # Patch OpenTelemetry context detach to suppress ValueError in async generators.
+    # This error occurs when GeneratorExit is raised and the context token was
+    # created in a different async context - it's harmless but noisy.
+    def _patch_otel_context() -> None:
+        try:
+            from opentelemetry.context import contextvars_context
+
+            original_detach = contextvars_context.ContextVarsRuntimeContext.detach
+
+            def patched_detach(self, token):  # type: ignore[no-untyped-def]  # noqa: ANN001, ANN201
+                try:
+                    return original_detach(self, token)
+                except ValueError:
+                    # Suppress "Token was created in a different Context" errors
+                    pass
+
+            contextvars_context.ContextVarsRuntimeContext.detach = patched_detach
+        except ImportError:
+            pass
+
+    _patch_otel_context()
+
 __version__ = "0.3.3"
 __all__ = ["__version__"]
