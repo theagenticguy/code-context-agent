@@ -1,3 +1,9 @@
+## v0.3.5 (2026-01-14)
+
+### Feat
+
+- **cli**: add --debug flag to analyze command for troubleshooting
+
 ## v0.3.4 (2026-01-14)
 
 ### Fix
