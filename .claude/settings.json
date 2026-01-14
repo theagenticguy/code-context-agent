@@ -1,0 +1,5 @@
+{
+  "enabledPlugins": {
+    "workspace-manager@claude-workspaces": false
+  }
+}
