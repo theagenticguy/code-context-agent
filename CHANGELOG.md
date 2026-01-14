@@ -1,3 +1,9 @@
+## v0.3.4 (2026-01-14)
+
+### Fix
+
+- **telemetry**: patch OTEL context detach to suppress async generator errors
+
 ## v0.3.3 (2026-01-14)
 
 ### Fix
