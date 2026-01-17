@@ -20,8 +20,9 @@ from ..config import get_settings
 from ..consumer import EventConsumer, QuietConsumer, RichEventConsumer
 from .factory import create_agent
 
-# Disable shell tool approval prompts - we're running non-interactively
+# Disable shell tool approval prompts and console output - we're running non-interactively
 os.environ.setdefault("BYPASS_TOOL_CONSENT", "true")
+os.environ.setdefault("STRANDS_NON_INTERACTIVE", "true")
 
 # Monkey-patch StrandsAgent to preserve callback_handler from original agent
 # This prevents duplicate output from PrintingCallbackHandler
@@ -48,6 +49,7 @@ async def run_analysis(  # noqa: PLR0915 - cohesive analysis workflow
     repo_path: str | Path,
     output_dir: str | Path | None = None,
     mode: str = "fast",
+    focus: str | None = None,
     consumer: EventConsumer | None = None,
     quiet: bool = False,
 ) -> dict[str, Any]:
@@ -63,6 +65,7 @@ async def run_analysis(  # noqa: PLR0915 - cohesive analysis workflow
         repo_path: Path to the repository to analyze.
         output_dir: Output directory for context files. Defaults to repo/.agent
         mode: Analysis mode - "fast" (default) or "deep".
+        focus: Optional focus area to steer analysis (e.g., "authentication", "API layer").
         consumer: Event consumer for display. Defaults to RichEventConsumer.
         quiet: If True and no consumer, use QuietConsumer.
 
@@ -98,13 +101,21 @@ async def run_analysis(  # noqa: PLR0915 - cohesive analysis workflow
     )
 
     # Build the analysis prompt
+    focus_instruction = ""
+    if focus:
+        focus_instruction = f"""
+FOCUS AREA: {focus}
+Prioritize analysis of code related to this focus area. When selecting files for the bundle
+and writing narration, emphasize components, functions, and patterns relevant to: {focus}
+"""
+
     prompt = f"""
 Analyze the repository at: {repo}
 
 Output all files to: {output}
 
 Mode: {mode.upper()}
-
+{focus_instruction}
 Follow your SOP to produce the narrated context bundle.
 Start with Phase 0 (create_file_manifest) and proceed through all phases.
 """

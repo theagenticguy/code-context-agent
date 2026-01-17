@@ -72,7 +72,7 @@ class Settings(BaseSettings):
 
     # Agent model settings
     model_id: str = Field(
-        default="global.anthropic.claude-opus-4-5-20251101-v1:0",
+        default="global.anthropic.claude-sonnet-4-5-20250929-v1:0",
         description="Bedrock model ID for the analysis agent",
     )
     region: str = Field(

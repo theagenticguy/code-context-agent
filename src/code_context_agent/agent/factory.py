@@ -25,8 +25,8 @@ def get_analysis_tools() -> list[Any]:
         List of tool functions for the agent.
     """
     # Import tools here to avoid circular imports
-    # Import shell from strands_tools for command execution
-    from strands_tools import shell
+    # Import shell and graph from strands_tools
+    from strands_tools import graph, shell
 
     from ..tools import (
         astgrep_scan,
@@ -67,6 +67,8 @@ def get_analysis_tools() -> list[Any]:
         astgrep_scan_rule_pack,
         # Shell for custom commands
         shell,
+        # Graph visualization
+        graph,
     ]
 
 
@@ -93,7 +95,7 @@ def create_agent(mode: str = "fast") -> Agent:
         f"region={settings.region}, thinking_budget={thinking_budget}"
     )
 
-    # Create Bedrock model with extended thinking enabled
+    # Create Bedrock model with extended thinking and 1M context enabled
     model = BedrockModel(
         model_id=settings.model_id,
         region_name=settings.region,
@@ -102,7 +104,9 @@ def create_agent(mode: str = "fast") -> Agent:
             "thinking": {
                 "type": "enabled",
                 "budget_tokens": thinking_budget,
-            }
+            },
+            # Enable 1M context window (beta feature for Sonnet 4 and 4.5)
+            "anthropic_beta": ["context-1m-2025-08-07"],
         },
     )
 

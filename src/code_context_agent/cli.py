@@ -72,6 +72,10 @@ def analyze(
         Path | None,
         Parameter(help="Output directory for context files. Defaults to <repo>/.agent"),
     ] = None,
+    focus: Annotated[
+        str,
+        Parameter(help="Focus area for analysis (e.g., 'authentication', 'API endpoints', 'database layer')."),
+    ] = "",
     quiet: Annotated[
         bool,
         Parameter(help="Suppress live display output."),
@@ -139,6 +143,7 @@ def analyze(
             repo_path=repo_path,
             output_dir=output_dir,
             mode=mode,
+            focus=focus or None,
             quiet=quiet,
         )
     )
