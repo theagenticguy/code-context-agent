@@ -25,8 +25,8 @@ def get_analysis_tools() -> list[Any]:
         List of tool functions for the agent.
     """
     # Import tools here to avoid circular imports
-    # Import shell and graph from strands_tools
-    from strands_tools import graph, shell
+    # Import graph from strands_tools, but use custom shell for proper STDIO capture
+    from strands_tools import graph
 
     from ..tools import (
         astgrep_scan,
@@ -38,6 +38,7 @@ def get_analysis_tools() -> list[Any]:
         rg_search,
         write_file_list,
     )
+    from ..tools.shell_tool import shell
     from ..tools.lsp import (
         lsp_definition,
         lsp_document_symbols,

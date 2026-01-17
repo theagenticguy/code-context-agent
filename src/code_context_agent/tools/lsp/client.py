@@ -40,8 +40,12 @@ class LspClient:
         >>> await client.shutdown()
     """
 
-    def __init__(self) -> None:
-        """Initialize the LSP client."""
+    def __init__(self, request_timeout: float = 30.0) -> None:
+        """Initialize the LSP client.
+
+        Args:
+            request_timeout: Timeout in seconds for LSP requests (default 30.0).
+        """
         self._process: asyncio.subprocess.Process | None = None
         self._msg_id = 0
         self._pending: dict[int, asyncio.Future[dict[str, Any]]] = {}
@@ -49,6 +53,7 @@ class LspClient:
         self._initialized = False
         self.workspace_path: str = ""
         self.server_cmd: list[str] = []
+        self.request_timeout: float = request_timeout
 
     async def start(
         self,
@@ -221,7 +226,7 @@ class LspClient:
 
         # Wait for response with timeout
         try:
-            return await asyncio.wait_for(future, timeout=30.0)
+            return await asyncio.wait_for(future, timeout=self.request_timeout)
         except TimeoutError as err:
             self._pending.pop(msg_id, None)
             raise TimeoutError(f"LSP request timeout: {method}") from err
@@ -343,8 +348,14 @@ class LspClient:
         Args:
             file_path: Absolute path to the file.
             language_id: Language identifier (auto-detected if not provided).
+
+        Raises:
+            FileNotFoundError: If the file does not exist.
         """
         path = Path(file_path)
+        if not path.exists():
+            raise FileNotFoundError(f"File not found: {file_path}")
+
         if language_id is None:
             language_id = self._detect_language(path)
 

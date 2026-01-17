@@ -199,7 +199,8 @@ class LspSessionManager:
                 del self._sessions[key]
 
         logger.info(f"Creating new LSP session: {key}")
-        client = LspClient()
+        settings = get_settings()
+        client = LspClient(request_timeout=float(settings.lsp_timeout))
         cmd = self._get_server_command(server_kind)
 
         # Get workspace configuration with exclusion patterns

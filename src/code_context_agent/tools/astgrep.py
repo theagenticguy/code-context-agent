@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import subprocess
 from pathlib import Path
 
 from strands import tool
@@ -71,9 +72,38 @@ def astgrep_scan(
 
     cmd_parts.append(str(repo))
 
-    cmd = " ".join(cmd_parts) + f" | head -{max_results * 10}"
-
-    result = run_command(["sh", "-c", cmd], cwd=str(repo))
+    # Run directly without shell pipe to avoid SIGPIPE/broken pipe errors
+    cmd = " ".join(cmd_parts)
+    try:
+        proc_result = subprocess.run(
+            ["sh", "-c", cmd],
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        # Limit output lines after capture to avoid broken pipe
+        stdout_lines = proc_result.stdout.split("\n")[: max_results * 10]
+        result = {
+            "status": "success" if proc_result.returncode == 0 else "error",
+            "stdout": "\n".join(stdout_lines),
+            "stderr": proc_result.stderr[:10000] if proc_result.stderr else "",
+            "return_code": proc_result.returncode,
+        }
+    except subprocess.TimeoutExpired:
+        result = {
+            "status": "error",
+            "stdout": "",
+            "stderr": "Command timed out",
+            "return_code": -1,
+        }
+    except Exception as e:
+        result = {
+            "status": "error",
+            "stdout": "",
+            "stderr": str(e),
+            "return_code": -1,
+        }
 
     # Parse streaming JSON output
     matches = []
@@ -169,9 +199,38 @@ def astgrep_scan_rule_pack(
 
     cmd_parts.append(str(repo))
 
-    cmd = " ".join(cmd_parts) + f" | head -{max_results * 10}"
-
-    result = run_command(["sh", "-c", cmd], cwd=str(repo))
+    # Run directly without shell pipe to avoid SIGPIPE/broken pipe errors
+    cmd = " ".join(cmd_parts)
+    try:
+        proc_result = subprocess.run(
+            ["sh", "-c", cmd],
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        # Limit output lines after capture to avoid broken pipe
+        stdout_lines = proc_result.stdout.split("\n")[: max_results * 10]
+        result = {
+            "status": "success" if proc_result.returncode == 0 else "error",
+            "stdout": "\n".join(stdout_lines),
+            "stderr": proc_result.stderr[:10000] if proc_result.stderr else "",
+            "return_code": proc_result.returncode,
+        }
+    except subprocess.TimeoutExpired:
+        result = {
+            "status": "error",
+            "stdout": "",
+            "stderr": "Command timed out",
+            "return_code": -1,
+        }
+    except Exception as e:
+        result = {
+            "status": "error",
+            "stdout": "",
+            "stderr": str(e),
+            "return_code": -1,
+        }
 
     # Parse streaming JSON output and group by rule
     matches_by_rule: dict[str, list[dict]] = {}
@@ -261,9 +320,38 @@ def astgrep_inline_rule(
 
     cmd_parts.append(str(repo))
 
-    cmd = " ".join(cmd_parts) + f" | head -{max_results * 10}"
-
-    result = run_command(["sh", "-c", cmd], cwd=str(repo))
+    # Run directly without shell pipe to avoid SIGPIPE/broken pipe errors
+    cmd = " ".join(cmd_parts)
+    try:
+        proc_result = subprocess.run(
+            ["sh", "-c", cmd],
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        # Limit output lines after capture to avoid broken pipe
+        stdout_lines = proc_result.stdout.split("\n")[: max_results * 10]
+        result = {
+            "status": "success" if proc_result.returncode == 0 else "error",
+            "stdout": "\n".join(stdout_lines),
+            "stderr": proc_result.stderr[:10000] if proc_result.stderr else "",
+            "return_code": proc_result.returncode,
+        }
+    except subprocess.TimeoutExpired:
+        result = {
+            "status": "error",
+            "stdout": "",
+            "stderr": "Command timed out",
+            "return_code": -1,
+        }
+    except Exception as e:
+        result = {
+            "status": "error",
+            "stdout": "",
+            "stderr": str(e),
+            "return_code": -1,
+        }
 
     # Parse results
     matches = []

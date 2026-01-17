@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import shlex
+import subprocess
 from pathlib import Path
 
 from strands import tool
@@ -329,10 +330,39 @@ def rg_search(
     cmd_parts.append(shlex.quote(pattern))
     cmd_parts.append(shlex.quote(str(repo)))
 
-    # Use sh -c for shell pipe
-    cmd = ["sh", "-c", " ".join(cmd_parts) + " | head -500"]
-
-    result = run_command(cmd, cwd=str(repo), timeout=60)
+    # Run rg directly without shell pipe to avoid SIGPIPE/broken pipe errors
+    # Use subprocess directly for proper STDIO capture
+    full_cmd = " ".join(cmd_parts)
+    try:
+        proc_result = subprocess.run(
+            ["sh", "-c", full_cmd],
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        # Limit output to 500 lines after capture to avoid broken pipe
+        stdout_lines = proc_result.stdout.split("\n")[:500]
+        result = {
+            "status": "success" if proc_result.returncode in (0, 1) else "error",
+            "stdout": "\n".join(stdout_lines),
+            "stderr": proc_result.stderr[:10000] if proc_result.stderr else "",
+            "return_code": proc_result.returncode,
+        }
+    except subprocess.TimeoutExpired:
+        result = {
+            "status": "error",
+            "stdout": "",
+            "stderr": "Command timed out after 60 seconds",
+            "return_code": -1,
+        }
+    except Exception as e:
+        result = {
+            "status": "error",
+            "stdout": "",
+            "stderr": str(e),
+            "return_code": -1,
+        }
 
     # Parse JSON lines output
     matches = []
