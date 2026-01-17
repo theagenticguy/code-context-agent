@@ -1,3 +1,9 @@
+## v0.3.6 (2026-01-17)
+
+### Fix
+
+- **agent**: disable shell approval prompts and count actual turns
+
 ## v0.3.5 (2026-01-14)
 
 ### Feat

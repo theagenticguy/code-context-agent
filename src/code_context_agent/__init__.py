@@ -31,5 +31,5 @@ if os.environ.get("CODE_CONTEXT_OTEL_DISABLED", "true").lower() != "false":
 
     _patch_otel_context()
 
-__version__ = "0.3.5"
+__version__ = "0.3.6"
 __all__ = ["__version__"]
