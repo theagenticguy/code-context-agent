@@ -23,10 +23,24 @@ from .factory import create_agent
 # Disable shell tool approval prompts - we're running non-interactively
 os.environ.setdefault("BYPASS_TOOL_CONSENT", "true")
 
+# Monkey-patch StrandsAgent to preserve callback_handler from original agent
+# This prevents duplicate output from PrintingCallbackHandler
+_original_strands_agent_init = StrandsAgent.__init__
+
+
+def _patched_strands_agent_init(self, agent, name, description="", config=None):
+    """Patched init that captures callback_handler from the original agent."""
+    _original_strands_agent_init(self, agent, name, description, config)
+    # Add callback_handler to _agent_kwargs so per-thread agents inherit it
+    self._agent_kwargs["callback_handler"] = getattr(agent, "callback_handler", None)
+
+
+StrandsAgent.__init__ = _patched_strands_agent_init
+
 logger = logging.getLogger(__name__)
 
 # Default execution bounds (can be overridden by config)
-DEFAULT_MAX_TURNS = 100
+DEFAULT_MAX_TURNS = 1000
 DEFAULT_MAX_DURATION = 600  # 10 minutes
 
 

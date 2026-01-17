@@ -23,7 +23,7 @@ Environment Variables:
     CODE_CONTEXT_LSP_TIMEOUT: LSP operation timeout in seconds
     CODE_CONTEXT_LSP_STARTUP_TIMEOUT: Maximum seconds to wait for LSP server to initialize
     CODE_CONTEXT_LSP_MAX_FILES: Maximum files before LSP analysis is skipped
-    CODE_CONTEXT_AGENT_MAX_TURNS: Maximum agent turns before stopping (default: 100)
+    CODE_CONTEXT_AGENT_MAX_TURNS: Maximum agent turns before stopping (default: 1000)
     CODE_CONTEXT_AGENT_MAX_DURATION: Maximum agent duration in seconds (default: 600)
     CODE_CONTEXT_OTEL_DISABLED: Disable OpenTelemetry tracing (default: True)
 """
@@ -116,9 +116,9 @@ class Settings(BaseSettings):
 
     # Agent execution bounds
     agent_max_turns: int = Field(
-        default=100,
+        default=1000,
         ge=10,
-        le=500,
+        le=5000,
         description="Maximum agent turns before stopping",
     )
     agent_max_duration: int = Field(
