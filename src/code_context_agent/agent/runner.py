@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,9 @@ from ag_ui_strands import StrandsAgent
 from ..config import get_settings
 from ..consumer import EventConsumer, QuietConsumer, RichEventConsumer
 from .factory import create_agent
+
+# Disable shell tool approval prompts - we're running non-interactively
+os.environ.setdefault("BYPASS_TOOL_CONSENT", "true")
 
 logger = logging.getLogger(__name__)
 
@@ -120,16 +124,20 @@ Start with Phase 0 (create_file_manifest) and proceed through all phases.
     try:
         # Stream events from ag-ui-strands
         async for event in agui_agent.run(input_data):
-            turn_count += 1
             elapsed = time.monotonic() - start_time
 
-            # Check turn limit
-            if turn_count > max_turns:
-                logger.warning(f"Agent exceeded {max_turns} turns, stopping")
-                exceeded_limit = f"max_turns ({max_turns})"
-                break
+            # Count actual turns (completed assistant messages), not events
+            # Each TEXT_MESSAGE_END represents one model turn
+            if hasattr(event, "type") and event.type == EventType.TEXT_MESSAGE_END:
+                turn_count += 1
 
-            # Check time limit
+                # Check turn limit only on actual turns
+                if turn_count > max_turns:
+                    logger.warning(f"Agent exceeded {max_turns} turns, stopping")
+                    exceeded_limit = f"max_turns ({max_turns})"
+                    break
+
+            # Check time limit on every event
             if elapsed > max_duration:
                 logger.warning(f"Agent exceeded {max_duration}s duration, stopping")
                 exceeded_limit = f"max_duration ({max_duration}s)"
