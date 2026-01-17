@@ -1,3 +1,9 @@
+## v0.4.0 (2026-01-17)
+
+### Feat
+
+- **agent**: add focus arg, graph tool, 1M context, and fix stdio
+
 ## v0.3.7 (2026-01-17)
 
 ### Fix
