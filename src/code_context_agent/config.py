@@ -19,7 +19,7 @@ Environment Variables:
     CODE_CONTEXT_REGION: AWS region for Bedrock
     CODE_CONTEXT_TEMPERATURE: Model temperature (default 1.0 for extended thinking)
     CODE_CONTEXT_LSP_TS_COMMAND: Command to start TypeScript LSP
-    CODE_CONTEXT_LSP_PY_COMMAND: Command to start Python LSP
+    CODE_CONTEXT_LSP_PY_COMMAND: Command to start Python LSP (ty server)
     CODE_CONTEXT_LSP_TIMEOUT: LSP operation timeout in seconds
     CODE_CONTEXT_LSP_STARTUP_TIMEOUT: Maximum seconds to wait for LSP server to initialize
     CODE_CONTEXT_LSP_MAX_FILES: Maximum files before LSP analysis is skipped
@@ -92,8 +92,8 @@ class Settings(BaseSettings):
         description="Command to start TypeScript/JavaScript LSP server",
     )
     lsp_py_command: str = Field(
-        default="pyright-langserver --stdio",
-        description="Command to start Python LSP server (pyright-langserver)",
+        default="ty server",
+        description="Command to start Python LSP server (ty from astral.sh)",
     )
     lsp_timeout: int = Field(
         default=30,

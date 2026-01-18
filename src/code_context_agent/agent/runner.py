@@ -45,7 +45,7 @@ DEFAULT_MAX_TURNS = 1000
 DEFAULT_MAX_DURATION = 600  # 10 minutes
 
 
-async def run_analysis(  # noqa: PLR0915 - cohesive analysis workflow
+async def run_analysis(  # noqa: PLR0912, PLR0915 - cohesive analysis workflow
     repo_path: str | Path,
     output_dir: str | Path | None = None,
     mode: str = "fast",

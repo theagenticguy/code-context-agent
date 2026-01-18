@@ -94,7 +94,8 @@ Examples:
 # =============================================================================
 
 FAST_PROMPT = f"""\
-You are a code context analysis agent. Your output is consumed by AI coding assistants that need to quickly understand unfamiliar codebases.
+You are a code context analysis agent. Your output is consumed by AI coding assistants \
+that need to quickly understand unfamiliar codebases.
 
 # Mode: FAST (~10-15 tool calls)
 
@@ -198,7 +199,8 @@ Business items: <n> | Diagrams: <n>
 # =============================================================================
 
 DEEP_PROMPT = f"""\
-You are a code context analysis agent. Your output is consumed by AI coding assistants that need thorough understanding for onboarding or refactoring work.
+You are a code context analysis agent. Your output is consumed by AI coding assistants \
+that need thorough understanding for onboarding or refactoring work.
 
 # Mode: DEEP (~50+ tool calls)
 
@@ -395,17 +397,14 @@ Output sizes:
 # =============================================================================
 
 __all__ = [
-    # Main prompts
-    "FAST_PROMPT",
-    "DEEP_PROMPT",
-    # Shared constants (for custom prompt composition)
-    "CORE_RULES",
-    "BUSINESS_LOGIC_DEFINITION",
-    "OUTPUT_FORMAT",
     "ASTGREP_USAGE",
-    # Steering contexts (for LLMSteeringHandler)
-    "STEERING_SIZE_LIMITS",
-    "STEERING_CONCISENESS",
+    "BUSINESS_LOGIC_DEFINITION",
+    "CORE_RULES",
+    "DEEP_PROMPT",
+    "FAST_PROMPT",
+    "OUTPUT_FORMAT",
     "STEERING_ANTI_PATTERNS",
+    "STEERING_CONCISENESS",
+    "STEERING_SIZE_LIMITS",
     "STEERING_TOOL_EFFICIENCY",
 ]

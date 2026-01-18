@@ -18,7 +18,7 @@ if os.environ.get("CODE_CONTEXT_OTEL_DISABLED", "true").lower() != "false":
 
             original_detach = contextvars_context.ContextVarsRuntimeContext.detach
 
-            def patched_detach(self, token):  # type: ignore[no-untyped-def]  # noqa: ANN001, ANN201
+            def patched_detach(self, token):  # type: ignore[no-untyped-def]
                 try:
                     return original_detach(self, token)
                 except ValueError:

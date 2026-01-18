@@ -23,7 +23,7 @@ MAX_OUTPUT_SIZE = 100_000
 
 
 @tool
-def shell(
+def shell(  # noqa: PLR0912 - sequential command processing with error handling
     command: str | list[str],
     work_dir: str | None = None,
     timeout: int | None = None,
@@ -60,19 +60,16 @@ def shell(
         >>> shell(["git status", "git diff"], work_dir="/repo")
         >>> shell("npm test", timeout=300, ignore_errors=True)
     """
-    import os
+    from pathlib import Path
 
     if timeout is None:
         timeout = DEFAULT_TIMEOUT
 
     if work_dir is None:
-        work_dir = os.getcwd()
+        work_dir = str(Path.cwd())
 
     # Normalize command to list
-    if isinstance(command, str):
-        commands = [command]
-    else:
-        commands = command
+    commands = [command] if isinstance(command, str) else command
 
     results = []
     has_errors = False

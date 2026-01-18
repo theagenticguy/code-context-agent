@@ -13,8 +13,6 @@ from pathlib import Path
 
 from strands import tool
 
-from .shell import run_command
-
 logger = logging.getLogger(__name__)
 
 # Path to rule files relative to this module
@@ -138,7 +136,7 @@ def astgrep_scan(
 
 
 @tool
-def astgrep_scan_rule_pack(
+def astgrep_scan_rule_pack(  # noqa: PLR0912 - complex validation logic
     rule_pack: str,
     repo_path: str,
     include_globs: list[str] | None = None,

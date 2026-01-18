@@ -15,23 +15,6 @@ from .client import LspClient
 
 logger = logging.getLogger(__name__)
 
-# Default exclusion patterns to prevent memory explosion in LSP servers
-DEFAULT_EXCLUDE_PATTERNS: list[str] = [
-    "**/.venv/**",
-    "**/venv/**",
-    "**/node_modules/**",
-    "**/__pycache__/**",
-    "**/dist/**",
-    "**/build/**",
-    "**/.git/**",
-    "**/.tox/**",
-    "**/.mypy_cache/**",
-    "**/.pytest_cache/**",
-    "**/.ruff_cache/**",
-    "**/eggs/**",
-    "**/*.egg-info/**",
-]
-
 
 class LspSessionManager:
     """Singleton session manager for LSP connections.
@@ -81,9 +64,8 @@ class LspSessionManager:
         commands = {
             "ts": ["typescript-language-server", "--stdio"],
             "typescript": ["typescript-language-server", "--stdio"],
-            "py": ["pyright-langserver", "--stdio"],
-            "python": ["pyright-langserver", "--stdio"],
-            "basedpyright": ["basedpyright-langserver", "--stdio"],
+            "py": ["ty", "server"],
+            "python": ["ty", "server"],
         }
 
         if server_kind not in commands:
@@ -106,42 +88,24 @@ class LspSessionManager:
         kind = server_kind.lower()
         if kind in ("typescript", "ts"):
             kind = "ts"
-        elif kind in ("python", "py", "pyright"):
+        elif kind in ("python", "py"):
             kind = "py"
         return f"{kind}:{workspace_path}"
 
-    def _get_workspace_config(
-        self,
-        server_kind: str,
-        exclude_patterns: list[str] | None = None,
-    ) -> dict[str, Any] | None:
+    def _get_workspace_config(self, server_kind: str) -> dict[str, Any] | None:
         """Generate workspace configuration for LSP server initialization.
-
-        Creates initialization options with exclusion patterns to prevent
-        the LSP server from indexing large directories like venv or node_modules
-        which can cause memory explosion.
 
         Args:
             server_kind: Server type identifier ("ts", "py", etc.).
-            exclude_patterns: Optional custom exclude patterns. If None, uses defaults.
 
         Returns:
             Initialization options dict for the LSP server, or None if not applicable.
         """
-        patterns = exclude_patterns if exclude_patterns is not None else DEFAULT_EXCLUDE_PATTERNS
-
         kind = server_kind.lower()
-        if kind in ("python", "py", "pyright", "basedpyright"):
-            # Pyright-specific configuration
-            # See: https://microsoft.github.io/pyright/#/configuration
-            return {
-                "python": {
-                    "analysis": {
-                        "exclude": patterns,
-                        "ignore": patterns,
-                    }
-                }
-            }
+        if kind in ("python", "py"):
+            # ty uses configuration from ty.toml or pyproject.toml [tool.ty]
+            # No initialization options needed
+            return None
         elif kind in ("typescript", "ts"):
             # TypeScript language server configuration
             # Uses the VS Code-style settings format
@@ -165,7 +129,6 @@ class LspSessionManager:
         server_kind: str,
         workspace_path: str,
         startup_timeout: float | None = None,
-        exclude_patterns: list[str] | None = None,
     ) -> LspClient:
         """Get existing session or create new one.
 
@@ -174,7 +137,6 @@ class LspSessionManager:
             workspace_path: Absolute path to workspace root.
             startup_timeout: Maximum seconds to wait for server initialization.
                 If None, uses the value from settings.
-            exclude_patterns: Optional custom exclude patterns for workspace config.
 
         Returns:
             Connected LspClient instance.
@@ -203,8 +165,8 @@ class LspSessionManager:
         client = LspClient(request_timeout=float(settings.lsp_timeout))
         cmd = self._get_server_command(server_kind)
 
-        # Get workspace configuration with exclusion patterns
-        init_options = self._get_workspace_config(server_kind, exclude_patterns)
+        # Get workspace configuration for LSP server
+        init_options = self._get_workspace_config(server_kind)
 
         await client.start(
             cmd,

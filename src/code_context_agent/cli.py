@@ -145,13 +145,14 @@ def analyze(
     # Show analysis configuration
     if not quiet:
         console.print()
-        console.print(f"[bold]Code Context Analysis[/bold]")
+        console.print("[bold]Code Context Analysis[/bold]")
         console.print(f"  Repository: [cyan]{repo_path}[/cyan]")
-        console.print(f"  Mode: [yellow]{mode.upper()}[/yellow] {'(~50+ tool calls)' if deep else '(~10-15 tool calls)'}")
+        tool_calls = "(~50+ tool calls)" if deep else "(~10-15 tool calls)"
+        console.print(f"  Mode: [yellow]{mode.upper()}[/yellow] {tool_calls}")
         if focus:
             console.print(f"  Focus: [magenta]{focus}[/magenta]")
         if use_steering:
-            console.print(f"  Steering: [green]enabled[/green] (progressive disclosure)")
+            console.print("  Steering: [green]enabled[/green] (progressive disclosure)")
         console.print()
 
     # Run the analysis

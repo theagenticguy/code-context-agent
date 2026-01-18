@@ -87,7 +87,7 @@ def run_command(
     cmd_list = shlex.split(cmd) if isinstance(cmd, str) else cmd
 
     try:
-        result = subprocess.run(  # noqa: S603 -- shell=False with shlex-parsed args is safe
+        result = subprocess.run(
             cmd_list,
             cwd=cwd,
             capture_output=True,

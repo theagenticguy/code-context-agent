@@ -35,7 +35,7 @@ async def lsp_start(server_kind: str, workspace_path: str) -> str:
 
     Supported server kinds:
     - "ts": TypeScript/JavaScript (typescript-language-server)
-    - "py": Python (pyright-langserver)
+    - "py": Python (ty server)
 
     Args:
         server_kind: Server type - "ts" for TypeScript/JS, "py" for Python.
@@ -53,7 +53,7 @@ async def lsp_start(server_kind: str, workspace_path: str) -> str:
 
     Common Errors:
         - "typescript-language-server not found": npm install -g typescript-language-server
-        - "pyright not found": pip install pyright or npm install -g pyright
+        - "ty not found": uv tool install ty or pip install ty
         - Timeout: Large projects may exceed startup_timeout, increase in config
         - "No tsconfig.json": TypeScript server needs tsconfig.json in workspace
 

@@ -45,7 +45,7 @@ except ImportError:
     LLMSteeringHandler = None  # type: ignore
 
 
-def create_output_steering_handler() -> "LLMSteeringHandler":
+def create_output_steering_handler() -> LLMSteeringHandler:
     """Create a steering handler for output quality control.
 
     This handler evaluates outputs before they're finalized, checking for:
@@ -93,7 +93,7 @@ Provide brief, actionable feedback. One specific issue at a time."""
     return LLMSteeringHandler(system_prompt=system_prompt)
 
 
-def create_tool_steering_handler() -> "LLMSteeringHandler":
+def create_tool_steering_handler() -> LLMSteeringHandler:
     """Create a steering handler for tool call optimization.
 
     This handler evaluates tool calls before execution, checking for:
@@ -154,7 +154,7 @@ def create_all_steering_handlers() -> list:
 
 __all__ = [
     "STEERING_AVAILABLE",
+    "create_all_steering_handlers",
     "create_output_steering_handler",
     "create_tool_steering_handler",
-    "create_all_steering_handlers",
 ]
