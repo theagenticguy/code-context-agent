@@ -17,9 +17,6 @@ from rich.text import Text
 from .base import EventConsumer
 from .state import AgentDisplayState, ToolCallState
 
-# Maximum characters to display in the text buffer to avoid terminal overflow
-MAX_DISPLAY_BUFFER_SIZE = 2000
-
 
 class RichEventConsumer(EventConsumer):
     """Rich terminal display consumer for agent streaming events.
@@ -207,17 +204,12 @@ class RichEventConsumer(EventConsumer):
             inner_elements.append(Text(""))  # Spacer
             inner_elements.append(active_tool)
 
-        # Streaming text buffer (truncated for display)
+        # Streaming text buffer (grows dynamically with content)
         if self.state.text_buffer:
             inner_elements.append(Text(""))  # Spacer
-            # Show last MAX_DISPLAY_BUFFER_SIZE chars to avoid display overflow
-            text_content = self.state.text_buffer[-MAX_DISPLAY_BUFFER_SIZE:]
-            if len(self.state.text_buffer) > MAX_DISPLAY_BUFFER_SIZE:
-                text_content = "..." + text_content
-
             inner_elements.append(
                 Panel(
-                    Markdown(text_content),
+                    Markdown(self.state.text_buffer),
                     title="Agent Reasoning",
                     border_style="green",
                     padding=(0, 1),

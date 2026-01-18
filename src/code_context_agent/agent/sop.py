@@ -242,6 +242,7 @@ that need to quickly understand unfamiliar codebases.
 ```
 create_file_manifest(repo_path)     → .agent/files.all.txt
 repomix_orientation(repo_path)      → .agent/CONTEXT.orientation.md
+  # Optional: token_threshold (default: 300), max_file_count (default: 10000)
 ```
 
 ### Phase 1: Identity
@@ -382,6 +383,7 @@ that need thorough understanding for onboarding or refactoring work.
 ```
 create_file_manifest(repo_path)     → .agent/files.all.txt
 repomix_orientation(repo_path)      → .agent/CONTEXT.orientation.md
+  # Optional: token_threshold (default: 300), max_file_count (default: 10000)
 ```
 Read identity files, search entrypoints
 
