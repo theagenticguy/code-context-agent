@@ -1,3 +1,9 @@
+## v3.0.0 (2026-01-18)
+
+### Feat
+
+- major graph features and prompt edits
+
 ## v2.0.0 (2026-01-18)
 
 ### Feat
