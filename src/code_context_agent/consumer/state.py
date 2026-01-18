@@ -4,6 +4,7 @@ This module provides a dataclass for tracking the current state of agent
 execution, used by consumers to render live updates.
 """
 
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -64,6 +65,14 @@ class AgentDisplayState:
     thread_id: str | None = None
     run_id: str | None = None
 
+    # Metrics for TUI dashboard
+    start_time: float | None = None
+    max_duration: float = 600.0
+    max_turns: int = 1000
+    turn_count: int = 0
+    tool_errors: int = 0
+    tool_start_time: float | None = None
+
     def clear_text_buffer(self) -> str:
         """Clear and return the text buffer.
 
@@ -97,6 +106,51 @@ class AgentDisplayState:
         """
         return self.completed_tools[-count:]
 
+    def get_tool_stats(self) -> dict[str, int]:
+        """Get tool call counts grouped by prefix.
+
+        Groups tools by their name prefix (e.g., lsp_*, code_graph_*) for
+        display in the TUI dashboard.
+
+        Returns:
+            Dictionary mapping tool prefixes to call counts.
+        """
+        stats: dict[str, int] = {}
+        for tool in self.completed_tools:
+            # Group by first part of tool name (before underscore)
+            parts = tool.tool_name.split("_")
+            prefix = parts[0] + "_*" if len(parts) > 1 else tool.tool_name
+            stats[prefix] = stats.get(prefix, 0) + 1
+        return stats
+
+    def get_elapsed_seconds(self) -> float:
+        """Get elapsed time since run started.
+
+        Returns:
+            Elapsed seconds, or 0.0 if not started.
+        """
+        if self.start_time is None:
+            return 0.0
+        return time.monotonic() - self.start_time
+
+    def get_tool_elapsed_seconds(self) -> float:
+        """Get elapsed time for current tool.
+
+        Returns:
+            Elapsed seconds for active tool, or 0.0 if no active tool.
+        """
+        if self.tool_start_time is None:
+            return 0.0
+        return time.monotonic() - self.tool_start_time
+
+    def get_success_count(self) -> int:
+        """Get count of successful tool calls.
+
+        Returns:
+            Number of completed tools minus errors.
+        """
+        return len(self.completed_tools) - self.tool_errors
+
     def reset(self) -> None:
         """Reset state for a new run."""
         self.current_phase = ""
@@ -107,3 +161,8 @@ class AgentDisplayState:
         self.state_snapshot = {}
         self.error = None
         self.completed = False
+        # Reset metrics
+        self.start_time = None
+        self.turn_count = 0
+        self.tool_errors = 0
+        self.tool_start_time = None

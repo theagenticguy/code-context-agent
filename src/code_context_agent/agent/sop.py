@@ -26,6 +26,7 @@ CORE_RULES = """\
 - Never run `tree` on repo root (token overflow risk)
 - Prefer tools over shell: `rg_search`, `repomix_*`, `read_file_bounded`
 - Shell commands: non-interactive, bounded (`head -N`), quick
+- ALWAYS use `read_file_bounded` to read a file before writing or modifying it
 - LSP sequence: `lsp_start` → then `lsp_*` operations
 - Graph sequence: `code_graph_create` → ingest → analyze → explore → export
 - Evidence format: `path/file.ext:line` + symbol + confidence
@@ -524,10 +525,10 @@ graph LR
 ### Phase 9: CONTEXT.md (≤300 lines)
 
 Same structure as FAST mode, plus:
-- **Technical Debt**: top 5 items from graph analysis
-  - High coupling between modules
-  - Untested hotspots
-  - Foundation code without documentation
+- **Architectural Risks**: top 5 from graph analysis
+  - High coupling between modules (coupling score > 0.7)
+  - Untested hotspots (high centrality, no test edges)
+  - Foundation code lacking documentation
 - **Change Playbooks**: numbered steps using graph paths
   - "To modify X, also update: [graph neighbors]"
 

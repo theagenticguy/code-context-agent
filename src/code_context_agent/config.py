@@ -25,6 +25,7 @@ Environment Variables:
     CODE_CONTEXT_LSP_MAX_FILES: Maximum files before LSP analysis is skipped
     CODE_CONTEXT_AGENT_MAX_TURNS: Maximum agent turns before stopping (default: 1000)
     CODE_CONTEXT_AGENT_MAX_DURATION: Maximum agent duration in seconds (default: 600)
+    CODE_CONTEXT_DEEP_MODE_MAX_DURATION: Maximum agent duration for DEEP mode (default: 1200)
     CODE_CONTEXT_OTEL_DISABLED: Disable OpenTelemetry tracing (default: True)
 """
 
@@ -126,6 +127,12 @@ class Settings(BaseSettings):
         ge=60,
         le=3600,
         description="Maximum agent duration in seconds",
+    )
+    deep_mode_max_duration: int = Field(
+        default=1200,
+        ge=60,
+        le=7200,
+        description="Maximum agent duration in seconds for DEEP mode (default: 20 min)",
     )
 
     # Telemetry settings

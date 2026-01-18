@@ -4,6 +4,7 @@ This module provides a Rich-based event consumer that renders agent
 progress in a terminal with live updates, spinners, and formatted output.
 """
 
+import time
 from typing import Any
 
 from rich.console import Console, Group, RenderableType
@@ -11,7 +12,6 @@ from rich.live import Live
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.spinner import Spinner
-from rich.table import Table
 from rich.text import Text
 
 from .base import EventConsumer
@@ -50,43 +50,172 @@ class RichEventConsumer(EventConsumer):
         self.state = AgentDisplayState()
         self._live: Live | None = None
 
+    def _format_time(self, seconds: float) -> str:
+        """Format seconds as MM:SS string."""
+        minutes = int(seconds // 60)
+        secs = int(seconds % 60)
+        return f"{minutes:02d}:{secs:02d}"
+
+    def _build_progress_bar(self, completed: float, total: float, width: int = 40) -> str:
+        """Build a text-based progress bar.
+
+        Args:
+            completed: Current progress value.
+            total: Maximum progress value.
+            width: Character width of the bar.
+
+        Returns:
+            Progress bar string like "━━━━━━━━━━░░░░░░░░░░  50%"
+        """
+        if total <= 0:
+            return "░" * width + "   0%"
+        ratio = min(completed / total, 1.0)
+        filled = int(width * ratio)
+        empty = width - filled
+        percent = int(ratio * 100)
+        return "━" * filled + "░" * empty + f"  {percent:3d}%"
+
+    def _build_mini_bar(self, count: int, max_count: int, width: int = 10) -> str:
+        """Build a mini progress bar for tool stats.
+
+        Args:
+            count: Current count.
+            max_count: Maximum count (for scaling).
+            width: Character width of the bar.
+
+        Returns:
+            Mini bar string like "████████░░"
+        """
+        if max_count <= 0:
+            return "░" * width
+        ratio = min(count / max_count, 1.0)
+        filled = int(width * ratio)
+        empty = width - filled
+        return "█" * filled + "░" * empty
+
+    def _build_timer_section(self) -> RenderableType:
+        """Build the timer and progress section.
+
+        Returns:
+            Text renderable with timer info and progress bar.
+        """
+        elapsed = self.state.get_elapsed_seconds()
+        max_dur = self.state.max_duration
+        turns = self.state.turn_count
+        max_turns = self.state.max_turns
+
+        # Calculate progress based on whichever limit is closer
+        time_ratio = elapsed / max_dur if max_dur > 0 else 0
+        turn_ratio = turns / max_turns if max_turns > 0 else 0
+        progress_ratio = max(time_ratio, turn_ratio)
+
+        lines = Text()
+        lines.append("  ⏱  Time: ", style="dim")
+        lines.append(self._format_time(elapsed), style="bold cyan")
+        lines.append(f" / {self._format_time(max_dur)}", style="dim")
+        lines.append("    Turns: ", style="dim")
+        lines.append(str(turns), style="bold cyan")
+        lines.append(f" / {max_turns}", style="dim")
+        lines.append("\n")
+        lines.append("  " + self._build_progress_bar(progress_ratio, 1.0), style="cyan")
+
+        return lines
+
+    def _build_tool_stats_section(self) -> RenderableType:
+        """Build the tool statistics section.
+
+        Returns:
+            Text renderable with tool stats and category breakdown.
+        """
+        total = len(self.state.completed_tools)
+        if self.state.active_tool:
+            total += 1
+        success = self.state.get_success_count()
+        errors = self.state.tool_errors
+
+        lines = Text()
+        lines.append("  Tools: ", style="dim")
+        lines.append(str(total), style="bold")
+        lines.append(" total   ", style="dim")
+        lines.append("✓ ", style="green")
+        lines.append(str(success), style="bold green")
+        lines.append(" success   ", style="dim")
+        lines.append("✗ ", style="red")
+        lines.append(str(errors), style="bold red")
+        lines.append(" errors", style="dim")
+
+        # Tool breakdown by category
+        stats = self.state.get_tool_stats()
+        if stats:
+            max_count = max(stats.values()) if stats else 1
+            lines.append("\n")
+            sorted_stats = sorted(stats.items(), key=lambda x: -x[1])
+            for i, (prefix, count) in enumerate(sorted_stats[:5]):  # Top 5 categories
+                connector = "└──" if i == len(sorted_stats[:5]) - 1 else "├──"
+                lines.append(f"\n  {connector} ", style="dim")
+                lines.append(f"{prefix:<15}", style="cyan")
+                lines.append(f"{count:>3} calls   ", style="dim")
+                lines.append(self._build_mini_bar(count, max_count), style="green")
+
+        return lines
+
+    def _build_active_tool_section(self) -> RenderableType | None:
+        """Build the active tool indicator section.
+
+        Returns:
+            Spinner with tool info, or None if no active tool.
+        """
+        if not self.state.active_tool:
+            return None
+
+        tool_elapsed = self.state.get_tool_elapsed_seconds()
+        return Spinner(
+            "dots",
+            text=Text.assemble(
+                ("  Running: ", "dim"),
+                (self.state.active_tool.tool_name, "bold yellow"),
+                (f" ({tool_elapsed:.1f}s)", "dim"),
+            ),
+        )
+
     def _build_display(self) -> RenderableType:
         """Build the current display from state.
 
         Returns:
             Rich renderable representing current agent state.
         """
-        elements: list[RenderableType] = []
+        inner_elements: list[RenderableType] = []
 
-        # Header with run info
-        if self.state.run_id:
+        # Header with phase info
+        if self.state.current_phase:
             header = Text()
-            header.append("Run: ", style="dim")
-            header.append(self.state.run_id[:8], style="cyan")
-            if self.state.current_phase:
-                header.append(" | Phase: ", style="dim")
-                header.append(self.state.current_phase, style="bold blue")
-            elements.append(header)
+            header.append("Phase: ", style="dim")
+            header.append(self.state.current_phase, style="bold blue")
+            inner_elements.append(header)
+            inner_elements.append(Text(""))  # Spacer
 
-        # Active tool indicator with spinner
-        if self.state.active_tool:
-            tool_display = Spinner(
-                "dots",
-                text=Text.assemble(
-                    ("Running: ", "dim"),
-                    (self.state.active_tool.tool_name, "bold yellow"),
-                ),
-            )
-            elements.append(tool_display)
+        # Timer and progress section
+        inner_elements.append(self._build_timer_section())
+        inner_elements.append(Text(""))  # Spacer
+
+        # Tool statistics section
+        inner_elements.append(self._build_tool_stats_section())
+
+        # Active tool indicator
+        active_tool = self._build_active_tool_section()
+        if active_tool:
+            inner_elements.append(Text(""))  # Spacer
+            inner_elements.append(active_tool)
 
         # Streaming text buffer (truncated for display)
         if self.state.text_buffer:
+            inner_elements.append(Text(""))  # Spacer
             # Show last MAX_DISPLAY_BUFFER_SIZE chars to avoid display overflow
             text_content = self.state.text_buffer[-MAX_DISPLAY_BUFFER_SIZE:]
             if len(self.state.text_buffer) > MAX_DISPLAY_BUFFER_SIZE:
                 text_content = "..." + text_content
 
-            elements.append(
+            inner_elements.append(
                 Panel(
                     Markdown(text_content),
                     title="Agent Reasoning",
@@ -95,24 +224,9 @@ class RichEventConsumer(EventConsumer):
                 )
             )
 
-        # Recent tool results table
-        recent_tools = self.state.get_recent_tools(5)
-        if recent_tools:
-            table = Table(title="Recent Tools", show_lines=False, expand=False)
-            table.add_column("Tool", style="cyan", no_wrap=True)
-            table.add_column("Status", style="green", no_wrap=True)
-
-            for tool in recent_tools:
-                status_style = "green" if tool.status == "completed" else "yellow"
-                table.add_row(
-                    tool.tool_name,
-                    Text(tool.status, style=status_style),
-                )
-            elements.append(table)
-
         # Error display
         if self.state.error:
-            elements.append(
+            inner_elements.append(
                 Panel(
                     Text(self.state.error, style="bold red"),
                     title="Error",
@@ -122,9 +236,17 @@ class RichEventConsumer(EventConsumer):
 
         # Completion indicator
         if self.state.completed:
-            elements.append(Text("Analysis complete!", style="bold green"))
+            inner_elements.append(Text(""))  # Spacer
+            inner_elements.append(Text("  ✓ Analysis complete!", style="bold green"))
 
-        return Group(*elements) if elements else Text("Starting analysis...", style="dim")
+        # Wrap everything in a main panel
+        run_title = f"Run: {self.state.run_id[:8]}" if self.state.run_id else "Agent"
+        return Panel(
+            Group(*inner_elements) if inner_elements else Text("Starting analysis...", style="dim"),
+            title=run_title,
+            border_style="cyan",
+            padding=(1, 2),
+        )
 
     def _refresh(self) -> None:
         """Refresh the live display with current state."""
@@ -157,6 +279,7 @@ class RichEventConsumer(EventConsumer):
         """
         self.state.thread_id = thread_id
         self.state.run_id = run_id
+        self.state.start_time = time.monotonic()
         self._refresh()
 
     async def on_text_start(self, message_id: str, role: str) -> None:
@@ -167,6 +290,7 @@ class RichEventConsumer(EventConsumer):
             role: Message role.
         """
         self.state.active_message_id = message_id
+        self.state.text_buffer = ""  # Clear buffer for new message
         self._refresh()
 
     async def on_text_content(self, message_id: str, delta: str) -> None:
@@ -176,7 +300,9 @@ class RichEventConsumer(EventConsumer):
             message_id: Message identifier.
             delta: New text chunk.
         """
-        self.state.text_buffer += delta
+        # Normalize newlines for consistent markdown display
+        normalized = delta.replace("\r\n", "\n").replace("\r", "\n")
+        self.state.text_buffer += normalized
         self._refresh()
 
     async def on_text_end(self, message_id: str) -> None:
@@ -186,6 +312,7 @@ class RichEventConsumer(EventConsumer):
             message_id: Message identifier.
         """
         self.state.active_message_id = None
+        self.state.turn_count += 1
         self._refresh()
 
     async def on_tool_start(self, tool_call_id: str, tool_name: str) -> None:
@@ -199,6 +326,7 @@ class RichEventConsumer(EventConsumer):
             tool_call_id=tool_call_id,
             tool_name=tool_name,
         )
+        self.state.tool_start_time = time.monotonic()
         self._refresh()
 
     async def on_tool_args(self, tool_call_id: str, args_delta: str) -> None:
@@ -221,6 +349,11 @@ class RichEventConsumer(EventConsumer):
         """
         if self.state.active_tool and self.state.active_tool.tool_call_id == tool_call_id:
             self.state.active_tool.result = result
+            # Check for error in result
+            if isinstance(result, str) and "error" in result.lower():
+                self.state.tool_errors += 1
+            elif isinstance(result, dict) and result.get("error"):
+                self.state.tool_errors += 1
         self._refresh()
 
     async def on_tool_end(self, tool_call_id: str) -> None:
@@ -231,6 +364,9 @@ class RichEventConsumer(EventConsumer):
         """
         if self.state.active_tool and self.state.active_tool.tool_call_id == tool_call_id:
             self.state.complete_active_tool()
+        # Add visual separator after tool completes for cleaner display
+        if self.state.text_buffer and not self.state.text_buffer.endswith("\n\n"):
+            self.state.text_buffer += "\n\n"
         self._refresh()
 
     async def on_state_snapshot(self, snapshot: dict[str, Any]) -> None:

@@ -42,7 +42,8 @@ logger = logging.getLogger(__name__)
 
 # Default execution bounds (can be overridden by config)
 DEFAULT_MAX_TURNS = 1000
-DEFAULT_MAX_DURATION = 600  # 10 minutes
+DEFAULT_MAX_DURATION = 600  # 10 minutes (FAST mode)
+DEFAULT_DEEP_MAX_DURATION = 1200  # 20 minutes (DEEP mode)
 
 
 async def run_analysis(  # noqa: PLR0912, PLR0915 - cohesive analysis workflow
@@ -135,13 +136,19 @@ Start with Phase 0 (create_file_manifest) and proceed through all phases.
         forwarded_props={},  # No forwarded props
     )
 
-    # Start consumer display
-    await consumer.start()
-
-    # Get execution bounds from settings
+    # Get execution bounds from settings (use mode-specific timeout for deep)
     settings = get_settings()
     max_turns = getattr(settings, "agent_max_turns", DEFAULT_MAX_TURNS)
-    max_duration = getattr(settings, "agent_max_duration", DEFAULT_MAX_DURATION)
+    if mode == "deep":
+        max_duration = getattr(settings, "deep_mode_max_duration", DEFAULT_DEEP_MAX_DURATION)
+    else:
+        max_duration = getattr(settings, "agent_max_duration", DEFAULT_MAX_DURATION)
+
+    # Start consumer display and pass limits to state
+    await consumer.start()
+    if hasattr(consumer, "state"):
+        consumer.state.max_turns = max_turns
+        consumer.state.max_duration = max_duration
 
     start_time = time.monotonic()
     turn_count = 0
