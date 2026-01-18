@@ -70,7 +70,19 @@ async def lsp_start(server_kind: str, workspace_path: str) -> str:
     workspace = str(Path(workspace_path).resolve())
     settings = get_settings()
 
-    await manager.get_or_create(server_kind, workspace, startup_timeout=settings.lsp_startup_timeout)
+    try:
+        await manager.get_or_create(server_kind, workspace, startup_timeout=settings.lsp_startup_timeout)
+    except Exception as e:
+        logger.error(f"LSP server failed to start: {e}")
+        return json.dumps(
+            {
+                "status": "error",
+                "error": str(e),
+                "message": f"LSP server failed to start for {server_kind}. "
+                "This is a CRITICAL FAILURE - do not proceed without LSP. "
+                "Fix the issue and retry.",
+            }
+        )
 
     # Normalize kind for consistent session ID
     kind = "ts" if server_kind.lower() in ("ts", "typescript") else "py"

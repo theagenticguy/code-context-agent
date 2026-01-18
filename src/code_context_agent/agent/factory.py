@@ -39,6 +39,18 @@ def get_analysis_tools() -> list[Any]:
         rg_search,
         write_file_list,
     )
+    from ..tools.graph import (
+        code_graph_analyze,
+        code_graph_create,
+        code_graph_explore,
+        code_graph_export,
+        code_graph_ingest_astgrep,
+        code_graph_ingest_lsp,
+        code_graph_load,
+        code_graph_save,
+        code_graph_stats,
+    )
+    from ..tools.graph.tools import code_graph_ingest_inheritance, code_graph_ingest_rg, code_graph_ingest_tests
     from ..tools.lsp import (
         lsp_definition,
         lsp_document_symbols,
@@ -70,7 +82,20 @@ def get_analysis_tools() -> list[Any]:
         astgrep_inline_rule,
         # Shell for custom commands
         shell,
-        # Graph visualization
+        # Code graph analysis
+        code_graph_create,
+        code_graph_ingest_lsp,
+        code_graph_ingest_astgrep,
+        code_graph_ingest_rg,
+        code_graph_ingest_inheritance,
+        code_graph_ingest_tests,
+        code_graph_analyze,
+        code_graph_explore,
+        code_graph_export,
+        code_graph_save,
+        code_graph_load,
+        code_graph_stats,
+        # Multi-agent DAG orchestration
         graph,
     ]
 

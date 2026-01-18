@@ -89,7 +89,7 @@ convention = "google"
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["D", "S101", "ARG"]
 "**/__init__.py" = ["F401", "RUF022"]  # Allow unused imports and unsorted __all__ in init files
-"src/code_context_agent/tools/**/*.py" = ["PLR2004"]  # Allow magic numbers in tool implementations
+"src/code_context_agent/tools/**/*.py" = ["PLR2004", "PLR0911", "PLR0912", "SIM102", "SIM108"]  # Allow magic numbers and dispatcher patterns in tools
 
 [tool.ruff.format]
 quote-style = "double"

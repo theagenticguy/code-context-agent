@@ -23,7 +23,7 @@ MAX_OUTPUT_SIZE = 100_000
 
 
 @tool
-def shell(  # noqa: PLR0912 - sequential command processing with error handling
+def shell(
     command: str | list[str],
     work_dir: str | None = None,
     timeout: int | None = None,

@@ -136,7 +136,7 @@ def astgrep_scan(
 
 
 @tool
-def astgrep_scan_rule_pack(  # noqa: PLR0912 - complex validation logic
+def astgrep_scan_rule_pack(
     rule_pack: str,
     repo_path: str,
     include_globs: list[str] | None = None,

@@ -1,0 +1,539 @@
+"""Input adapters for converting tool outputs to graph elements.
+
+This module provides functions to ingest outputs from:
+- LSP tools (symbols, references, definitions)
+- AST-grep tools (pattern matches, rule pack results)
+- ripgrep tools (text matches)
+- Test file mappings
+"""
+
+import re
+from pathlib import Path
+from typing import Any
+from urllib.parse import unquote, urlparse
+
+from .model import CodeEdge, CodeNode, EdgeType, NodeType, lsp_kind_to_node_type
+
+
+def _uri_to_path(uri: str) -> str:
+    """Convert a file:// URI to a filesystem path.
+
+    Args:
+        uri: A file:// URI string
+
+    Returns:
+        Filesystem path string
+    """
+    parsed = urlparse(uri)
+    return unquote(parsed.path)
+
+
+def _make_symbol_id(file_path: str, name: str, line: int | None = None) -> str:
+    """Create a unique symbol ID.
+
+    Args:
+        file_path: Path to the source file
+        name: Symbol name
+        line: Optional line number for disambiguation
+
+    Returns:
+        Unique identifier string
+    """
+    if line is not None:
+        return f"{file_path}:{name}:{line}"
+    return f"{file_path}:{name}"
+
+
+def _make_location_id(file_path: str, line: int) -> str:
+    """Create a location-based ID for references.
+
+    Args:
+        file_path: Path to the source file
+        line: Line number
+
+    Returns:
+        Location identifier string
+    """
+    return f"{file_path}:L{line}"
+
+
+def ingest_lsp_symbols(
+    symbols_result: dict[str, Any],
+    file_path: str,
+) -> tuple[list[CodeNode], list[CodeEdge]]:
+    """Convert lsp_document_symbols output to CodeNodes and containment edges.
+
+    Args:
+        symbols_result: JSON result from lsp_document_symbols tool
+        file_path: Path to the source file
+
+    Returns:
+        Tuple of (nodes, edges) where edges represent containment relationships
+    """
+    nodes: list[CodeNode] = []
+    edges: list[CodeEdge] = []
+
+    if symbols_result.get("status") != "success":
+        return nodes, edges
+
+    def process_symbol(
+        symbol: dict[str, Any],
+        parent_id: str | None = None,
+    ) -> None:
+        """Recursively process a symbol and its children."""
+        name = symbol.get("name", "")
+        kind = symbol.get("kind", 13)  # Default to Variable
+        range_data = symbol.get("range", {})
+
+        line_start = range_data.get("start", {}).get("line", 0)
+        line_end = range_data.get("end", {}).get("line", line_start)
+
+        node_id = _make_symbol_id(file_path, name, line_start)
+        node_type = lsp_kind_to_node_type(kind)
+
+        node = CodeNode(
+            id=node_id,
+            name=name,
+            node_type=node_type,
+            file_path=file_path,
+            line_start=line_start,
+            line_end=line_end,
+            metadata={"lsp_kind": kind},
+        )
+        nodes.append(node)
+
+        # Create containment edge from parent
+        if parent_id is not None:
+            edges.append(
+                CodeEdge(
+                    source=parent_id,
+                    target=node_id,
+                    edge_type=EdgeType.CONTAINS,
+                )
+            )
+
+        # Process children recursively
+        for child in symbol.get("children", []):
+            process_symbol(child, parent_id=node_id)
+
+    # Process top-level symbols
+    for symbol in symbols_result.get("symbols", []):
+        process_symbol(symbol)
+
+    return nodes, edges
+
+
+def ingest_lsp_references(
+    references_result: dict[str, Any],
+    source_node_id: str,
+) -> list[CodeEdge]:
+    """Convert lsp_references output to reference edges.
+
+    Creates edges from each reference location back to the source symbol.
+    The source is the referrer, target is the referenced symbol.
+
+    Args:
+        references_result: JSON result from lsp_references tool
+        source_node_id: ID of the symbol being referenced
+
+    Returns:
+        List of CodeEdge objects representing references
+    """
+    edges: list[CodeEdge] = []
+
+    if references_result.get("status") != "success":
+        return edges
+
+    for ref in references_result.get("references", []):
+        uri = ref.get("uri", "")
+        range_data = ref.get("range", {})
+        line = range_data.get("start", {}).get("line", 0)
+
+        file_path = _uri_to_path(uri)
+        referrer_id = _make_location_id(file_path, line)
+
+        edges.append(
+            CodeEdge(
+                source=referrer_id,
+                target=source_node_id,
+                edge_type=EdgeType.REFERENCES,
+                metadata={
+                    "file": file_path,
+                    "line": line,
+                },
+            )
+        )
+
+    return edges
+
+
+def ingest_lsp_definition(
+    definition_result: dict[str, Any],
+    from_file: str,
+    from_line: int,
+) -> list[CodeEdge]:
+    """Convert lsp_definition output to import/call edges.
+
+    Creates edges from the usage location to the definition location.
+
+    Args:
+        definition_result: JSON result from lsp_definition tool
+        from_file: File where the symbol is used
+        from_line: Line where the symbol is used
+
+    Returns:
+        List of CodeEdge objects representing the definition relationship
+    """
+    edges: list[CodeEdge] = []
+
+    if definition_result.get("status") != "success":
+        return edges
+
+    source_id = _make_location_id(from_file, from_line)
+
+    for defn in definition_result.get("definitions", []):
+        uri = defn.get("uri", "")
+        range_data = defn.get("range", {})
+        line = range_data.get("start", {}).get("line", 0)
+
+        target_file = _uri_to_path(uri)
+        target_id = _make_location_id(target_file, line)
+
+        # Determine edge type: IMPORTS if different file, CALLS if same file
+        edge_type = EdgeType.IMPORTS if target_file != from_file else EdgeType.CALLS
+
+        edges.append(
+            CodeEdge(
+                source=source_id,
+                target=target_id,
+                edge_type=edge_type,
+                metadata={
+                    "from_file": from_file,
+                    "to_file": target_file,
+                    "to_line": line,
+                },
+            )
+        )
+
+    return edges
+
+
+def ingest_astgrep_matches(
+    matches_result: dict[str, Any],
+) -> list[CodeNode]:
+    """Convert astgrep_scan output to CodeNodes.
+
+    Each match becomes a PATTERN_MATCH node with the pattern in metadata.
+
+    Args:
+        matches_result: JSON result from astgrep_scan tool
+
+    Returns:
+        List of CodeNode objects representing pattern matches
+    """
+    nodes: list[CodeNode] = []
+
+    if matches_result.get("status") not in ("success", "no_matches"):
+        return nodes
+
+    pattern = matches_result.get("pattern", "")
+
+    for match in matches_result.get("matches", []):
+        file_path = match.get("file", "")
+        range_data = match.get("range", {})
+        line_start = range_data.get("start", {}).get("line", 0)
+        line_end = range_data.get("end", {}).get("line", line_start)
+        text = match.get("text", "")
+
+        node_id = _make_location_id(file_path, line_start)
+
+        nodes.append(
+            CodeNode(
+                id=node_id,
+                name=text[:50] if len(text) > 50 else text,  # Truncate long matches
+                node_type=NodeType.PATTERN_MATCH,
+                file_path=file_path,
+                line_start=line_start,
+                line_end=line_end,
+                metadata={
+                    "pattern": pattern,
+                    "full_text": text,
+                },
+            )
+        )
+
+    return nodes
+
+
+def ingest_astgrep_rule_pack(
+    rule_pack_result: dict[str, Any],
+) -> list[CodeNode]:
+    """Convert astgrep_scan_rule_pack output to CodeNodes.
+
+    Each match becomes a PATTERN_MATCH node with rule_id and category in metadata.
+
+    Args:
+        rule_pack_result: JSON result from astgrep_scan_rule_pack tool
+
+    Returns:
+        List of CodeNode objects representing categorized matches
+    """
+    nodes: list[CodeNode] = []
+
+    if rule_pack_result.get("status") not in ("success", "no_matches"):
+        return nodes
+
+    matches_by_rule = rule_pack_result.get("matches_by_rule", {})
+
+    for rule_id, matches in matches_by_rule.items():
+        for match in matches:
+            file_path = match.get("file", "")
+            range_data = match.get("range", {})
+            line_start = range_data.get("start", {}).get("line", 0)
+            line_end = range_data.get("end", {}).get("line", line_start)
+            text = match.get("text", "")
+            message = match.get("message", "")
+
+            node_id = f"{file_path}:L{line_start}:{rule_id}"
+
+            # Extract category from rule_id (e.g., "ts-db-write" -> "db")
+            category = _extract_category_from_rule_id(rule_id)
+
+            nodes.append(
+                CodeNode(
+                    id=node_id,
+                    name=text[:50] if len(text) > 50 else text,
+                    node_type=NodeType.PATTERN_MATCH,
+                    file_path=file_path,
+                    line_start=line_start,
+                    line_end=line_end,
+                    metadata={
+                        "rule_id": rule_id,
+                        "category": category,
+                        "message": message,
+                        "full_text": text,
+                    },
+                )
+            )
+
+    return nodes
+
+
+def _extract_category_from_rule_id(rule_id: str) -> str:
+    """Extract a category from a rule ID.
+
+    Examples:
+        "ts-db-write-operation" -> "db"
+        "py-auth-jwt" -> "auth"
+        "ts-http-post" -> "http"
+
+    Args:
+        rule_id: The rule identifier
+
+    Returns:
+        Category string
+    """
+    # Common category patterns
+    categories = ["db", "auth", "http", "graphql", "state", "event", "cache", "websocket"]
+
+    lower_id = rule_id.lower()
+    for cat in categories:
+        if cat in lower_id:
+            return cat
+
+    # Default: second segment of rule ID
+    parts = rule_id.split("-")
+    return parts[1] if len(parts) > 1 else "unknown"
+
+
+def ingest_rg_matches(
+    rg_result: dict[str, Any],
+) -> list[CodeNode]:
+    """Convert rg_search output to preliminary CodeNodes.
+
+    Creates nodes for text matches that can be refined by LSP later.
+
+    Args:
+        rg_result: JSON result from rg_search tool
+
+    Returns:
+        List of CodeNode objects representing text matches
+    """
+    nodes: list[CodeNode] = []
+
+    if rg_result.get("status") != "success":
+        return nodes
+
+    pattern = rg_result.get("pattern", "")
+
+    for match in rg_result.get("matches", []):
+        file_path = match.get("path", "")
+        line = match.get("line_number", 1)
+        text = match.get("lines", "").strip()
+
+        node_id = _make_location_id(file_path, line)
+
+        nodes.append(
+            CodeNode(
+                id=node_id,
+                name=text[:50] if len(text) > 50 else text,
+                node_type=NodeType.PATTERN_MATCH,
+                file_path=file_path,
+                line_start=line,
+                line_end=line,
+                metadata={
+                    "pattern": pattern,
+                    "full_text": text,
+                    "source": "rg",
+                },
+            )
+        )
+
+    return nodes
+
+
+def ingest_inheritance(
+    hover_content: str,
+    class_node_id: str,
+    file_path: str,
+) -> list[CodeEdge]:
+    """Extract inheritance relationships from LSP hover info.
+
+    Parses type signatures to find extends/implements relationships.
+
+    Args:
+        hover_content: The hover content string (may be markdown)
+        class_node_id: ID of the class node
+        file_path: Path to the file containing the class
+
+    Returns:
+        List of CodeEdge objects representing inheritance
+    """
+    edges: list[CodeEdge] = []
+
+    # TypeScript patterns
+    # class Foo extends Bar implements IBaz, IQux
+    ts_extends = re.search(r"class\s+\w+\s+extends\s+(\w+)", hover_content)
+    ts_implements = re.findall(r"implements\s+([\w,\s]+)", hover_content)
+
+    if ts_extends:
+        base_class = ts_extends.group(1)
+        edges.append(
+            CodeEdge(
+                source=class_node_id,
+                target=f"{file_path}:{base_class}",
+                edge_type=EdgeType.INHERITS,
+                metadata={"language": "typescript"},
+            )
+        )
+
+    for impl_match in ts_implements:
+        interfaces = [i.strip() for i in impl_match.split(",")]
+        for iface in interfaces:
+            if iface:
+                edges.append(
+                    CodeEdge(
+                        source=class_node_id,
+                        target=f"{file_path}:{iface}",
+                        edge_type=EdgeType.IMPLEMENTS,
+                        metadata={"language": "typescript"},
+                    )
+                )
+
+    # Python patterns
+    # class Foo(Bar, Baz):
+    py_bases = re.search(r"class\s+\w+\s*\(([^)]+)\)", hover_content)
+    if py_bases:
+        bases = [b.strip() for b in py_bases.group(1).split(",")]
+        for base in bases:
+            # Skip common non-inheritance bases
+            if base and base not in ("object", "ABC", "Protocol"):
+                edges.append(
+                    CodeEdge(
+                        source=class_node_id,
+                        target=f"{file_path}:{base}",
+                        edge_type=EdgeType.INHERITS,
+                        metadata={"language": "python"},
+                    )
+                )
+
+    return edges
+
+
+def ingest_test_mapping(
+    test_files: list[str],
+    production_files: list[str],
+) -> list[CodeEdge]:
+    """Create test coverage edges based on file naming conventions.
+
+    Maps test files to production files using common naming patterns:
+    - test_foo.py -> foo.py
+    - foo_test.py -> foo.py
+    - foo.test.ts -> foo.ts
+    - __tests__/foo.js -> foo.js
+
+    Args:
+        test_files: List of test file paths
+        production_files: List of production file paths
+
+    Returns:
+        List of CodeEdge objects representing test-to-production relationships
+    """
+    edges: list[CodeEdge] = []
+
+    # Build a lookup map for production files by name
+    prod_by_name: dict[str, str] = {}
+    for prod_file in production_files:
+        name = Path(prod_file).stem
+        prod_by_name[name.lower()] = prod_file
+
+    for test_file in test_files:
+        prod_file = _match_test_to_prod(test_file, prod_by_name)
+        if prod_file:
+            edges.append(
+                CodeEdge(
+                    source=test_file,
+                    target=prod_file,
+                    edge_type=EdgeType.TESTS,
+                    metadata={"convention": "name_match"},
+                )
+            )
+
+    return edges
+
+
+def _match_test_to_prod(
+    test_file: str,
+    prod_by_name: dict[str, str],
+) -> str | None:
+    """Match a test file to its corresponding production file.
+
+    Args:
+        test_file: Path to the test file
+        prod_by_name: Map of lowercase production file names to paths
+
+    Returns:
+        Production file path if found, None otherwise
+    """
+    path = Path(test_file)
+    stem = path.stem.lower()
+
+    # Remove common test prefixes/suffixes
+    patterns = [
+        (r"^test_", ""),  # test_foo -> foo
+        (r"_test$", ""),  # foo_test -> foo
+        (r"\.test$", ""),  # foo.test -> foo
+        (r"\.spec$", ""),  # foo.spec -> foo
+        (r"^tests?_", ""),  # tests_foo -> foo
+    ]
+
+    for pattern, replacement in patterns:
+        candidate = re.sub(pattern, replacement, stem)
+        if candidate != stem and candidate in prod_by_name:
+            return prod_by_name[candidate]
+
+    # Check if the stem directly matches (for __tests__/foo.js -> foo.js cases)
+    if stem in prod_by_name:
+        return prod_by_name[stem]
+
+    return None

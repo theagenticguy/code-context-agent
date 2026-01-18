@@ -16,6 +16,20 @@ from .discovery import (
     rg_search,
     write_file_list,
 )
+from .graph import (
+    code_graph_analyze,
+    code_graph_create,
+    code_graph_explore,
+    code_graph_export,
+    code_graph_ingest_astgrep,
+    code_graph_ingest_inheritance,
+    code_graph_ingest_lsp,
+    code_graph_ingest_rg,
+    code_graph_ingest_tests,
+    code_graph_load,
+    code_graph_save,
+    code_graph_stats,
+)
 from .lsp import (
     lsp_definition,
     lsp_document_symbols,
@@ -52,6 +66,19 @@ __all__ = [
     "astgrep_scan",
     "astgrep_scan_rule_pack",
     "astgrep_inline_rule",
+    # Graph tools
+    "code_graph_create",
+    "code_graph_ingest_lsp",
+    "code_graph_ingest_astgrep",
+    "code_graph_ingest_rg",
+    "code_graph_ingest_inheritance",
+    "code_graph_ingest_tests",
+    "code_graph_analyze",
+    "code_graph_explore",
+    "code_graph_export",
+    "code_graph_save",
+    "code_graph_load",
+    "code_graph_stats",
     # Shell utilities
     "CommandResult",
     "ToolResult",
