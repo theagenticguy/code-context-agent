@@ -1,3 +1,14 @@
+## v1.0.0 (2026-01-18)
+
+### BREAKING CHANGE
+
+- Renamed FAST_MODE_SOP → FAST_PROMPT, DEEP_MODE_SOP → DEEP_PROMPT
+
+### Feat
+
+- **agent**: refactor prompts with separate FAST/DEEP modes and steering support
+- **agent**: add exit criteria, output format requirements, and fix STDIO capture
+
 ## v0.4.0 (2026-01-17)
 
 ### Feat
