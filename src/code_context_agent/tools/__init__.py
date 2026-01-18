@@ -1,4 +1,11 @@
-"""Custom tools package for code context analysis."""
+"""Custom tools package for code context analysis.
+
+This package provides all tools used by the code context agent:
+- Discovery: File manifests, repomix bundles, ripgrep search
+- LSP: Language server operations for semantic analysis
+- ast-grep: Structural code search with rule packs
+- Shell: Bounded command execution
+"""
 
 from .astgrep import astgrep_inline_rule, astgrep_scan, astgrep_scan_rule_pack
 from .discovery import (
@@ -8,6 +15,14 @@ from .discovery import (
     repomix_orientation,
     rg_search,
     write_file_list,
+)
+from .lsp import (
+    lsp_definition,
+    lsp_document_symbols,
+    lsp_hover,
+    lsp_references,
+    lsp_shutdown,
+    lsp_start,
 )
 from .shell import CommandResult, ToolResult, run_command
 from .validation import (
@@ -26,6 +41,13 @@ __all__ = [
     "rg_search",
     "write_file_list",
     "read_file_bounded",
+    # LSP tools
+    "lsp_start",
+    "lsp_shutdown",
+    "lsp_document_symbols",
+    "lsp_hover",
+    "lsp_references",
+    "lsp_definition",
     # ast-grep tools
     "astgrep_scan",
     "astgrep_scan_rule_pack",

@@ -52,6 +52,7 @@ async def run_analysis(  # noqa: PLR0915 - cohesive analysis workflow
     focus: str | None = None,
     consumer: EventConsumer | None = None,
     quiet: bool = False,
+    use_steering: bool = True,
 ) -> dict[str, Any]:
     """Run code context analysis on a repository.
 
@@ -68,6 +69,7 @@ async def run_analysis(  # noqa: PLR0915 - cohesive analysis workflow
         focus: Optional focus area to steer analysis (e.g., "authentication", "API layer").
         consumer: Event consumer for display. Defaults to RichEventConsumer.
         quiet: If True and no consumer, use QuietConsumer.
+        use_steering: Enable progressive disclosure via steering hooks (default True).
 
     Returns:
         Dict with analysis status and output paths.
@@ -91,7 +93,7 @@ async def run_analysis(  # noqa: PLR0915 - cohesive analysis workflow
         consumer = QuietConsumer() if quiet else RichEventConsumer()
 
     # Create the strands agent
-    strands_agent = create_agent(mode=mode)
+    strands_agent = create_agent(mode=mode, use_steering=use_steering)
 
     # Wrap with ag-ui-strands for typed event streaming
     agui_agent = StrandsAgent(
@@ -294,6 +296,7 @@ def run_analysis_sync(
     output_dir: str | Path | None = None,
     mode: str = "fast",
     quiet: bool = False,
+    use_steering: bool = True,
 ) -> dict[str, Any]:
     """Synchronous wrapper for run_analysis.
 
@@ -302,6 +305,7 @@ def run_analysis_sync(
         output_dir: Output directory for context files.
         mode: Analysis mode - "fast" or "deep".
         quiet: Suppress live display.
+        use_steering: Enable progressive disclosure via steering hooks (default True).
 
     Returns:
         Dict with analysis status and output paths.
@@ -315,5 +319,6 @@ def run_analysis_sync(
             output_dir=output_dir,
             mode=mode,
             quiet=quiet,
+            use_steering=use_steering,
         )
     )

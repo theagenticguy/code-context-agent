@@ -76,6 +76,10 @@ def analyze(
         str,
         Parameter(help="Focus area for analysis (e.g., 'authentication', 'API endpoints', 'database layer')."),
     ] = "",
+    no_steering: Annotated[
+        bool,
+        Parameter(help="Disable progressive disclosure steering (enabled by default)."),
+    ] = False,
     quiet: Annotated[
         bool,
         Parameter(help="Suppress live display output."),
@@ -136,6 +140,19 @@ def analyze(
         raise SystemExit(1)
 
     mode = "deep" if deep else "fast"
+    use_steering = not no_steering
+
+    # Show analysis configuration
+    if not quiet:
+        console.print()
+        console.print(f"[bold]Code Context Analysis[/bold]")
+        console.print(f"  Repository: [cyan]{repo_path}[/cyan]")
+        console.print(f"  Mode: [yellow]{mode.upper()}[/yellow] {'(~50+ tool calls)' if deep else '(~10-15 tool calls)'}")
+        if focus:
+            console.print(f"  Focus: [magenta]{focus}[/magenta]")
+        if use_steering:
+            console.print(f"  Steering: [green]enabled[/green] (progressive disclosure)")
+        console.print()
 
     # Run the analysis
     result = asyncio.run(
@@ -145,6 +162,7 @@ def analyze(
             mode=mode,
             focus=focus or None,
             quiet=quiet,
+            use_steering=use_steering,
         )
     )
 

@@ -13,7 +13,7 @@ from strands import Agent
 from strands.models import BedrockModel
 
 from ..config import get_settings
-from .sop import DEEP_MODE_SOP, FAST_MODE_SOP
+from .sop import DEEP_PROMPT, FAST_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +29,7 @@ def get_analysis_tools() -> list[Any]:
     from strands_tools import graph
 
     from ..tools import (
+        astgrep_inline_rule,
         astgrep_scan,
         astgrep_scan_rule_pack,
         create_file_manifest,
@@ -38,7 +39,6 @@ def get_analysis_tools() -> list[Any]:
         rg_search,
         write_file_list,
     )
-    from ..tools.shell_tool import shell
     from ..tools.lsp import (
         lsp_definition,
         lsp_document_symbols,
@@ -47,6 +47,7 @@ def get_analysis_tools() -> list[Any]:
         lsp_shutdown,
         lsp_start,
     )
+    from ..tools.shell_tool import shell
 
     return [
         # Discovery tools
@@ -63,9 +64,10 @@ def get_analysis_tools() -> list[Any]:
         lsp_references,
         lsp_definition,
         lsp_shutdown,
-        # ast-grep tools
+        # ast-grep tools (rule packs + ad-hoc + inline)
         astgrep_scan,
         astgrep_scan_rule_pack,
+        astgrep_inline_rule,
         # Shell for custom commands
         shell,
         # Graph visualization
@@ -73,11 +75,33 @@ def get_analysis_tools() -> list[Any]:
     ]
 
 
-def create_agent(mode: str = "fast") -> Agent:
+def _get_steering_hooks() -> list[Any]:
+    """Get optional steering hooks for progressive disclosure.
+
+    Returns:
+        List of steering handlers, or empty list if steering unavailable.
+    """
+    try:
+        from .steering import STEERING_AVAILABLE, create_all_steering_handlers
+
+        if STEERING_AVAILABLE:
+            return create_all_steering_handlers()
+    except ImportError:
+        pass
+    return []
+
+
+def create_agent(
+    mode: str = "fast",
+    use_steering: bool = True,
+) -> Agent:
     """Create a configured agent for code context analysis.
 
     Args:
         mode: Analysis mode - "fast" or "deep".
+        use_steering: Enable experimental steering for progressive disclosure.
+            When enabled, the agent receives contextual guidance at key points
+            (before tool calls, before output) rather than loading all rules upfront.
 
     Returns:
         Configured Agent instance ready for analysis.
@@ -93,7 +117,8 @@ def create_agent(mode: str = "fast") -> Agent:
 
     logger.info(
         f"Creating agent: mode={mode}, model={settings.model_id}, "
-        f"region={settings.region}, thinking_budget={thinking_budget}"
+        f"region={settings.region}, thinking_budget={thinking_budget}, "
+        f"steering={'enabled' if use_steering else 'disabled'}"
     )
 
     # Create Bedrock model with extended thinking and 1M context enabled
@@ -112,10 +137,15 @@ def create_agent(mode: str = "fast") -> Agent:
     )
 
     # Select system prompt based on mode
-    system_prompt = DEEP_MODE_SOP if mode.lower() == "deep" else FAST_MODE_SOP
+    system_prompt = DEEP_PROMPT if mode.lower() == "deep" else FAST_PROMPT
 
     # Get tools
     tools = get_analysis_tools()
+
+    # Get optional steering hooks
+    hooks = _get_steering_hooks() if use_steering else []
+    if hooks:
+        logger.info(f"Steering enabled with {len(hooks)} hooks")
 
     logger.info(f"Agent configured with {len(tools)} tools")
 
@@ -123,5 +153,6 @@ def create_agent(mode: str = "fast") -> Agent:
         model=model,
         tools=tools,
         system_prompt=system_prompt,
+        hooks=hooks if hooks else None,
         callback_handler=None,  # We use stream_async for events
     )
