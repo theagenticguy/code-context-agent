@@ -1,3 +1,9 @@
+## v2.0.0 (2026-01-18)
+
+### Feat
+
+- major rewrites and migrate to ty lsp
+
 ## v1.0.0 (2026-01-18)
 
 ### BREAKING CHANGE
