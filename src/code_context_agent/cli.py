@@ -114,19 +114,14 @@ def analyze(
         $ code-context-agent analyze . --output-dir ./output
     """
     import asyncio
-    import logging
 
     from code_context_agent.agent import run_analysis
 
     # Enable debug logging if requested
     if debug:
-        logging.basicConfig(
-            level=logging.DEBUG,
-            format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        )
-        # Also enable strands debug logging
-        logging.getLogger("strands").setLevel(logging.DEBUG)
-        logging.getLogger("code_context_agent").setLevel(logging.DEBUG)
+        from code_context_agent.utils import setup_logger
+
+        setup_logger(level="DEBUG")
         console.print("[dim]Debug logging enabled[/dim]")
 
     repo_path = path.resolve()

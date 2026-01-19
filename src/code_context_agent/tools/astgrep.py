@@ -7,13 +7,11 @@ to find patterns like DB calls, state mutations, and API endpoints.
 from __future__ import annotations
 
 import json
-import logging
 import subprocess
 from pathlib import Path
 
 from strands import tool
 
-logger = logging.getLogger(__name__)
 
 # Path to rule files relative to this module
 RULES_DIR = Path(__file__).parent.parent / "rules"

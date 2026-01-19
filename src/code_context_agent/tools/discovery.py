@@ -7,16 +7,15 @@ context bundling using external tools like ripgrep and repomix.
 from __future__ import annotations
 
 import json
-import logging
 import shlex
 import subprocess
 from pathlib import Path
 
+from loguru import logger
 from strands import tool
 
 from .shell import run_command
 
-logger = logging.getLogger(__name__)
 
 
 @tool

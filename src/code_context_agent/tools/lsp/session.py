@@ -7,13 +7,13 @@ initialization), so we reuse them.
 
 from __future__ import annotations
 
-import logging
 from typing import Any, ClassVar
+
+from loguru import logger
 
 from ...config import get_settings
 from .client import LspClient
 
-logger = logging.getLogger(__name__)
 
 
 class LspSessionManager:

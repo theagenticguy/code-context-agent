@@ -6,16 +6,14 @@ configured with the appropriate tools and system prompts.
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
+from loguru import logger
 from strands import Agent
 from strands.models import BedrockModel
 
 from ..config import get_settings
 from .sop import DEEP_PROMPT, FAST_PROMPT
-
-logger = logging.getLogger(__name__)
 
 
 def get_analysis_tools() -> list[Any]:

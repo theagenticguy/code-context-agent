@@ -8,15 +8,14 @@ management and JSON serialization.
 from __future__ import annotations
 
 import json
-import logging
 from pathlib import Path
 
+from loguru import logger
 from strands import tool
 
 from ...config import get_settings
 from .session import get_session_manager
 
-logger = logging.getLogger(__name__)
 
 
 @tool
