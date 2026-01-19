@@ -48,6 +48,8 @@ DEFAULT_DEEP_MAX_DURATION = 1200  # 20 minutes (DEEP mode)
 class AnalysisContext(BaseModel):
     """Container for analysis components and configuration."""
 
+    model_config = {"arbitrary_types_allowed": True}
+
     repo: Path
     output: Path
     mode: str
