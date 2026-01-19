@@ -1,3 +1,12 @@
+## v3.0.3 (2026-01-19)
+
+### Refactor
+
+- migrate from standard logging to loguru (Tier 3 & 4)
+- reduce runner.py complexity (2 functions)
+- reduce shell_tool.py complexity from 16 to <10
+- add infrastructure and fix style issues (Tier 0 & 1)
+
 ## v3.0.2 (2026-01-18)
 
 ### Fix
