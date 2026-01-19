@@ -61,8 +61,7 @@ def create_output_steering_handler() -> LLMSteeringHandler:
     """
     if not STEERING_AVAILABLE:
         raise ImportError(
-            "Steering requires strands.experimental.steering. "
-            "Install with: pip install strands-agents[experimental]"
+            "Steering requires strands.experimental.steering. Install with: pip install strands-agents[experimental]"
         )
 
     system_prompt = f"""\
@@ -109,8 +108,7 @@ def create_tool_steering_handler() -> LLMSteeringHandler:
     """
     if not STEERING_AVAILABLE:
         raise ImportError(
-            "Steering requires strands.experimental.steering. "
-            "Install with: pip install strands-agents[experimental]"
+            "Steering requires strands.experimental.steering. Install with: pip install strands-agents[experimental]"
         )
 
     system_prompt = f"""\

@@ -342,9 +342,9 @@ class RichEventConsumer(EventConsumer):
         if self.state.active_tool and self.state.active_tool.tool_call_id == tool_call_id:
             self.state.active_tool.result = result
             # Check for error in result
-            if isinstance(result, str) and "error" in result.lower():
-                self.state.tool_errors += 1
-            elif isinstance(result, dict) and result.get("error"):
+            if (isinstance(result, str) and "error" in result.lower()) or (
+                isinstance(result, dict) and result.get("error")
+            ):
                 self.state.tool_errors += 1
         self._refresh()
 

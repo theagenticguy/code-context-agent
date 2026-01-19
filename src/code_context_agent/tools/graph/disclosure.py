@@ -328,6 +328,4 @@ class ProgressiveExplorer:
         # Sort by score and return top 5
         ranked = sorted(candidates.items(), key=lambda x: x[1], reverse=True)[:5]
 
-        return [
-            {"id": n, "score": s, **(self.graph.get_node_data(n) or {})} for n, s in ranked
-        ]
+        return [{"id": n, "score": s, **(self.graph.get_node_data(n) or {})} for n, s in ranked]

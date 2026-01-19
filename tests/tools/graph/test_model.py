@@ -1,6 +1,5 @@
 """Tests for code graph model."""
 
-import pytest
 
 from code_context_agent.tools.graph.model import (
     CodeEdge,

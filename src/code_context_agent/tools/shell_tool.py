@@ -115,25 +115,29 @@ def shell(
 
         except subprocess.TimeoutExpired:
             has_errors = True
-            results.append({
-                "command": cmd,
-                "exit_code": -1,
-                "status": "error",
-                "stdout": "",
-                "stderr": f"Command timed out after {timeout} seconds",
-            })
+            results.append(
+                {
+                    "command": cmd,
+                    "exit_code": -1,
+                    "status": "error",
+                    "stdout": "",
+                    "stderr": f"Command timed out after {timeout} seconds",
+                }
+            )
             if not ignore_errors:
                 break
 
         except Exception as e:
             has_errors = True
-            results.append({
-                "command": cmd,
-                "exit_code": -1,
-                "status": "error",
-                "stdout": "",
-                "stderr": str(e),
-            })
+            results.append(
+                {
+                    "command": cmd,
+                    "exit_code": -1,
+                    "status": "error",
+                    "stdout": "",
+                    "stderr": str(e),
+                }
+            )
             if not ignore_errors:
                 break
 
@@ -144,12 +148,14 @@ def shell(
     success_count = sum(1 for r in results if r["status"] == "success")
     error_count = len(results) - success_count
 
-    content.append({
-        "text": f"Execution Summary:\n"
-                f"Total commands: {len(results)}\n"
-                f"Successful: {success_count}\n"
-                f"Failed: {error_count}"
-    })
+    content.append(
+        {
+            "text": f"Execution Summary:\n"
+            f"Total commands: {len(results)}\n"
+            f"Successful: {success_count}\n"
+            f"Failed: {error_count}"
+        }
+    )
 
     # Individual results
     for result in results:

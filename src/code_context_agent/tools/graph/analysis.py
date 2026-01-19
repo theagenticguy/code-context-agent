@@ -250,9 +250,7 @@ class CodeAnalyzer:
         del ppr[node_id]
         ranked = sorted(ppr.items(), key=lambda x: x[1], reverse=True)[:top_k]
 
-        return [
-            {"id": n, "similarity": s, **(self.graph.get_node_data(n) or {})} for n, s in ranked if s > 0
-        ]
+        return [{"id": n, "similarity": s, **(self.graph.get_node_data(n) or {})} for n, s in ranked if s > 0]
 
     def calculate_coupling(self, node_a: str, node_b: str) -> dict[str, Any]:
         """Calculate coupling strength between two nodes.
