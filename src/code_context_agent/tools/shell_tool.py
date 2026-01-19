@@ -122,7 +122,7 @@ def shell(
                     "status": "error",
                     "stdout": "",
                     "stderr": f"Command timed out after {timeout} seconds",
-                }
+                },
             )
             if not ignore_errors:
                 break
@@ -136,7 +136,7 @@ def shell(
                     "status": "error",
                     "stdout": "",
                     "stderr": str(e),
-                }
+                },
             )
             if not ignore_errors:
                 break
@@ -153,8 +153,8 @@ def shell(
             "text": f"Execution Summary:\n"
             f"Total commands: {len(results)}\n"
             f"Successful: {success_count}\n"
-            f"Failed: {error_count}"
-        }
+            f"Failed: {error_count}",
+        },
     )
 
     # Individual results
@@ -176,5 +176,4 @@ def shell(
     # Determine overall status
     if has_errors and not ignore_errors:
         return {"status": "error", "content": content}
-    else:
-        return {"status": "success", "content": content}
+    return {"status": "success", "content": content}

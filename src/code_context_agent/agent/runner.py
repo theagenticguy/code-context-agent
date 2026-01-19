@@ -327,5 +327,5 @@ def run_analysis_sync(
             mode=mode,
             quiet=quiet,
             use_steering=use_steering,
-        )
+        ),
     )

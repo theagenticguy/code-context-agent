@@ -102,7 +102,7 @@ class CodeAnalyzer:
                         "id": node,
                         "out_degree": out_deg,
                         **(node_data or {}),
-                    }
+                    },
                 )
 
         # Also check for main/run/start patterns
@@ -115,7 +115,7 @@ class CodeAnalyzer:
                             "id": node,
                             "out_degree": view.out_degree(node) if view.has_node(node) else 0,
                             **data,
-                        }
+                        },
                     )
 
         # Sort by out_degree (more calls = more significant entry point)
@@ -174,7 +174,7 @@ class CodeAnalyzer:
                     "key_nodes": [{"id": n, "score": s} for n, s in key_nodes],
                     "members": community_list,
                     "cohesion": cohesion,
-                }
+                },
             )
 
         # Sort by size (largest modules first)

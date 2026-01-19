@@ -111,7 +111,7 @@ class ProgressiveExplorer:
                     "id": n,
                     "distance": dist,
                     **node_data,
-                }
+                },
             )
 
         # Get edges
@@ -165,7 +165,7 @@ class ProgressiveExplorer:
                     "in_degree": in_deg,
                     "out_degree": out_deg,
                     **node_data,
-                }
+                },
             )
 
         # Sort by degree (most connected first)

@@ -117,7 +117,7 @@ def astgrep_scan(
                         "range": data.get("range", {}),
                         "text": data.get("text", ""),
                         "rule_id": data.get("ruleId", ""),
-                    }
+                    },
                 )
                 if len(matches) >= max_results:
                     break
@@ -131,7 +131,7 @@ def astgrep_scan(
             "pattern": pattern,
             "matches": matches,
             "match_count": len(matches),
-        }
+        },
     )
 
 
@@ -175,7 +175,7 @@ def astgrep_scan_rule_pack(
             {
                 "status": "error",
                 "error": f"Rule pack not found: {rule_pack}. Available: {available}",
-            }
+            },
         )
 
     # Build command with config
@@ -263,7 +263,7 @@ def astgrep_scan_rule_pack(
             "matches_by_rule": matches_by_rule,
             "total_count": total_count,
             "rule_count": len(matches_by_rule),
-        }
+        },
     )
 
 
@@ -364,7 +364,7 @@ def astgrep_inline_rule(
                         "file": data.get("file", ""),
                         "range": data.get("range", {}),
                         "text": data.get("text", ""),
-                    }
+                    },
                 )
                 if len(matches) >= max_results:
                     break
@@ -377,5 +377,5 @@ def astgrep_inline_rule(
             "language": language,
             "matches": matches,
             "match_count": len(matches),
-        }
+        },
     )

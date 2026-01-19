@@ -13,7 +13,6 @@ from pathlib import Path
 class ValidationError(ValueError):
     """Raised when input validation fails."""
 
-    pass
 
 
 def validate_repo_path(path: str) -> Path:

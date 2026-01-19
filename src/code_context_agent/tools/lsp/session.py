@@ -106,19 +106,19 @@ class LspSessionManager:
             # ty uses configuration from ty.toml or pyproject.toml [tool.ty]
             # No initialization options needed
             return None
-        elif kind in ("typescript", "ts"):
+        if kind in ("typescript", "ts"):
             # TypeScript language server configuration
             # Uses the VS Code-style settings format
             return {
                 "typescript": {
                     "preferences": {
                         "excludeLibrarySymbolsInNavTo": True,
-                    }
+                    },
                 },
                 "javascript": {
                     "preferences": {
                         "excludeLibrarySymbolsInNavTo": True,
-                    }
+                    },
                 },
             }
 
@@ -155,10 +155,9 @@ class LspSessionManager:
             if client.is_connected:
                 logger.debug(f"Reusing LSP session: {key}")
                 return client
-            else:
-                # Client disconnected, remove and recreate
-                logger.debug(f"Removing disconnected LSP session: {key}")
-                del self._sessions[key]
+            # Client disconnected, remove and recreate
+            logger.debug(f"Removing disconnected LSP session: {key}")
+            del self._sessions[key]
 
         logger.info(f"Creating new LSP session: {key}")
         settings = get_settings()

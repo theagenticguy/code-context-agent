@@ -81,7 +81,7 @@ async def lsp_start(server_kind: str, workspace_path: str) -> str:
                 "message": f"LSP server failed to start for {server_kind}. "
                 "This is a CRITICAL FAILURE - do not proceed without LSP. "
                 "Fix the issue and retry.",
-            }
+            },
         )
 
     # Normalize kind for consistent session ID
@@ -93,7 +93,7 @@ async def lsp_start(server_kind: str, workspace_path: str) -> str:
             "status": "success",
             "session_id": session_id,
             "message": f"LSP server started for {server_kind} at {workspace}",
-        }
+        },
     )
 
 
@@ -154,7 +154,7 @@ async def lsp_document_symbols(session_id: str, file_path: str) -> str:
             {
                 "status": "error",
                 "error": f"No active LSP session: {session_id}. Call lsp_start first.",
-            }
+            },
         )
 
     try:
@@ -165,7 +165,7 @@ async def lsp_document_symbols(session_id: str, file_path: str) -> str:
                 "file": file_path,
                 "symbols": symbols,
                 "count": len(symbols),
-            }
+            },
         )
     except Exception as e:
         logger.error(f"LSP document_symbols error: {e}")
@@ -173,7 +173,7 @@ async def lsp_document_symbols(session_id: str, file_path: str) -> str:
             {
                 "status": "error",
                 "error": str(e),
-            }
+            },
         )
 
 
@@ -207,7 +207,7 @@ async def lsp_hover(session_id: str, file_path: str, line: int, character: int) 
             {
                 "status": "error",
                 "error": f"No active LSP session: {session_id}. Call lsp_start first.",
-            }
+            },
         )
 
     try:
@@ -218,7 +218,7 @@ async def lsp_hover(session_id: str, file_path: str, line: int, character: int) 
                 "file": file_path,
                 "position": {"line": line, "character": character},
                 "hover": hover,
-            }
+            },
         )
     except Exception as e:
         logger.error(f"LSP hover error: {e}")
@@ -226,13 +226,13 @@ async def lsp_hover(session_id: str, file_path: str, line: int, character: int) 
             {
                 "status": "error",
                 "error": str(e),
-            }
+            },
         )
 
 
 @tool
 async def lsp_references(
-    session_id: str, file_path: str, line: int, character: int, include_declaration: bool = True
+    session_id: str, file_path: str, line: int, character: int, include_declaration: bool = True,
 ) -> str:
     """Find all references to symbol at position (fan-in analysis).
 
@@ -263,7 +263,7 @@ async def lsp_references(
             {
                 "status": "error",
                 "error": f"No active LSP session: {session_id}. Call lsp_start first.",
-            }
+            },
         )
 
     try:
@@ -284,7 +284,7 @@ async def lsp_references(
                 "references": refs,
                 "total_count": len(refs),
                 "unique_files": len(unique_files),
-            }
+            },
         )
     except Exception as e:
         logger.error(f"LSP references error: {e}")
@@ -292,7 +292,7 @@ async def lsp_references(
             {
                 "status": "error",
                 "error": str(e),
-            }
+            },
         )
 
 
@@ -326,7 +326,7 @@ async def lsp_definition(session_id: str, file_path: str, line: int, character: 
             {
                 "status": "error",
                 "error": f"No active LSP session: {session_id}. Call lsp_start first.",
-            }
+            },
         )
 
     try:
@@ -338,7 +338,7 @@ async def lsp_definition(session_id: str, file_path: str, line: int, character: 
                 "position": {"line": line, "character": character},
                 "definitions": definitions,
                 "count": len(definitions),
-            }
+            },
         )
     except Exception as e:
         logger.error(f"LSP definition error: {e}")
@@ -346,7 +346,7 @@ async def lsp_definition(session_id: str, file_path: str, line: int, character: 
             {
                 "status": "error",
                 "error": str(e),
-            }
+            },
         )
 
 
@@ -377,12 +377,11 @@ async def lsp_shutdown(session_id: str) -> str:
             {
                 "status": "success",
                 "message": f"LSP session shutdown: {session_id}",
-            }
+            },
         )
-    else:
-        return json.dumps(
-            {
-                "status": "warning",
-                "message": f"No active session found: {session_id}",
-            }
-        )
+    return json.dumps(
+        {
+            "status": "warning",
+            "message": f"No active session found: {session_id}",
+        },
+    )

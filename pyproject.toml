@@ -12,6 +12,7 @@ dependencies = [
     "ag-ui-protocol>=0.1.10",
     "ag-ui-strands>=0.1.0",
     "cyclopts>=4.5.0",
+    "loguru>=0.7.3",
     "networkx[default,extra]>=3.6.1",
     "pydantic>=2.12.5",
     "pydantic-settings>=2.12.0",

@@ -369,7 +369,7 @@ class LspClient:
                     "languageId": language_id,
                     "version": 1,
                     "text": text,
-                }
+                },
             },
         )
 
@@ -418,7 +418,7 @@ class LspClient:
         return response.get("result")
 
     async def references(
-        self, file_path: str, line: int, character: int, include_declaration: bool = True
+        self, file_path: str, line: int, character: int, include_declaration: bool = True,
     ) -> list[dict[str, Any]]:
         """Find all references to symbol at position.
 

@@ -68,7 +68,7 @@ def create_file_manifest(repo_path: str) -> str:
             {
                 "status": "error",
                 "error": result["stderr"],
-            }
+            },
         )
 
     # Count files
@@ -84,7 +84,7 @@ def create_file_manifest(repo_path: str) -> str:
             "status": "success",
             "manifest_path": str(manifest_path),
             "file_count": file_count,
-        }
+        },
     )
 
 
@@ -156,7 +156,7 @@ def repomix_orientation(
                         "status": "skipped",
                         "reason": f"Repository has {file_count} files (max: {max_file_count})",
                         "recommendation": "Use --include patterns to limit scope",
-                    }
+                    },
                 )
         except ValueError:
             pass  # Proceed if we can't parse count
@@ -182,7 +182,7 @@ def repomix_orientation(
                 "status": "error",
                 "error": result["stderr"],
                 "stdout": result["stdout"],
-            }
+            },
         )
 
     logger.info(f"Created orientation snapshot: {output_path}")
@@ -191,7 +191,7 @@ def repomix_orientation(
         {
             "status": "success",
             "output_path": str(output_path),
-        }
+        },
     )
 
 
@@ -222,7 +222,7 @@ def repomix_bundle(file_list_path: str, output_path: str, compress: bool = True)
             {
                 "status": "error",
                 "error": f"File list not found: {file_list}",
-            }
+            },
         )
 
     compress_flag = "--compress" if compress else ""
@@ -240,7 +240,7 @@ def repomix_bundle(file_list_path: str, output_path: str, compress: bool = True)
                 "status": "error",
                 "error": result["stderr"],
                 "stdout": result["stdout"],
-            }
+            },
         )
 
     # Get file size
@@ -256,7 +256,7 @@ def repomix_bundle(file_list_path: str, output_path: str, compress: bool = True)
             "status": "success",
             "output_path": str(output),
             "file_size_bytes": file_size,
-        }
+        },
     )
 
 
@@ -379,7 +379,7 @@ def rg_search(
                             "path": match_data.get("path", {}).get("text", ""),
                             "line_number": match_data.get("line_number"),
                             "lines": match_data.get("lines", {}).get("text", ""),
-                        }
+                        },
                     )
             except json.JSONDecodeError:
                 continue
@@ -390,7 +390,7 @@ def rg_search(
             "pattern": pattern,
             "matches": matches,
             "match_count": len(matches),
-        }
+        },
     )
 
 
@@ -427,7 +427,7 @@ def write_file_list(file_paths: list[str], output_path: str) -> str:
             "status": "success",
             "output_path": str(output),
             "file_count": len(unique_paths),
-        }
+        },
     )
 
 
@@ -478,7 +478,7 @@ def read_file_bounded(file_path: str, max_lines: int = 500, start_line: int = 1)
             {
                 "status": "error",
                 "error": f"File not found: {path}",
-            }
+            },
         )
 
     try:
@@ -502,12 +502,12 @@ def read_file_bounded(file_path: str, max_lines: int = 500, start_line: int = 1)
                 "start_line": start_line,
                 "lines_read": total_lines_read,
                 "truncated": total_lines_read >= max_lines,
-            }
+            },
         )
     except Exception as e:
         return json.dumps(
             {
                 "status": "error",
                 "error": str(e),
-            }
+            },
         )

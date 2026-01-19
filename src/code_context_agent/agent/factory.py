@@ -143,7 +143,7 @@ def create_agent(
     logger.info(
         f"Creating agent: mode={mode}, model={settings.model_id}, "
         f"region={settings.region}, thinking_budget={thinking_budget}, "
-        f"steering={'enabled' if use_steering else 'disabled'}"
+        f"steering={'enabled' if use_steering else 'disabled'}",
     )
 
     # Create Bedrock model with extended thinking and 1M context enabled

@@ -109,7 +109,7 @@ def ingest_lsp_symbols(
                     source=parent_id,
                     target=node_id,
                     edge_type=EdgeType.CONTAINS,
-                )
+                ),
             )
 
         # Process children recursively
@@ -161,7 +161,7 @@ def ingest_lsp_references(
                     "file": file_path,
                     "line": line,
                 },
-            )
+            ),
         )
 
     return edges
@@ -212,7 +212,7 @@ def ingest_lsp_definition(
                     "to_file": target_file,
                     "to_line": line,
                 },
-            )
+            ),
         )
 
     return edges
@@ -259,7 +259,7 @@ def ingest_astgrep_matches(
                     "pattern": pattern,
                     "full_text": text,
                 },
-            )
+            ),
         )
 
     return nodes
@@ -313,7 +313,7 @@ def ingest_astgrep_rule_pack(
                         "message": message,
                         "full_text": text,
                     },
-                )
+                ),
             )
 
     return nodes
@@ -386,7 +386,7 @@ def ingest_rg_matches(
                     "full_text": text,
                     "source": "rg",
                 },
-            )
+            ),
         )
 
     return nodes
@@ -424,7 +424,7 @@ def ingest_inheritance(
                 target=f"{file_path}:{base_class}",
                 edge_type=EdgeType.INHERITS,
                 metadata={"language": "typescript"},
-            )
+            ),
         )
 
     for impl_match in ts_implements:
@@ -437,7 +437,7 @@ def ingest_inheritance(
                         target=f"{file_path}:{iface}",
                         edge_type=EdgeType.IMPLEMENTS,
                         metadata={"language": "typescript"},
-                    )
+                    ),
                 )
 
     # Python patterns
@@ -454,7 +454,7 @@ def ingest_inheritance(
                         target=f"{file_path}:{base}",
                         edge_type=EdgeType.INHERITS,
                         metadata={"language": "python"},
-                    )
+                    ),
                 )
 
     return edges
@@ -496,7 +496,7 @@ def ingest_test_mapping(
                     target=prod_file,
                     edge_type=EdgeType.TESTS,
                     metadata={"convention": "name_match"},
-                )
+                ),
             )
 
     return edges

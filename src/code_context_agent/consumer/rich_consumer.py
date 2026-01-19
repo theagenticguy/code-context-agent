@@ -213,7 +213,7 @@ class RichEventConsumer(EventConsumer):
                     title="Agent Reasoning",
                     border_style="green",
                     padding=(0, 1),
-                )
+                ),
             )
 
         # Error display
@@ -223,7 +223,7 @@ class RichEventConsumer(EventConsumer):
                     Text(self.state.error, style="bold red"),
                     title="Error",
                     border_style="red",
-                )
+                ),
             )
 
         # Completion indicator

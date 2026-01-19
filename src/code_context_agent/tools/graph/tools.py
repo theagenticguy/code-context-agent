@@ -101,7 +101,7 @@ def code_graph_create(
             "graph_id": graph_id,
             "description": description,
             "message": f"Created new code graph: {graph_id}",
-        }
+        },
     )
 
 
@@ -231,7 +231,7 @@ def code_graph_ingest_lsp(
             "edges_added": edges_added,
             "total_nodes": graph.node_count,
             "total_edges": graph.edge_count,
-        }
+        },
     )
 
 
@@ -330,7 +330,7 @@ def code_graph_ingest_astgrep(
             "nodes_added": nodes_added,
             "categories": list(categories),
             "total_nodes": graph.node_count,
-        }
+        },
     )
 
 
@@ -398,7 +398,7 @@ def code_graph_ingest_rg(
             "graph_id": graph_id,
             "nodes_added": nodes_added,
             "total_nodes": graph.node_count,
-        }
+        },
     )
 
 
@@ -474,7 +474,7 @@ def code_graph_ingest_inheritance(
             "edges_added": edges_added,
             "edge_types": ["inherits", "implements"],
             "total_edges": graph.edge_count,
-        }
+        },
     )
 
 
@@ -560,7 +560,7 @@ def code_graph_ingest_tests(
             "graph_id": graph_id,
             "edges_added": edges_added,
             "total_edges": graph.edge_count,
-        }
+        },
     )
 
 
@@ -683,47 +683,46 @@ def code_graph_analyze(
         results = analyzer.find_hotspots(top_k)
         return _json_response({"status": "success", "analysis": "hotspots", "results": results})
 
-    elif analysis_type == "foundations":
+    if analysis_type == "foundations":
         results = analyzer.find_foundations(top_k)
         return _json_response({"status": "success", "analysis": "foundations", "results": results})
 
-    elif analysis_type == "entry_points":
+    if analysis_type == "entry_points":
         results = analyzer.find_entry_points()
         return _json_response({"status": "success", "analysis": "entry_points", "results": results})
 
-    elif analysis_type == "modules":
+    if analysis_type == "modules":
         results = analyzer.detect_modules(resolution)
         return _json_response(
-            {"status": "success", "analysis": "modules", "module_count": len(results), "results": results}
+            {"status": "success", "analysis": "modules", "module_count": len(results), "results": results},
         )
 
-    elif analysis_type == "coupling":
+    if analysis_type == "coupling":
         if not node_a or not node_b:
             return _json_response({"status": "error", "message": "node_a and node_b required for coupling"})
         results = analyzer.calculate_coupling(node_a, node_b)
         return _json_response({"status": "success", "analysis": "coupling", "results": results})
 
-    elif analysis_type == "similar":
+    if analysis_type == "similar":
         if not node_a:
             return _json_response({"status": "error", "message": "node_a required for similar analysis"})
         results = analyzer.get_similar_nodes(node_a, top_k)
         return _json_response({"status": "success", "analysis": "similar", "results": results})
 
-    elif analysis_type == "category":
+    if analysis_type == "category":
         if not category:
             return _json_response({"status": "error", "message": "category required for category analysis"})
         results = analyzer.find_clusters_by_category(category)
         return _json_response({"status": "success", "analysis": "category", "category": category, "results": results})
 
-    elif analysis_type == "dependencies":
+    if analysis_type == "dependencies":
         if not node_a:
             return _json_response({"status": "error", "message": "node_a required for dependencies"})
         direction = "outgoing"  # What does this node depend on
         results = analyzer.get_dependency_chain(node_a, direction)
         return _json_response({"status": "success", "analysis": "dependencies", "results": results})
 
-    else:
-        return _json_response({"status": "error", "message": f"Unknown analysis_type: {analysis_type}"})
+    return _json_response({"status": "error", "message": f"Unknown analysis_type: {analysis_type}"})
 
 
 @tool
@@ -853,40 +852,39 @@ def code_graph_explore(
         results = explorer.get_overview()
         return _json_response({"status": "success", "action": "overview", **results})
 
-    elif action == "expand_node":
+    if action == "expand_node":
         if not node_id:
             return _json_response({"status": "error", "message": "node_id required for expand_node"})
         results = explorer.expand_node(node_id, depth)
         return _json_response({"status": "success", "action": "expand_node", **results})
 
-    elif action == "expand_module":
+    if action == "expand_module":
         if module_id < 0:
             return _json_response({"status": "error", "message": "module_id required for expand_module"})
         results = explorer.expand_module(module_id)
         return _json_response({"status": "success", "action": "expand_module", **results})
 
-    elif action == "path":
+    if action == "path":
         if not node_id or not target_node:
             return _json_response({"status": "error", "message": "node_id and target_node required for path"})
         results = explorer.get_path_between(node_id, target_node)
         return _json_response({"status": "success", "action": "path", **results})
 
-    elif action == "category":
+    if action == "category":
         if not category:
             return _json_response({"status": "error", "message": "category required for category exploration"})
         results = explorer.explore_category(category)
         return _json_response({"status": "success", "action": "category", **results})
 
-    elif action == "status":
+    if action == "status":
         results = explorer.get_exploration_status()
         return _json_response({"status": "success", "action": "status", **results})
 
-    elif action == "reset":
+    if action == "reset":
         explorer.reset_exploration()
         return _json_response({"status": "success", "action": "reset", "message": "Exploration state reset"})
 
-    else:
-        return _json_response({"status": "error", "message": f"Unknown action: {action}"})
+    return _json_response({"status": "error", "message": f"Unknown action: {action}"})
 
 
 @tool
@@ -984,12 +982,11 @@ def code_graph_export(
                 link.pop("metadata", None)
         return _json_response({"status": "success", "format": "json", "graph": data})
 
-    elif format == "mermaid":
+    if format == "mermaid":
         mermaid = _export_mermaid(graph, max_nodes)
         return _json_response({"status": "success", "format": "mermaid", "diagram": mermaid})
 
-    else:
-        return _json_response({"status": "error", "message": f"Unknown format: {format}"})
+    return _json_response({"status": "error", "message": f"Unknown format: {format}"})
 
 
 def _export_mermaid(graph: CodeGraph, max_nodes: int = 100) -> str:
@@ -1128,7 +1125,7 @@ def code_graph_save(
             "path": str(path),
             "nodes": graph.node_count,
             "edges": graph.edge_count,
-        }
+        },
     )
 
 
@@ -1206,7 +1203,7 @@ def code_graph_load(
             "path": str(path),
             "nodes": graph.node_count,
             "edges": graph.edge_count,
-        }
+        },
     )
 
 
@@ -1299,5 +1296,5 @@ def code_graph_stats(
             "total_edges": graph.edge_count,
             "nodes_by_type": node_types,
             "edges_by_type": edge_types,
-        }
+        },
     )
