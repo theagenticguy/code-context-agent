@@ -7,19 +7,171 @@ output to the terminal.
 
 from __future__ import annotations
 
-import logging
 import subprocess
+import time
+from pathlib import Path
 from typing import Any
 
+from loguru import logger
+from pydantic import BaseModel, computed_field
 from strands import tool
-
-logger = logging.getLogger(__name__)
 
 # Default timeout for shell commands (15 minutes)
 DEFAULT_TIMEOUT = 900
 
 # Maximum output size to capture (100KB)
 MAX_OUTPUT_SIZE = 100_000
+
+
+class CommandResult(BaseModel):
+    """Result of a shell command execution."""
+
+    command: str
+    exit_code: int
+    stdout: str
+    stderr: str
+    execution_time: float = 0.0
+
+    @computed_field
+    @property
+    def success(self) -> bool:
+        """Command succeeded if exit code is 0 and no stderr."""
+        return self.exit_code == 0 and not self.stderr
+
+    @computed_field
+    @property
+    def status(self) -> str:
+        """Status string for display."""
+        return "success" if self.success else "error"
+
+
+def _truncate_output(text: str, max_size: int) -> tuple[str, bool]:
+    """Truncate output if needed.
+
+    Args:
+        text: Output text to truncate
+        max_size: Maximum size in characters
+
+    Returns:
+        Tuple of (truncated_text, was_truncated)
+    """
+    if not text or len(text) <= max_size:
+        return text, False
+
+    truncated = text[:max_size]
+    truncated += f"\n... (truncated, {len(text)} total chars)"
+    return truncated, True
+
+
+def _execute_single_command(
+    cmd: str,
+    work_dir: str,
+    timeout: int,
+) -> CommandResult:
+    """Execute one command and return structured result.
+
+    Args:
+        cmd: Command string to execute
+        work_dir: Working directory
+        timeout: Timeout in seconds
+
+    Returns:
+        CommandResult with execution details
+    """
+    start_time = time.time()
+
+    try:
+        proc = subprocess.run(
+            ["sh", "-c", cmd],
+            cwd=work_dir,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+
+        # Truncate outputs if needed
+        stdout, _ = _truncate_output(
+            proc.stdout or "",
+            MAX_OUTPUT_SIZE,
+        )
+        stderr, _ = _truncate_output(
+            proc.stderr or "",
+            MAX_OUTPUT_SIZE,
+        )
+
+        execution_time = time.time() - start_time
+
+        return CommandResult(
+            command=cmd,
+            exit_code=proc.returncode,
+            stdout=stdout,
+            stderr=stderr,
+            execution_time=execution_time,
+        )
+
+    except subprocess.TimeoutExpired:
+        execution_time = time.time() - start_time
+        return CommandResult(
+            command=cmd,
+            exit_code=-1,
+            stdout="",
+            stderr=f"Command timed out after {timeout} seconds",
+            execution_time=execution_time,
+        )
+
+    except Exception as e:
+        execution_time = time.time() - start_time
+        logger.exception(f"Command execution failed: {cmd}")
+        return CommandResult(
+            command=cmd,
+            exit_code=-1,
+            stdout="",
+            stderr=str(e),
+            execution_time=execution_time,
+        )
+
+
+def _format_results(results: list[CommandResult]) -> dict[str, Any]:
+    """Build the final response structure.
+
+    Args:
+        results: List of command results
+
+    Returns:
+        Dict with status and content blocks
+    """
+    content = []
+
+    # Summary block
+    success_count = sum(1 for r in results if r.success)
+    error_count = len(results) - success_count
+
+    content.append(
+        {
+            "text": f"Execution Summary:\n"
+            f"Total commands: {len(results)}\n"
+            f"Successful: {success_count}\n"
+            f"Failed: {error_count}",
+        },
+    )
+
+    # Individual result blocks
+    for result in results:
+        text_parts = [
+            f"Command: {result.command}",
+            f"Status: {result.status}",
+            f"Exit Code: {result.exit_code}",
+        ]
+
+        if result.stdout:
+            text_parts.append(f"Output:\n{result.stdout}")
+
+        if result.stderr:
+            text_parts.append(f"Error:\n{result.stderr}")
+
+        content.append({"text": "\n".join(text_parts)})
+
+    return {"content": content}
 
 
 @tool
@@ -60,8 +212,7 @@ def shell(
         >>> shell(["git status", "git diff"], work_dir="/repo")
         >>> shell("npm test", timeout=300, ignore_errors=True)
     """
-    from pathlib import Path
-
+    # Set defaults
     if timeout is None:
         timeout = DEFAULT_TIMEOUT
 
@@ -71,109 +222,24 @@ def shell(
     # Normalize command to list
     commands = [command] if isinstance(command, str) else command
 
+    # Execute commands
     results = []
-    has_errors = False
-
     for cmd in commands:
-        try:
-            # Run command with STDIO capture
-            proc = subprocess.run(
-                ["sh", "-c", cmd],
-                cwd=work_dir,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-            )
+        result = _execute_single_command(cmd, work_dir, timeout)
+        results.append(result)
 
-            stdout = proc.stdout[:MAX_OUTPUT_SIZE] if proc.stdout else ""
-            stderr = proc.stderr[:MAX_OUTPUT_SIZE] if proc.stderr else ""
+        # Stop on error unless ignore_errors is set
+        if not result.success and not ignore_errors:
+            break
 
-            # Truncation notice
-            if proc.stdout and len(proc.stdout) > MAX_OUTPUT_SIZE:
-                stdout += f"\n... (truncated, {len(proc.stdout)} total chars)"
-            if proc.stderr and len(proc.stderr) > MAX_OUTPUT_SIZE:
-                stderr += f"\n... (truncated, {len(proc.stderr)} total chars)"
-
-            # Check for errors
-            cmd_has_error = proc.returncode != 0 or stderr
-
-            if cmd_has_error:
-                has_errors = True
-
-            result = {
-                "command": cmd,
-                "exit_code": proc.returncode,
-                "status": "error" if cmd_has_error else "success",
-                "stdout": stdout,
-                "stderr": stderr,
-            }
-            results.append(result)
-
-            # Stop on error unless ignore_errors is set
-            if cmd_has_error and not ignore_errors:
-                break
-
-        except subprocess.TimeoutExpired:
-            has_errors = True
-            results.append(
-                {
-                    "command": cmd,
-                    "exit_code": -1,
-                    "status": "error",
-                    "stdout": "",
-                    "stderr": f"Command timed out after {timeout} seconds",
-                },
-            )
-            if not ignore_errors:
-                break
-
-        except Exception as e:
-            has_errors = True
-            results.append(
-                {
-                    "command": cmd,
-                    "exit_code": -1,
-                    "status": "error",
-                    "stdout": "",
-                    "stderr": str(e),
-                },
-            )
-            if not ignore_errors:
-                break
-
-    # Format content for agent
-    content = []
-
-    # Summary
-    success_count = sum(1 for r in results if r["status"] == "success")
-    error_count = len(results) - success_count
-
-    content.append(
-        {
-            "text": f"Execution Summary:\n"
-            f"Total commands: {len(results)}\n"
-            f"Successful: {success_count}\n"
-            f"Failed: {error_count}",
-        },
-    )
-
-    # Individual results
-    for result in results:
-        text_parts = [
-            f"Command: {result['command']}",
-            f"Status: {result['status']}",
-            f"Exit Code: {result['exit_code']}",
-        ]
-
-        if result["stdout"]:
-            text_parts.append(f"Output:\n{result['stdout']}")
-
-        if result["stderr"]:
-            text_parts.append(f"Error:\n{result['stderr']}")
-
-        content.append({"text": "\n".join(text_parts)})
+    # Format response
+    response = _format_results(results)
 
     # Determine overall status
+    has_errors = any(not r.success for r in results)
     if has_errors and not ignore_errors:
-        return {"status": "error", "content": content}
-    return {"status": "success", "content": content}
+        response["status"] = "error"
+    else:
+        response["status"] = "success"
+
+    return response
