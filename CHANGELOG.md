@@ -1,3 +1,13 @@
+## v3.1.0 (2026-01-21)
+
+### Feat
+
+- add git tools
+
+### Fix
+
+- pydantic errors
+
 ## v3.0.3 (2026-01-19)
 
 ### Refactor
