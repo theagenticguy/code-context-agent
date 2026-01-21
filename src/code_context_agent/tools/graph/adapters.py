@@ -537,3 +537,139 @@ def _match_test_to_prod(
         return prod_by_name[stem]
 
     return None
+
+
+def ingest_git_cochanges(
+    cochanges_result: dict[str, Any],
+    min_percentage: float = 20.0,
+) -> list[CodeEdge]:
+    """Convert git_files_changed_together output to co-change edges.
+
+    Creates bidirectional edges between files that frequently change together,
+    with weight based on co-change frequency.
+
+    Args:
+        cochanges_result: JSON result from git_files_changed_together tool
+        min_percentage: Minimum co-change percentage to create an edge (default 20%)
+
+    Returns:
+        List of CodeEdge objects representing co-change relationships
+
+    Example:
+        >>> result = json.loads(git_files_changed_together("/repo", "src/auth.py"))
+        >>> edges = ingest_git_cochanges(result, min_percentage=15.0)
+    """
+    edges: list[CodeEdge] = []
+
+    if cochanges_result.get("status") != "success":
+        return edges
+
+    source_file = cochanges_result.get("file_path", "")
+    if not source_file:
+        return edges
+
+    for cochange in cochanges_result.get("cochanged_files", []):
+        percentage = cochange.get("percentage", 0)
+        if percentage < min_percentage:
+            continue
+
+        target_file = cochange.get("path", "")
+        if not target_file:
+            continue
+
+        # Weight is normalized co-change frequency (0-1)
+        weight = percentage / 100.0
+
+        edges.append(
+            CodeEdge(
+                source=source_file,
+                target=target_file,
+                edge_type=EdgeType.COCHANGES,
+                weight=weight,
+                metadata={
+                    "count": cochange.get("count", 0),
+                    "percentage": percentage,
+                    "source": "git_cochanges",
+                },
+            ),
+        )
+
+    return edges
+
+
+def ingest_git_hotspots(
+    hotspots_result: dict[str, Any],
+) -> list[CodeNode]:
+    """Convert git_hotspots output to file nodes with churn metadata.
+
+    Creates FILE nodes for each hotspot with commit frequency in metadata.
+    This helps identify files that may need attention.
+
+    Args:
+        hotspots_result: JSON result from git_hotspots tool
+
+    Returns:
+        List of CodeNode objects representing hotspot files
+    """
+    nodes: list[CodeNode] = []
+
+    if hotspots_result.get("status") != "success":
+        return nodes
+
+    for hotspot in hotspots_result.get("hotspots", []):
+        file_path = hotspot.get("path", "")
+        if not file_path:
+            continue
+
+        nodes.append(
+            CodeNode(
+                id=file_path,
+                name=Path(file_path).name,
+                node_type=NodeType.FILE,
+                file_path=file_path,
+                line_start=0,
+                line_end=0,
+                metadata={
+                    "commits": hotspot.get("commits", 0),
+                    "churn_percentage": hotspot.get("percentage", 0),
+                    "source": "git_hotspots",
+                },
+            ),
+        )
+
+    return nodes
+
+
+def ingest_git_contributors(
+    contributors_result: dict[str, Any],
+    _file_path: str | None = None,
+) -> dict[str, Any]:
+    """Extract contributor metadata from git_contributors or git_blame_summary.
+
+    Returns metadata that can be attached to file or repo nodes.
+
+    Args:
+        contributors_result: JSON result from git_contributors or git_blame_summary
+        _file_path: Reserved for future use (file context for blame results)
+
+    Returns:
+        Dictionary of contributor metadata suitable for node metadata
+    """
+    if contributors_result.get("status") != "success":
+        return {}
+
+    # Handle both contributors and blame_summary formats
+    authors = contributors_result.get("contributors") or contributors_result.get("authors", [])
+
+    if not authors:
+        return {}
+
+    # Get primary contributor
+    primary = authors[0] if authors else {}
+
+    return {
+        "primary_author": primary.get("email", ""),
+        "author_count": len(authors),
+        "authors": [a.get("email", "") for a in authors[:5]],  # Top 5
+        "source": "git_contributors" if "contributors" in contributors_result else "git_blame",
+    }

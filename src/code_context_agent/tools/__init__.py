@@ -16,6 +16,15 @@ from .discovery import (
     rg_search,
     write_file_list,
 )
+from .git import (
+    git_blame_summary,
+    git_contributors,
+    git_diff_file,
+    git_file_history,
+    git_files_changed_together,
+    git_hotspots,
+    git_recent_commits,
+)
 from .graph import (
     code_graph_analyze,
     code_graph_create,
@@ -55,6 +64,14 @@ __all__ = [
     "rg_search",
     "write_file_list",
     "read_file_bounded",
+    # Git history tools
+    "git_files_changed_together",
+    "git_file_history",
+    "git_recent_commits",
+    "git_diff_file",
+    "git_blame_summary",
+    "git_hotspots",
+    "git_contributors",
     # LSP tools
     "lsp_start",
     "lsp_shutdown",

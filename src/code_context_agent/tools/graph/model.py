@@ -35,6 +35,7 @@ class EdgeType(Enum):
     INHERITS = "inherits"  # Class/type inheritance
     IMPLEMENTS = "implements"  # Interface implementation
     TESTS = "tests"  # Test → production code coverage
+    COCHANGES = "cochanges"  # Files that frequently change together (git history)
 
 
 # LSP SymbolKind to NodeType mapping

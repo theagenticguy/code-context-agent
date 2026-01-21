@@ -35,20 +35,20 @@ CORE_RULES = """\
 Use the code graph to unify discovery results and surface structural insights:
 
 ```
-DISCOVERY          GRAPH (optional)       OUTPUTS
-┌─────────────┐   ┌────────────────┐   ┌──────────────────┐
-│ lsp_*       │──▶│ ingest → graph │──▶│ CONTEXT.md       │
-│ astgrep_*   │   │ analyze        │   │ FILE_INDEX.md    │
-│ rg_search   │   │ explore        │   │ files.business   │
-│ repomix_*   │   │ export mermaid │   │ CONTEXT.bundle   │
-└─────────────┘   └────────────────┘   └──────────────────┘
+DISCOVERY          GIT CONTEXT           GRAPH                    OUTPUTS
+┌─────────────┐   ┌───────────────┐   ┌────────────────┐   ┌──────────────────┐
+│ lsp_*       │──▶│ git_hotspots  │──▶│ ingest → graph │──▶│ CONTEXT.md       │
+│ astgrep_*   │   │ git_cochanged │   │ analyze        │   │ FILE_INDEX.md    │
+│ rg_search   │   │ git_blame     │   │ explore        │   │ files.business   │
+│ repomix_*   │   │ git_history   │   │ export mermaid │   │ CONTEXT.bundle   │
+└─────────────┘   └───────────────┘   └────────────────┘   └──────────────────┘
 ```
 
 The graph adds value when you need:
 - Hotspots (betweenness centrality) - find bottleneck code
 - Foundations (PageRank) - find core infrastructure
 - Modules (Louvain clustering) - detect logical groupings
-- Coupling analysis - understand dependencies
+- Coupling analysis - understand dependencies (static + git-based)
 
 ## Critical Tool Failures (FAST EXIT)
 If `lsp_start` returns an error status, IMMEDIATELY:
@@ -224,6 +224,129 @@ mermaid = code_graph_export("main", "mermaid", max_nodes=15)
 code_graph_save("main", ".agent/code_graph.json")
 ```"""
 
+GIT_HISTORY_USAGE = """\
+## Git History Tools
+
+Git history provides valuable context that static analysis misses:
+- **Coupling**: Files that change together have implicit dependencies
+- **Expertise**: Who knows what parts of the codebase
+- **Evolution**: How code has changed over time and why
+- **Risk**: High-churn files may indicate instability
+
+### Available Tools
+
+| Tool | Purpose | Key Output |
+|------|---------|------------|
+| `git_files_changed_together` | Coupling detection | Co-changed files with % |
+| `git_file_history` | File evolution | Commits touching a file |
+| `git_recent_commits` | Development activity | Recent repo commits |
+| `git_diff_file` | Change details | Unified diff content |
+| `git_blame_summary` | Code ownership | Authors by lines owned |
+| `git_hotspots` | Churn analysis | Files ranked by commits |
+| `git_contributors` | Team structure | Contributors ranked by activity |
+
+### Coupling Detection (Critical for Understanding)
+
+**`git_files_changed_together(repo_path, file_path, limit=100)`**
+
+Finds files that frequently change with a given file - reveals implicit dependencies
+not captured by imports. Use this to understand what else might need to change.
+
+Interpretation:
+- **>50% coupling**: Very tight coupling, consider merging or abstracting
+- **20-50% coupling**: Normal feature-level coupling
+- **<20% coupling**: Incidental, less significant
+
+```python
+# Find files coupled to the auth module
+result = git_files_changed_together(repo_path, "src/auth.py", limit=50)
+# Returns: {"cochanged_files": [{"path": "src/user.py", "percentage": 65.0}, ...]}
+```
+
+### Expertise Detection
+
+**`git_blame_summary(repo_path, file_path)`**
+
+Identifies who has expertise on a file - useful for understanding ownership.
+
+```python
+# Who knows this file best?
+result = git_blame_summary(repo_path, "src/critical_service.py")
+# Returns: {"authors": [{"email": "expert@co.com", "percentage": 80.0}, ...]}
+```
+
+**`git_contributors(repo_path, limit=100)`**
+
+Repository-wide contributor statistics - understand team structure.
+
+### Change Context
+
+**`git_file_history(repo_path, file_path, limit=20)`**
+
+Get commit messages explaining WHY changes were made - invaluable context.
+
+```python
+# Understand why this file evolved
+result = git_file_history(repo_path, "src/payment.py", limit=10)
+# Commit messages often explain intent better than code
+```
+
+**`git_diff_file(repo_path, file_path, commit=None, context_lines=3)`**
+
+See exact changes - useful for understanding recent modifications.
+
+### Churn Analysis (Risk Identification)
+
+**`git_hotspots(repo_path, limit=50, since=None)`**
+
+Files changed frequently may indicate:
+- Active development areas
+- Code with bugs requiring frequent fixes
+- Poor design requiring constant modification
+
+```python
+# Find files that change most often
+result = git_hotspots(repo_path, limit=30)
+# High-churn files deserve extra scrutiny
+```
+
+### Graph Integration
+
+Git data integrates with the code graph via adapters:
+
+```python
+# Add co-change relationships to graph
+cochanges = git_files_changed_together(repo_path, "src/auth.py")
+from code_context_agent.tools.graph.adapters import ingest_git_cochanges
+edges = ingest_git_cochanges(json.loads(cochanges), min_percentage=20.0)
+# Creates COCHANGES edges with coupling weights
+
+# Add hotspot metadata to graph
+hotspots = git_hotspots(repo_path)
+from code_context_agent.tools.graph.adapters import ingest_git_hotspots
+nodes = ingest_git_hotspots(json.loads(hotspots))
+# Creates FILE nodes with churn metadata
+```
+
+### When to Use Git Tools
+
+| Need | Tool | Notes |
+|------|------|-------|
+| What changes with X? | `git_files_changed_together` | Start here for coupling |
+| Who knows this code? | `git_blame_summary` | File-level expertise |
+| Why was this changed? | `git_file_history` | Read commit messages |
+| What's changing a lot? | `git_hotspots` | Risk identification |
+| Recent activity | `git_recent_commits` | Development velocity |
+| Team structure | `git_contributors` | Repo-wide expertise |
+| Exact changes | `git_diff_file` | Deep code investigation |
+
+### Anti-patterns
+
+- Running `git_files_changed_together` on every file (expensive)
+- Ignoring commit messages (often explain the "why")
+- Using git tools on untracked/new files
+- Treating low-coupling files as unrelated (may be decoupled by design)"""
+
 # =============================================================================
 # FAST MODE PROMPT
 # =============================================================================
@@ -258,6 +381,24 @@ Search entrypoints: `rg_search` for `main`, `createServer`, `if __name__`
 `astgrep_scan_rule_pack` with appropriate rule pack:
 - Python: `py_business_logic`
 - TypeScript/JS: `ts_business_logic`
+
+### Phase 3.5: Git History Context (recommended)
+Use git tools to understand coupling and evolution:
+
+```python
+# Find high-churn files (risk indicators)
+hotspots = git_hotspots(repo_path, limit=30)
+
+# For key business files, find implicit dependencies
+for key_file in business_logic_files[:5]:
+    coupling = git_files_changed_together(repo_path, key_file, limit=50)
+    # Files with >50% coupling are tightly bound
+```
+
+Key insights from git:
+- **Coupling**: `git_files_changed_together` reveals hidden dependencies
+- **Risk**: `git_hotspots` identifies frequently-changed (potentially unstable) code
+- **Context**: `git_file_history` explains WHY code evolved
 
 ### Phase 4: Graph Analysis (recommended for large codebases)
 Build and analyze the code graph to surface structural insights:
@@ -377,6 +518,8 @@ that need thorough understanding for onboarding or refactoring work.
 
 {CODE_GRAPH_USAGE}
 
+{GIT_HISTORY_USAGE}
+
 ## Phases
 
 ### Phase 0-2: Foundation (same as FAST)
@@ -418,6 +561,38 @@ Target: 20-50 business logic candidates with categories:
 - `integrations`: External API calls
 
 {BUSINESS_LOGIC_DEFINITION}
+
+### Phase 4.5: Git History Deep Analysis
+Comprehensive git context for coupling, ownership, and evolution:
+
+```python
+# 1. Change hotspots - identify risky/active areas
+hotspots = git_hotspots(repo_path, limit=100)
+
+# 2. Coupling analysis for key business files
+for business_file in top_business_files[:10]:
+    cochanges = git_files_changed_together(repo_path, business_file, limit=100)
+    # Ingest high-coupling relationships into graph
+    from code_context_agent.tools.graph.adapters import ingest_git_cochanges
+    edges = ingest_git_cochanges(json.loads(cochanges), min_percentage=20.0)
+    # Creates COCHANGES edges with coupling weights
+
+# 3. Ownership for critical files - who to ask
+for critical_file in business_logic_files[:5]:
+    blame = git_blame_summary(repo_path, critical_file)
+    # Primary author is the domain expert
+
+# 4. Evolution context - WHY things changed
+for hotspot in top_hotspots[:5]:
+    history = git_file_history(repo_path, hotspot["path"], limit=10)
+    # Commit messages explain design decisions
+```
+
+**Git insights to capture:**
+- Files with >50% coupling → likely need to change together
+- High-churn + untested → risk area for CONTEXT.md
+- Primary authors → domain experts for ownership table
+- Recent commits → active development context
 
 ### Phase 5: Graph Analysis Deep
 Run comprehensive analysis on the populated graph:
@@ -631,12 +806,16 @@ Parallel-safe (call together):
 - lsp_document_symbols on different files
 - Multiple code_graph_ingest_* calls (different types)
 - Multiple code_graph_analyze calls (different types)
+- git_hotspots + git_contributors (independent repo queries)
+- Multiple git_file_history calls (different files)
+- Multiple git_blame_summary calls (different files)
 
 Sequential-required:
 - lsp_start → lsp_* operations
 - code_graph_create → code_graph_ingest_* → code_graph_analyze
 - write_file_list → repomix_bundle
 - create_file_manifest → file operations
+- git_files_changed_together depends on knowing key files first
 
 Output sizes:
 | Tool | Typical | Max Safe |
@@ -646,7 +825,11 @@ Output sizes:
 | repomix_bundle | 50-500KB | 2MB |
 | code_graph_export (json) | 10-100KB | 500KB |
 | code_graph_export (mermaid) | 1-5KB | 20KB |
-| code_graph_analyze | 1-10KB | 50KB |"""
+| code_graph_analyze | 1-10KB | 50KB |
+| git_hotspots | 2-5KB | 20KB |
+| git_files_changed_together | 1-5KB | 15KB |
+| git_file_history | 2-10KB | 30KB |
+| git_blame_summary | 1-3KB | 10KB |"""
 
 STEERING_GRAPH_EXPLORATION = """\
 **GRAPH EXPLORATION STRATEGY**
@@ -705,6 +888,7 @@ __all__ = [
     "CORE_RULES",
     "DEEP_PROMPT",
     "FAST_PROMPT",
+    "GIT_HISTORY_USAGE",
     "OUTPUT_FORMAT",
     "STEERING_ANTI_PATTERNS",
     "STEERING_CONCISENESS",

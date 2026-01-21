@@ -1,6 +1,5 @@
 """Tests for code graph analysis."""
 
-
 from code_context_agent.tools.graph.analysis import CodeAnalyzer
 from code_context_agent.tools.graph.model import (
     CodeEdge,

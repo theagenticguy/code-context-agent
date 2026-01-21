@@ -1,6 +1,5 @@
 """Tests for code graph model."""
 
-
 from code_context_agent.tools.graph.model import (
     CodeEdge,
     CodeGraph,
@@ -35,6 +34,7 @@ class TestEdgeType:
         assert EdgeType.INHERITS.value == "inherits"
         assert EdgeType.IMPLEMENTS.value == "implements"
         assert EdgeType.TESTS.value == "tests"
+        assert EdgeType.COCHANGES.value == "cochanges"
 
 
 class TestLspKindMapping:
