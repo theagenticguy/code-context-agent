@@ -1,3 +1,13 @@
+## v4.1.0 (2026-02-24)
+
+### Feat
+
+- reimagine TUI as tool-execution dashboard
+
+### Fix
+
+- TUI glitchiness and unfortunate run ID truncation
+
 ## v4.0.1 (2026-02-24)
 
 ### Fix
