@@ -1,5 +1,5 @@
 [build-system]
-requires = ["uv_build>=0.9.18,<0.10.0"]
+requires = ["uv_build>=0.10.5,<0.11.0"]
 build-backend = "uv_build"
 
 [project]
@@ -16,10 +16,10 @@ dependencies = [
     "loguru>=0.7.3",
     "networkx[default,extra]>=3.6.1",
     "pydantic>=2.12.5",
-    "pydantic-settings>=2.12.0",
-    "rich>=14.2.0",
-    "strands-agents>=1.22.0",
-    "strands-agents-tools>=0.2.19",
+    "pydantic-settings>=2.13.1",
+    "rich>=14.3.3",
+    "strands-agents>=1.27.0",
+    "strands-agents-tools>=0.2.21",
     "ty>=0.0.18",
 ]
 
