@@ -16,8 +16,10 @@ variables:
 lint:
   stage: lint
   image: ghcr.io/astral-sh/uv:0.9-python3.13-bookworm-slim
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends gcc graphviz libgraphviz-dev pkg-config
   script:
-    - uv sync --group dev --no-install-package pygraphviz
+    - uv sync --group dev
     - uv run ruff check src/
     - uv run ruff format --check src/
     - uv run ty check src/
@@ -39,8 +41,10 @@ lint:
 test:
   stage: test
   image: ghcr.io/astral-sh/uv:0.9-python3.13-bookworm-slim
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends gcc graphviz libgraphviz-dev pkg-config
   script:
-    - uv sync --group dev --no-install-package pygraphviz
+    - uv sync --group dev
     - uv run pytest --junitxml=report.xml
   artifacts:
     when: always
@@ -66,9 +70,9 @@ build-docs:
   stage: build-docs
   image: ghcr.io/astral-sh/uv:0.9-python3.13-bookworm-slim
   before_script:
-    - apt-get update && apt-get install -y --no-install-recommends git
+    - apt-get update && apt-get install -y --no-install-recommends git gcc graphviz libgraphviz-dev pkg-config
   script:
-    - uv sync --group docs --no-install-package pygraphviz
+    - uv sync --group docs
     - uv run mkdocs build
   artifacts:
     paths:
