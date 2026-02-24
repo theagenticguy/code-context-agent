@@ -94,14 +94,20 @@ def analyze(
     """
     import asyncio
 
+    from loguru import logger
+
     from code_context_agent.agent import run_analysis
+    from code_context_agent.utils import setup_logger
 
-    # Enable debug logging if requested
+    # Configure logging: suppress loguru in normal mode (Rich Live conflict),
+    # enable full logging in debug mode (which uses QuietConsumer instead)
     if debug:
-        from code_context_agent.utils import setup_logger
-
         setup_logger(level="DEBUG")
-        console.print("[dim]Debug logging enabled[/dim]")
+        console.print("[dim]Debug logging enabled (live display disabled)[/dim]")
+    else:
+        # Remove default loguru handler to prevent stderr writes that break Rich Live
+        logger.remove()
+        setup_logger(level="WARNING")
 
     repo_path = path.resolve()
 
@@ -122,13 +128,16 @@ def analyze(
             console.print(f"  Focus: [magenta]{focus}[/magenta]")
         console.print()
 
+    # In debug mode, use quiet consumer (log output replaces Live display)
+    use_quiet = quiet or debug
+
     # Run the analysis
     result = asyncio.run(
         run_analysis(
             repo_path=repo_path,
             output_dir=output_dir,
             focus=focus or None,
-            quiet=quiet,
+            quiet=use_quiet,
         ),
     )
 
