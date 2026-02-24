@@ -1,3 +1,9 @@
+## v4.1.1 (2026-02-24)
+
+### Fix
+
+- suppress loguru output during Rich Live to prevent stacked panels
+
 ## v4.1.0 (2026-02-24)
 
 ### Feat
