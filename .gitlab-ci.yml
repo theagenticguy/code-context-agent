@@ -1,0 +1,166 @@
+stages:
+  - lint
+  - test
+  - build-docs
+  - pages
+  - build
+  - release
+
+variables:
+  UV_CACHE_DIR: .uv-cache
+
+# =============================================================================
+# Lint & Type Check
+# =============================================================================
+
+lint:
+  stage: lint
+  image: ghcr.io/astral-sh/uv:0.9-python3.13-bookworm-slim
+  script:
+    - uv sync --group dev
+    - uv run ruff check src/
+    - uv run ruff format --check src/
+    - uv run ty check src/
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "web"
+  cache:
+    key:
+      files:
+        - uv.lock
+    paths:
+      - $UV_CACHE_DIR
+
+# =============================================================================
+# Tests
+# =============================================================================
+
+test:
+  stage: test
+  image: ghcr.io/astral-sh/uv:0.9-python3.13-bookworm-slim
+  script:
+    - uv sync --group dev
+    - uv run pytest --junitxml=report.xml
+  artifacts:
+    when: always
+    reports:
+      junit: report.xml
+    expire_in: 1 hour
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "web"
+  cache:
+    key:
+      files:
+        - uv.lock
+    paths:
+      - $UV_CACHE_DIR
+
+# =============================================================================
+# Documentation Build
+# =============================================================================
+
+build-docs:
+  stage: build-docs
+  image: ghcr.io/astral-sh/uv:0.9-python3.13-bookworm-slim
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends git
+  script:
+    - uv sync --group docs
+    - uv run mkdocs build
+  artifacts:
+    paths:
+      - site/
+    expire_in: 1 hour
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - docs/**/*
+        - mkdocs.yml
+        - src/**/*.py
+    - if: $CI_PIPELINE_SOURCE == "web"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - docs/**/*
+        - mkdocs.yml
+        - src/**/*.py
+  cache:
+    key:
+      files:
+        - uv.lock
+    paths:
+      - $UV_CACHE_DIR
+
+# =============================================================================
+# GitLab Pages Deployment
+# =============================================================================
+
+pages:
+  stage: pages
+  image: busybox:latest
+  dependencies:
+    - build-docs
+  script:
+    - mv site public
+  artifacts:
+    paths:
+      - public/
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - docs/**/*
+        - mkdocs.yml
+        - src/**/*.py
+    - if: $CI_PIPELINE_SOURCE == "web"
+  environment:
+    name: production
+    url: https://lalsaado.gitlab.aws.dev/code-context-agent
+
+# =============================================================================
+# Build Package
+# =============================================================================
+
+build:
+  stage: build
+  image: ghcr.io/astral-sh/uv:0.9-python3.13-bookworm-slim
+  script:
+    - uv build
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 1 week
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "web"
+  cache:
+    key:
+      files:
+        - uv.lock
+    paths:
+      - $UV_CACHE_DIR
+
+# =============================================================================
+# Release (on tags only)
+# =============================================================================
+
+release:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  dependencies:
+    - build
+  script:
+    - echo "Creating release for ${CI_COMMIT_TAG}"
+  release:
+    tag_name: $CI_COMMIT_TAG
+    name: "Release ${CI_COMMIT_TAG}"
+    description: "Release ${CI_COMMIT_TAG} of code-context-agent"
+    assets:
+      links:
+        - name: "Python wheel"
+          url: "${CI_PROJECT_URL}/-/jobs/${CI_JOB_ID}/artifacts/download"
+          link_type: package
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
