@@ -1,3 +1,13 @@
+## v4.0.0 (2026-02-24)
+
+### BREAKING CHANGE
+
+- removed --deep and --no-steering CLI flags
+
+### Feat
+
+- modernize to Opus 4.6, Pydantic structured output, Jinja2 templates, and enhanced tooling
+
 ## v3.1.0 (2026-01-21)
 
 ### Feat
