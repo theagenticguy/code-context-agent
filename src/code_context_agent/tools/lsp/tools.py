@@ -14,7 +14,87 @@ from loguru import logger
 from strands import tool
 
 from ...config import get_settings
+from .client import LspClient
 from .session import get_session_manager
+
+
+async def _try_fallback_session(
+    session_id: str, file_path: str,
+) -> tuple[list, str] | None:
+    """Try fallback LSP servers when the primary returned empty results.
+
+    Parses the session_id to determine language kind and workspace, then
+    tries each fallback server command (skipping the first, already tried).
+
+    Args:
+        session_id: Original session ID (format: "kind:workspace").
+        file_path: Absolute path to the file for document_symbols.
+
+    Returns:
+        Tuple of (symbols, server_name) if a fallback produced results, or None.
+    """
+    parts = session_id.split(":", 1)
+    if len(parts) != 2:
+        return None
+
+    kind, workspace = parts
+    settings = get_settings()
+
+    cmd_list = settings.lsp_servers.get(kind)
+    if cmd_list is None or len(cmd_list) < 2:
+        return None
+
+    manager = get_session_manager()
+    fallback_key = f"{kind}-fallback:{workspace}"
+
+    # Check if we already have a fallback session running
+    existing = manager.get_session(fallback_key)
+    if existing is not None:
+        try:
+            symbols = await existing.document_symbols(str(Path(file_path).resolve()))
+            server_name = manager.get_server_command_for_session(fallback_key) or "unknown"
+            if symbols:
+                return symbols, server_name
+        except (OSError, TimeoutError, RuntimeError, ValueError) as e:
+            logger.warning(f"Fallback session failed for document_symbols: {e}")
+        return None
+
+    # Try each fallback command (skip index 0 which was the primary)
+    import shlex
+
+    for i, cmd_str in enumerate(cmd_list[1:], start=1):
+        cmd = shlex.split(cmd_str)
+        try:
+            client = LspClient(request_timeout=float(settings.lsp_timeout))
+            init_options = manager._get_workspace_config(kind)
+            await client.start(
+                cmd,
+                workspace,
+                startup_timeout=float(settings.lsp_startup_timeout),
+                initialization_options=init_options,
+            )
+            manager._sessions[fallback_key] = client
+            manager._server_commands[fallback_key] = cmd_str
+
+            symbols = await client.document_symbols(str(Path(file_path).resolve()))
+            if symbols:
+                logger.info(
+                    f"LSP result-level fallback succeeded with: {cmd_str}",
+                )
+                return symbols, cmd_str
+
+            # Server started but also returned empty; try next
+            logger.debug(
+                f"LSP fallback server '{cmd_str}' also returned empty symbols",
+            )
+        except (OSError, TimeoutError, RuntimeError, ValueError) as e:
+            logger.warning(
+                f"LSP fallback server '{cmd_str}' failed: {e}",
+            )
+            if i < len(cmd_list) - 1:
+                continue
+
+    return None
 
 
 @tool
@@ -33,7 +113,7 @@ async def lsp_start(server_kind: str, workspace_path: str) -> str:
 
     Supported server kinds:
     - "ts": TypeScript/JavaScript (typescript-language-server)
-    - "py": Python (ty server)
+    - "py": Python (ty server, with pyright-langserver fallback)
 
     Args:
         server_kind: Server type - "ts" for TypeScript/JS, "py" for Python.
@@ -70,7 +150,7 @@ async def lsp_start(server_kind: str, workspace_path: str) -> str:
 
     try:
         await manager.get_or_create(server_kind, workspace, startup_timeout=settings.lsp_startup_timeout)
-    except (OSError, TimeoutError, RuntimeError) as e:
+    except (OSError, TimeoutError, RuntimeError, ValueError) as e:
         logger.error(f"LSP server failed to start: {e}")
         return json.dumps(
             {
@@ -83,13 +163,18 @@ async def lsp_start(server_kind: str, workspace_path: str) -> str:
         )
 
     # Normalize kind for consistent session ID
-    kind = "ts" if server_kind.lower() in ("ts", "typescript") else "py"
+    kind = server_kind.lower()
+    aliases = {"typescript": "ts", "python": "py", "javascript": "ts"}
+    kind = aliases.get(kind, kind)
     session_id = f"{kind}:{workspace}"
+
+    server_cmd = manager.get_server_command_for_session(session_id) or server_kind
 
     return json.dumps(
         {
             "status": "success",
             "session_id": session_id,
+            "server": server_cmd,
             "message": f"LSP server started for {server_kind} at {workspace}",
         },
     )
@@ -155,14 +240,27 @@ async def lsp_document_symbols(session_id: str, file_path: str) -> str:
             },
         )
 
+    server_cmd = manager.get_server_command_for_session(session_id) or "unknown"
+    fallback_used = False
+
     try:
         symbols = await client.document_symbols(str(Path(file_path).resolve()))
+
+        # Result-level fallback: if primary returned empty, try next server
+        if not symbols:
+            fallback = await _try_fallback_session(session_id, file_path)
+            if fallback is not None:
+                symbols, server_cmd = fallback
+                fallback_used = True
+
         return json.dumps(
             {
                 "status": "success",
                 "file": file_path,
                 "symbols": symbols,
                 "count": len(symbols),
+                "server": server_cmd,
+                "fallback_used": fallback_used,
             },
         )
     except (OSError, TimeoutError, RuntimeError, ValueError) as e:

@@ -1,0 +1,37 @@
+## Structural Reasoning (5 Whys)
+
+When you encounter code patterns that seem non-obvious, apply 5 Whys reasoning to understand the underlying forces that shaped the code. This is not limited to bugs — it applies to any structural decision.
+
+**Triggers** — apply reasoning when you observe:
+- High coupling: two modules with >50% co-change frequency
+- High churn: files with disproportionate commit counts relative to their size
+- God files: single files with high fan-in AND high fan-out
+- Low cohesion: modules where members have weak internal connections
+- Deep dependency chains: call paths >5 hops deep
+- Multiple authors: files with 3+ significant contributors (ownership fragmentation)
+
+**Method**:
+1. State the observation: "This file has the highest betweenness centrality"
+2. Ask why: "Why is it on so many paths?" → "Because it handles both X and Y"
+3. Ask why again: "Why are X and Y in the same file?" → "Because they share state Z"
+4. Continue until you reach a root cause or design decision
+5. Record the chain as a "Why" annotation
+
+**Evidence sources** (use existing tools):
+- `git_file_history` — commit messages explain intent and evolution
+- `git_files_changed_together` — co-change patterns reveal implicit dependencies
+- `git_blame_summary` — ownership fragmentation indicates organic growth
+- `code_graph_analyze("hotspots")` — structural bottlenecks
+- `code_graph_analyze("modules")` — low cohesion scores
+
+**Output format**: Weave reasoning into existing CONTEXT.md sections:
+- In **Business Logic** table: add a "Why" column for top items
+- In **Risks**: frame each risk as the conclusion of a why-chain
+- In **Architecture**: annotate layer boundaries with why they exist
+
+Example:
+```
+| # | Name | Role | Location | Score | Why |
+|---|------|------|----------|-------|-----|
+| 1 | event_loop.py | Agent orchestration | agent/event_loop.py:45 | 0.92 | Highest centrality because all tool calls and model calls route through it. Evolved as the single coordination point when the agent moved from sync to async. |
+```

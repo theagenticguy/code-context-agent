@@ -18,9 +18,7 @@ Environment Variables:
     CODE_CONTEXT_MODEL_ID: Bedrock model ID for the agent (default: Opus 4.6)
     CODE_CONTEXT_REGION: AWS region for Bedrock
     CODE_CONTEXT_TEMPERATURE: Model temperature (default 1.0 for thinking)
-    CODE_CONTEXT_LSP_TS_COMMAND: Command to start TypeScript LSP
-    CODE_CONTEXT_LSP_PY_COMMAND: Command to start Python LSP (ty server)
-    CODE_CONTEXT_LSP_SERVERS: LSP server commands by language key (JSON dict)
+    CODE_CONTEXT_LSP_SERVERS: Ordered fallback chains of LSP server commands per language (JSON dict)
     CODE_CONTEXT_LSP_TIMEOUT: LSP operation timeout in seconds
     CODE_CONTEXT_LSP_STARTUP_TIMEOUT: Maximum seconds to wait for LSP server to initialize
     CODE_CONTEXT_LSP_MAX_FILES: Maximum files before LSP analysis is skipped
@@ -88,25 +86,15 @@ class Settings(BaseSettings):
     )
 
     # LSP settings
-    lsp_ts_command: str = Field(
-        default="typescript-language-server --stdio",
-        description="Command to start TypeScript/JavaScript LSP server",
-    )
-    lsp_py_command: str = Field(
-        default="ty server",
-        description="Command to start Python LSP server (ty from astral.sh)",
-    )
-    lsp_servers: dict[str, str] = Field(
+    lsp_servers: dict[str, list[str]] = Field(
         default={
-            "ts": "typescript-language-server --stdio",
-            "typescript": "typescript-language-server --stdio",
-            "py": "ty server",
-            "python": "ty server",
-            "rust": "rust-analyzer",
-            "go": "gopls serve",
-            "java": "jdtls",
+            "py": ["ty server", "pyright-langserver --stdio"],
+            "ts": ["typescript-language-server --stdio"],
+            "rust": ["rust-analyzer"],
+            "go": ["gopls serve"],
+            "java": ["jdtls"],
         },
-        description="Mapping of language identifiers to LSP server commands",
+        description="Ordered fallback chain of LSP server commands per language",
     )
     lsp_timeout: int = Field(
         default=30,

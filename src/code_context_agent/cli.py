@@ -6,6 +6,7 @@ Example:
     $ code-context-agent analyze /path/to/repo
     $ code-context-agent analyze /path/to/repo --focus "authentication"
     $ code-context-agent analyze . --quiet
+    $ code-context-agent analyze . --issue "gh:1694"
 """
 
 from pathlib import Path
@@ -66,6 +67,10 @@ def analyze(
         str,
         Parameter(help="Focus area for analysis (e.g., 'authentication', 'API endpoints', 'database layer')."),
     ] = "",
+    issue: Annotated[
+        str,
+        Parameter(help="Issue reference for focused analysis (e.g., 'gh:1694', 'gh:owner/repo#1694')."),
+    ] = "",
     quiet: Annotated[
         bool,
         Parameter(help="Suppress live display output."),
@@ -91,6 +96,7 @@ def analyze(
         $ code-context-agent analyze /path/to/repo
         $ code-context-agent analyze . --focus "authentication"
         $ code-context-agent analyze . --output-dir ./output
+        $ code-context-agent analyze . --issue "gh:1694"
     """
     import asyncio
 
@@ -131,6 +137,25 @@ def analyze(
     # In debug mode, use quiet consumer (log output replaces Live display)
     use_quiet = quiet or debug
 
+    # Fetch issue context if provided (deterministic, not model-invoked)
+    issue_context = None
+    if issue:
+        from code_context_agent.issues import render_issue_context
+        from code_context_agent.issues.github import GitHubIssueProvider, parse_issue_ref
+
+        try:
+            provider_name, issue_ref = parse_issue_ref(issue)
+            if provider_name == "gh":
+                provider = GitHubIssueProvider()
+                fetched_issue = provider.fetch(issue_ref)
+                issue_context = render_issue_context(fetched_issue)
+                if not use_quiet:
+                    console.print(f"  Issue: [magenta]{fetched_issue.title}[/magenta]")
+            else:
+                console.print(f"[yellow]Warning:[/yellow] Unsupported issue provider: {provider_name}")
+        except RuntimeError as e:
+            console.print(f"[yellow]Warning:[/yellow] Could not fetch issue: {e}")
+
     # Run the analysis
     result = asyncio.run(
         run_analysis(
@@ -138,6 +163,7 @@ def analyze(
             output_dir=output_dir,
             focus=focus or None,
             quiet=use_quiet,
+            issue_context=issue_context,
         ),
     )
 
