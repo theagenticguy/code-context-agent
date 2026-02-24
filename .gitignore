@@ -522,6 +522,9 @@ venv.bak/
 /site
 docs/reference/
 
+# Archive
+.archive/
+
 # mypy
 .mypy_cache/
 .dmypy.json
