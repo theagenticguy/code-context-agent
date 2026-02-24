@@ -1,3 +1,9 @@
+## v4.2.0 (2026-02-24)
+
+### Feat
+
+- LSP fallback chain, 5 Whys reasoning, and issue-focused analysis
+
 ## v4.1.1 (2026-02-24)
 
 ### Fix
