@@ -167,7 +167,7 @@ async def _execute_analysis_stream(
     # Build input for ag-ui
     input_data = RunAgentInput(
         thread_id="analysis-thread",
-        run_id="run-analysis",
+        run_id="analysis-run",
         messages=[UserMessage(id="msg-1", role="user", content=prompt)],
         state={},
         tools=[],

@@ -204,12 +204,24 @@ class RichEventConsumer(EventConsumer):
             inner_elements.append(Text(""))  # Spacer
             inner_elements.append(active_tool)
 
-        # Streaming text buffer (grows dynamically with content)
+        # Streaming text buffer (show last N lines to prevent panel growth)
+        _max_visible_lines = 20
         if self.state.text_buffer:
             inner_elements.append(Text(""))  # Spacer
+            lines = self.state.text_buffer.strip().split("\n")
+            if len(lines) > _max_visible_lines:
+                visible = "\n".join(lines[-_max_visible_lines:])
+                hidden = len(lines) - _max_visible_lines
+                prefix = f"[dim]... ({hidden} lines above)[/dim]\n"
+            else:
+                visible = "\n".join(lines)
+                prefix = ""
             inner_elements.append(
                 Panel(
-                    Markdown(self.state.text_buffer),
+                    Group(
+                        Text.from_markup(prefix) if prefix else Text(""),
+                        Markdown(visible),
+                    ) if prefix else Markdown(visible),
                     title="Agent Reasoning",
                     border_style="green",
                     padding=(0, 1),
@@ -232,7 +244,7 @@ class RichEventConsumer(EventConsumer):
             inner_elements.append(Text("  ✓ Analysis complete!", style="bold green"))
 
         # Wrap everything in a main panel
-        run_title = f"Run: {self.state.run_id[:8]}" if self.state.run_id else "Agent"
+        run_title = "Code Context Agent"
         return Panel(
             Group(*inner_elements) if inner_elements else Text("Starting analysis...", style="dim"),
             title=run_title,
@@ -251,8 +263,9 @@ class RichEventConsumer(EventConsumer):
         self._live = Live(
             self._build_display(),
             console=self.console,
-            refresh_per_second=4,
-            transient=False,
+            refresh_per_second=2,
+            transient=True,
+            vertical_overflow="ellipsis",
         )
         self._live.start()
 
@@ -356,9 +369,6 @@ class RichEventConsumer(EventConsumer):
         """
         if self.state.active_tool and self.state.active_tool.tool_call_id == tool_call_id:
             self.state.complete_active_tool()
-        # Add visual separator after tool completes for cleaner display
-        if self.state.text_buffer and not self.state.text_buffer.endswith("\n\n"):
-            self.state.text_buffer += "\n\n"
         self._refresh()
 
     async def on_state_snapshot(self, snapshot: dict[str, Any]) -> None:
