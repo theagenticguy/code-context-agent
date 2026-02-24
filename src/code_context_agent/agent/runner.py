@@ -40,7 +40,7 @@ def _patched_strands_agent_init(self, agent, name, description="", config=None):
     self._agent_kwargs["callback_handler"] = getattr(agent, "callback_handler", None)
 
 
-StrandsAgent.__init__ = _patched_strands_agent_init
+StrandsAgent.__init__ = _patched_strands_agent_init  # type: ignore[assignment]
 
 
 class AnalysisContext(BaseModel):
@@ -201,8 +201,8 @@ async def _execute_analysis_stream(
     # Start consumer display and pass limits to state
     await context.consumer.start()
     if hasattr(context.consumer, "state"):
-        context.consumer.state.max_turns = context.max_turns
-        context.consumer.state.max_duration = context.max_duration
+        context.consumer.state.max_turns = context.max_turns  # type: ignore[union-attr]
+        context.consumer.state.max_duration = context.max_duration  # type: ignore[union-attr]
 
     start_time = time.monotonic()
     turn_count = 0

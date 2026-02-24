@@ -1,0 +1,60 @@
+[tools]
+python = "3.13"
+
+[env]
+_.python.venv = { path = ".venv", create = true }
+
+[tasks]
+install = "uv sync --all-groups"
+
+[tasks.lint]
+description = "Lint with ruff"
+run = "uvx ruff check src/"
+
+[tasks."lint:fix"]
+description = "Lint and auto-fix"
+run = "uvx ruff check src/ --fix"
+
+[tasks.format]
+description = "Format with ruff"
+run = "uvx ruff format src/"
+
+[tasks."format:check"]
+description = "Check formatting"
+run = "uvx ruff format --check src/"
+
+[tasks.typecheck]
+description = "Type check with ty"
+run = "uvx ty check src/"
+
+[tasks.test]
+description = "Run tests"
+run = "uv run pytest"
+
+[tasks."test:verbose"]
+description = "Run tests with verbose output"
+run = "uv run pytest -v"
+
+[tasks.security]
+description = "Run security scans"
+run = ["uv run bandit -r src/", "uv run pip-audit"]
+
+[tasks.check]
+description = "Run all checks (lint + format + typecheck + test)"
+depends = ["lint", "format:check", "typecheck", "test"]
+
+[tasks."docs:serve"]
+description = "Serve documentation site with live reload"
+run = "uv run mkdocs serve"
+
+[tasks."docs:build"]
+description = "Build documentation site"
+run = "uv run mkdocs build"
+
+[tasks.bump]
+description = "Bump version using commitizen"
+run = "uv run cz bump"
+
+[tasks.commit]
+description = "Interactive conventional commit"
+run = "uv run cz commit"

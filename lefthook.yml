@@ -1,0 +1,30 @@
+pre-commit:
+  parallel: true
+  jobs:
+    - name: ruff-check
+      run: uvx ruff check --fix {staged_files}
+      glob: "*.py"
+      stage_fixed: true
+
+    - name: ruff-format
+      run: uvx ruff format {staged_files}
+      glob: "*.py"
+      stage_fixed: true
+
+    - name: ty-check
+      run: uvx ty check src/
+
+pre-push:
+  parallel: true
+  jobs:
+    - name: lint
+      run: uvx ruff check src/
+
+    - name: format-check
+      run: uvx ruff format --check src/
+
+    - name: typecheck
+      run: uvx ty check src/
+
+    - name: test
+      run: uv run pytest

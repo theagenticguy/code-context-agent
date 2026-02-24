@@ -18,14 +18,14 @@ if os.environ.get("CODE_CONTEXT_OTEL_DISABLED", "true").lower() != "false":
 
             original_detach = contextvars_context.ContextVarsRuntimeContext.detach
 
-            def patched_detach(self, token):  # type: ignore[no-untyped-def]
+            def patched_detach(self, token):
                 try:
                     return original_detach(self, token)
                 except ValueError:
                     # Suppress "Token was created in a different Context" errors
                     pass
 
-            contextvars_context.ContextVarsRuntimeContext.detach = patched_detach
+            contextvars_context.ContextVarsRuntimeContext.detach = patched_detach  # type: ignore[assignment]
         except ImportError:
             pass
 
