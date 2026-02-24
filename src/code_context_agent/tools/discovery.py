@@ -165,7 +165,6 @@ def repomix_orientation(
         "--style",
         "markdown",
         "--token-count-tree",
-        "--token-count-tree-threshold",
         str(token_threshold),
         "-o",
         str(output_path),

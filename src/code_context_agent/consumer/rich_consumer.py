@@ -25,6 +25,8 @@ class RichEventConsumer(EventConsumer):
     executes, including streaming text, tool execution status, and
     progress indicators.
 
+    Throttles display updates to avoid flickering from rapid event bursts.
+
     Attributes:
         console: Rich Console instance for output.
         state: Current display state tracking.
@@ -37,6 +39,8 @@ class RichEventConsumer(EventConsumer):
         >>> await consumer.stop()
     """
 
+    _MIN_REFRESH_INTERVAL = 0.15  # seconds between display updates
+
     def __init__(self, console: Console | None = None) -> None:
         """Initialize the Rich event consumer.
 
@@ -46,6 +50,8 @@ class RichEventConsumer(EventConsumer):
         self.console = console or Console()
         self.state = AgentDisplayState()
         self._live: Live | None = None
+        self._last_refresh: float = 0.0
+        self._dirty: bool = False
 
     def _format_time(self, seconds: float) -> str:
         """Format seconds as MM:SS string."""
@@ -252,14 +258,32 @@ class RichEventConsumer(EventConsumer):
             padding=(1, 2),
         )
 
-    def _refresh(self) -> None:
-        """Refresh the live display with current state."""
-        if self._live:
+    def _refresh(self, *, force: bool = False) -> None:
+        """Refresh the live display with current state.
+
+        Throttles updates to _MIN_REFRESH_INTERVAL to avoid flickering
+        from rapid event bursts. Use force=True for important state
+        transitions (run start, tool start/end, completion).
+
+        Args:
+            force: Skip throttle and update immediately.
+        """
+        if not self._live:
+            return
+
+        now = time.monotonic()
+        if force or (now - self._last_refresh) >= self._MIN_REFRESH_INTERVAL:
             self._live.update(self._build_display())
+            self._last_refresh = now
+            self._dirty = False
+        else:
+            self._dirty = True
 
     async def start(self) -> None:
         """Start the Rich Live display."""
         self.state.reset()
+        self._last_refresh = 0.0
+        self._dirty = False
         self._live = Live(
             self._build_display(),
             console=self.console,
@@ -267,6 +291,8 @@ class RichEventConsumer(EventConsumer):
             transient=True,
             vertical_overflow="ellipsis",
         )
+        # Override get_renderable so Rich's auto-refresh always gets fresh state
+        self._live.get_renderable = self._build_display  # type: ignore[assignment]
         self._live.start()
 
     async def stop(self) -> None:
@@ -285,7 +311,7 @@ class RichEventConsumer(EventConsumer):
         self.state.thread_id = thread_id
         self.state.run_id = run_id
         self.state.start_time = time.monotonic()
-        self._refresh()
+        self._refresh(force=True)
 
     async def on_text_start(self, message_id: str, role: str) -> None:
         """Handle start of text message.
@@ -296,7 +322,7 @@ class RichEventConsumer(EventConsumer):
         """
         self.state.active_message_id = message_id
         self.state.text_buffer = ""  # Clear buffer for new message
-        self._refresh()
+        self._refresh(force=True)
 
     async def on_text_content(self, message_id: str, delta: str) -> None:
         """Handle streaming text content.
@@ -332,7 +358,7 @@ class RichEventConsumer(EventConsumer):
             tool_name=tool_name,
         )
         self.state.tool_start_time = time.monotonic()
-        self._refresh()
+        self._refresh(force=True)
 
     async def on_tool_args(self, tool_call_id: str, args_delta: str) -> None:
         """Handle streaming tool arguments.
@@ -369,7 +395,7 @@ class RichEventConsumer(EventConsumer):
         """
         if self.state.active_tool and self.state.active_tool.tool_call_id == tool_call_id:
             self.state.complete_active_tool()
-        self._refresh()
+        self._refresh(force=True)
 
     async def on_state_snapshot(self, snapshot: dict[str, Any]) -> None:
         """Handle state snapshot.
@@ -391,7 +417,7 @@ class RichEventConsumer(EventConsumer):
             run_id: Run identifier.
         """
         self.state.completed = True
-        self._refresh()
+        self._refresh(force=True)
 
     async def on_error(self, message: str, code: str | None = None) -> None:
         """Handle error.
@@ -404,7 +430,7 @@ class RichEventConsumer(EventConsumer):
         if code:
             error_text = f"[{code}] {message}"
         self.state.error = error_text
-        self._refresh()
+        self._refresh(force=True)
 
 
 class QuietConsumer(EventConsumer):
