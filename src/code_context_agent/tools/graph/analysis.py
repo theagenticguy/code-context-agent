@@ -293,7 +293,7 @@ class CodeAnalyzer:
                         {
                             "nodes": list(triangle),
                             "node_details": [{"id": n, **(self.graph.get_node_data(n) or {})} for n in triangle],
-                        }
+                        },
                     )
                     if len(triangles) >= top_k:
                         break
