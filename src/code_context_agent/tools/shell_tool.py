@@ -119,7 +119,7 @@ def _execute_single_command(
             execution_time=execution_time,
         )
 
-    except Exception as e:
+    except (subprocess.SubprocessError, OSError) as e:
         execution_time = time.time() - start_time
         logger.exception(f"Command execution failed: {cmd}")
         return CommandResult(

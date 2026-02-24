@@ -2,15 +2,17 @@
 
 This module defines the fundamental types for representing code as a graph:
 - NodeType/EdgeType enums for classification
-- CodeNode/CodeEdge dataclasses for graph elements
+- CodeNode/CodeEdge Pydantic models for graph elements
 - CodeGraph class wrapping NetworkX MultiDiGraph
 """
 
-from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Any
 
 import networkx as nx
+from pydantic import Field
+
+from ...models.base import FrozenModel
 
 
 class NodeType(Enum):
@@ -59,8 +61,7 @@ def lsp_kind_to_node_type(kind: int) -> NodeType:
     return LSP_SYMBOL_KIND_MAP.get(kind, NodeType.VARIABLE)
 
 
-@dataclass
-class CodeNode:
+class CodeNode(FrozenModel):
     """A node in the code graph representing a code element.
 
     Attributes:
@@ -79,17 +80,16 @@ class CodeNode:
     file_path: str
     line_start: int
     line_end: int
-    metadata: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
-        result = asdict(self)
+        result = self.model_dump()
         result["node_type"] = self.node_type.value
         return result
 
 
-@dataclass
-class CodeEdge:
+class CodeEdge(FrozenModel):
     """An edge in the code graph representing a relationship.
 
     Attributes:
@@ -104,11 +104,11 @@ class CodeEdge:
     target: str
     edge_type: EdgeType
     weight: float = 1.0
-    metadata: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
-        result = asdict(self)
+        result = self.model_dump()
         result["edge_type"] = self.edge_type.value
         return result
 
@@ -284,6 +284,9 @@ class CodeGraph:
     def from_node_link_data(cls, data: dict[str, Any]) -> "CodeGraph":
         """Create a CodeGraph from node-link JSON format.
 
+        Handles both old NetworkX format ("links" key) and new 3.6+
+        format ("edges" key) for backward compatibility with saved graphs.
+
         Args:
             data: Dictionary from node_link_data or JSON
 
@@ -291,5 +294,32 @@ class CodeGraph:
             New CodeGraph instance
         """
         graph = cls()
-        graph._graph = nx.node_link_graph(data)
+        # Handle both old ("links") and new ("edges") format
+        if "links" in data and "edges" not in data:
+            graph._graph = nx.node_link_graph(data, edges="links")
+        else:
+            graph._graph = nx.node_link_graph(data)
         return graph
+
+    def describe(self) -> dict[str, Any]:
+        """Get a quick summary of the graph.
+
+        Returns:
+            Dictionary with node count, edge count, type distributions, and density.
+        """
+        node_types: dict[str, int] = {}
+        for _, data in self._graph.nodes(data=True):
+            nt = data.get("node_type", "unknown")
+            node_types[nt] = node_types.get(nt, 0) + 1
+
+        edge_types: dict[str, int] = {}
+        for _, _, k, _ in self._graph.edges(keys=True, data=True):
+            edge_types[k] = edge_types.get(k, 0) + 1
+
+        return {
+            "node_count": self.node_count,
+            "edge_count": self.edge_count,
+            "node_types": node_types,
+            "edge_types": edge_types,
+            "density": nx.density(self._graph),
+        }

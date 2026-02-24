@@ -17,7 +17,6 @@ from ...config import get_settings
 from .session import get_session_manager
 
 
-
 @tool
 async def lsp_start(server_kind: str, workspace_path: str) -> str:
     """Start an LSP server and initialize workspace for semantic analysis.
@@ -71,7 +70,7 @@ async def lsp_start(server_kind: str, workspace_path: str) -> str:
 
     try:
         await manager.get_or_create(server_kind, workspace, startup_timeout=settings.lsp_startup_timeout)
-    except Exception as e:
+    except (OSError, TimeoutError, RuntimeError) as e:
         logger.error(f"LSP server failed to start: {e}")
         return json.dumps(
             {
@@ -166,7 +165,7 @@ async def lsp_document_symbols(session_id: str, file_path: str) -> str:
                 "count": len(symbols),
             },
         )
-    except Exception as e:
+    except (OSError, TimeoutError, RuntimeError, ValueError) as e:
         logger.error(f"LSP document_symbols error: {e}")
         return json.dumps(
             {
@@ -219,7 +218,7 @@ async def lsp_hover(session_id: str, file_path: str, line: int, character: int) 
                 "hover": hover,
             },
         )
-    except Exception as e:
+    except (OSError, TimeoutError, RuntimeError, ValueError) as e:
         logger.error(f"LSP hover error: {e}")
         return json.dumps(
             {
@@ -231,7 +230,11 @@ async def lsp_hover(session_id: str, file_path: str, line: int, character: int) 
 
 @tool
 async def lsp_references(
-    session_id: str, file_path: str, line: int, character: int, include_declaration: bool = True,
+    session_id: str,
+    file_path: str,
+    line: int,
+    character: int,
+    include_declaration: bool = True,
 ) -> str:
     """Find all references to symbol at position (fan-in analysis).
 
@@ -285,7 +288,7 @@ async def lsp_references(
                 "unique_files": len(unique_files),
             },
         )
-    except Exception as e:
+    except (OSError, TimeoutError, RuntimeError, ValueError) as e:
         logger.error(f"LSP references error: {e}")
         return json.dumps(
             {
@@ -339,7 +342,7 @@ async def lsp_definition(session_id: str, file_path: str, line: int, character: 
                 "count": len(definitions),
             },
         )
-    except Exception as e:
+    except (OSError, TimeoutError, RuntimeError, ValueError) as e:
         logger.error(f"LSP definition error: {e}")
         return json.dumps(
             {
@@ -384,3 +387,118 @@ async def lsp_shutdown(session_id: str) -> str:
             "message": f"No active session found: {session_id}",
         },
     )
+
+
+@tool
+async def lsp_workspace_symbols(
+    session_id: str,
+    query: str,
+    max_results: int = 50,
+) -> str:
+    """Search for symbols across the entire workspace.
+
+    USE THIS TOOL:
+    - To find a symbol by name when you don't know which file it's in
+    - For broad searches like "all classes named *Service*"
+    - After lsp_start when you need workspace-wide symbol search
+
+    DO NOT USE:
+    - For symbols in a specific file (use lsp_document_symbols instead)
+    - Before calling lsp_start
+
+    Requires: ty LSP server supports workspace/symbol. TypeScript LSP also supports it.
+
+    Args:
+        session_id: Session ID from lsp_start.
+        query: Search query string (partial name matching).
+        max_results: Maximum symbols to return (default 50).
+
+    Returns:
+        JSON with symbols array containing name, kind, location.
+    """
+    manager = get_session_manager()
+    client = manager.get_session(session_id)
+
+    if client is None:
+        return json.dumps(
+            {
+                "status": "error",
+                "error": f"No active LSP session: {session_id}. Call lsp_start first.",
+            },
+        )
+
+    try:
+        symbols = await client.workspace_symbols(query)
+        # Truncate to max_results
+        truncated = symbols[:max_results]
+        return json.dumps(
+            {
+                "status": "success",
+                "query": query,
+                "symbols": truncated,
+                "count": len(truncated),
+                "total": len(symbols),
+            },
+        )
+    except (OSError, TimeoutError, RuntimeError, ValueError) as e:
+        logger.error(f"LSP workspace_symbols error: {e}")
+        return json.dumps(
+            {
+                "status": "error",
+                "error": str(e),
+            },
+        )
+
+
+@tool
+async def lsp_diagnostics(session_id: str, file_path: str) -> str:
+    """Get diagnostic messages (errors, warnings) for a file.
+
+    USE THIS TOOL:
+    - To find type errors, unresolved references, and other issues
+    - To assess code quality of a specific file
+    - To find potential bugs that static analysis catches
+
+    DO NOT USE:
+    - Before calling lsp_start (will fail with "No active LSP session")
+    - For non-language files (e.g., JSON, YAML) unless LSP supports them
+
+    Requires: Call lsp_start first. Works best with ty (Python) server.
+
+    Args:
+        session_id: Session ID from lsp_start.
+        file_path: Absolute path to the file.
+
+    Returns:
+        JSON with diagnostics array containing severity, message, range.
+    """
+    manager = get_session_manager()
+    client = manager.get_session(session_id)
+
+    if client is None:
+        return json.dumps(
+            {
+                "status": "error",
+                "error": f"No active LSP session: {session_id}. Call lsp_start first.",
+            },
+        )
+
+    try:
+        file_uri = Path(file_path).resolve().as_uri()
+        diagnostics = await client.diagnostics(file_uri)
+        return json.dumps(
+            {
+                "status": "success",
+                "file": file_path,
+                "diagnostics": diagnostics,
+                "count": len(diagnostics),
+            },
+        )
+    except (OSError, TimeoutError, RuntimeError, ValueError) as e:
+        logger.error(f"LSP diagnostics error: {e}")
+        return json.dumps(
+            {
+                "status": "error",
+                "error": str(e),
+            },
+        )

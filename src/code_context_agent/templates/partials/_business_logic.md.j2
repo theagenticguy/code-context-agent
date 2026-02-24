@@ -1,0 +1,17 @@
+## Business Logic Criteria
+
+**Include** (domain rules, decisions, transformations):
+- DB operations, repositories, transactions
+- Validation, authorization, pricing, state machines
+- Multi-step workflows (create → validate → persist → notify)
+- External integrations with domain decisions
+
+**Exclude** (plumbing):
+- Framework bootstrap, DI wiring, route tables
+- Logging/metrics boilerplate, config parsing, utilities
+
+**Ranking signals** (prioritize by):
+1. High fan-in (many LSP references)
+2. Write paths > read paths
+3. Branching density (if/switch/guards)
+4. Domain vocabulary in names

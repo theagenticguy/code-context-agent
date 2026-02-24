@@ -1,0 +1,121 @@
+## Git History Tools
+
+Git history provides valuable context that static analysis misses:
+- **Coupling**: Files that change together have implicit dependencies
+- **Expertise**: Who knows what parts of the codebase
+- **Evolution**: How code has changed over time and why
+- **Risk**: High-churn files may indicate instability
+
+### Available Tools
+
+| Tool | Purpose | Key Output |
+|------|---------|------------|
+| `git_files_changed_together` | Coupling detection | Co-changed files with % |
+| `git_file_history` | File evolution | Commits touching a file |
+| `git_recent_commits` | Development activity | Recent repo commits |
+| `git_diff_file` | Change details | Unified diff content |
+| `git_blame_summary` | Code ownership | Authors by lines owned |
+| `git_hotspots` | Churn analysis | Files ranked by commits |
+| `git_contributors` | Team structure | Contributors ranked by activity |
+
+### Coupling Detection (Critical for Understanding)
+
+**`git_files_changed_together(repo_path, file_path, limit=100)`**
+
+Finds files that frequently change with a given file - reveals implicit dependencies
+not captured by imports. Use this to understand what else might need to change.
+
+Interpretation:
+- **>50% coupling**: Very tight coupling, consider merging or abstracting
+- **20-50% coupling**: Normal feature-level coupling
+- **<20% coupling**: Incidental, less significant
+
+```python
+# Find files coupled to the auth module
+result = git_files_changed_together(repo_path, "src/auth.py", limit=50)
+# Returns: {"cochanged_files": [{"path": "src/user.py", "percentage": 65.0}, ...]}
+```
+
+### Expertise Detection
+
+**`git_blame_summary(repo_path, file_path)`**
+
+Identifies who has expertise on a file - useful for understanding ownership.
+
+```python
+# Who knows this file best?
+result = git_blame_summary(repo_path, "src/critical_service.py")
+# Returns: {"authors": [{"email": "expert@co.com", "percentage": 80.0}, ...]}
+```
+
+**`git_contributors(repo_path, limit=100)`**
+
+Repository-wide contributor statistics - understand team structure.
+
+### Change Context
+
+**`git_file_history(repo_path, file_path, limit=20)`**
+
+Get commit messages explaining WHY changes were made - invaluable context.
+
+```python
+# Understand why this file evolved
+result = git_file_history(repo_path, "src/payment.py", limit=10)
+# Commit messages often explain intent better than code
+```
+
+**`git_diff_file(repo_path, file_path, commit=None, context_lines=3)`**
+
+See exact changes - useful for understanding recent modifications.
+
+### Churn Analysis (Risk Identification)
+
+**`git_hotspots(repo_path, limit=50, since=None)`**
+
+Files changed frequently may indicate:
+- Active development areas
+- Code with bugs requiring frequent fixes
+- Poor design requiring constant modification
+
+```python
+# Find files that change most often
+result = git_hotspots(repo_path, limit=30)
+# High-churn files deserve extra scrutiny
+```
+
+### Graph Integration
+
+Git data integrates with the code graph via adapters:
+
+```python
+# Add co-change relationships to graph
+cochanges = git_files_changed_together(repo_path, "src/auth.py")
+from code_context_agent.tools.graph.adapters import ingest_git_cochanges
+edges = ingest_git_cochanges(json.loads(cochanges), min_percentage=20.0)
+# Creates COCHANGES edges with coupling weights
+
+# Add hotspot metadata to graph
+hotspots = git_hotspots(repo_path)
+from code_context_agent.tools.graph.adapters import ingest_git_hotspots
+nodes = ingest_git_hotspots(json.loads(hotspots))
+# Creates FILE nodes with churn metadata
+```
+
+### When to Use Git Tools
+
+| Need | Tool | Notes |
+|------|------|-------|
+| What changes with X? | `git_files_changed_together` | Start here for coupling |
+| Who knows this code? | `git_blame_summary` | File-level expertise |
+| Why was this changed? | `git_file_history` | Read commit messages |
+| What's changing a lot? | `git_hotspots` | Risk identification |
+| Recent activity | `git_recent_commits` | Development velocity |
+| Team structure | `git_contributors` | Repo-wide expertise |
+| Exact changes | `git_diff_file` | Deep code investigation |
+
+### Anti-patterns
+
+- Running `git_files_changed_together` on every file (expensive)
+- Ignoring commit messages (often explain the "why")
+- Using git tools on untracked/new files
+- Treating low-coupling files as unrelated (may be decoupled by design)

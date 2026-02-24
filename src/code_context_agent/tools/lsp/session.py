@@ -15,7 +15,6 @@ from ...config import get_settings
 from .client import LspClient
 
 
-
 class LspSessionManager:
     """Singleton session manager for LSP connections.
 
@@ -50,7 +49,7 @@ class LspSessionManager:
         cls._instance = None
 
     def _get_server_command(self, server_kind: str) -> list[str]:
-        """Get LSP server command by kind.
+        """Get LSP server command by kind from configuration.
 
         Args:
             server_kind: Server type identifier.
@@ -61,18 +60,23 @@ class LspSessionManager:
         Raises:
             ValueError: If server kind is not supported.
         """
-        commands = {
-            "ts": ["typescript-language-server", "--stdio"],
-            "typescript": ["typescript-language-server", "--stdio"],
-            "py": ["ty", "server"],
-            "python": ["ty", "server"],
-        }
+        import shlex
 
-        if server_kind not in commands:
-            supported = ", ".join(sorted(set(commands.keys())))
-            raise ValueError(f"Unsupported LSP server kind: {server_kind}. Supported: {supported}")
+        settings = get_settings()
 
-        return commands[server_kind]
+        # Normalize kind
+        kind = server_kind.lower()
+        aliases = {"typescript": "ts", "python": "py", "javascript": "ts"}
+        kind = aliases.get(kind, kind)
+
+        cmd_str = settings.lsp_servers.get(kind)
+        if cmd_str is None:
+            supported = ", ".join(sorted(settings.lsp_servers.keys()))
+            raise ValueError(
+                f"Unsupported LSP server kind: {server_kind}. Configured: {supported}",
+            )
+
+        return shlex.split(cmd_str)
 
     def _make_session_key(self, server_kind: str, workspace_path: str) -> str:
         """Create a session key from server kind and workspace.
@@ -84,12 +88,10 @@ class LspSessionManager:
         Returns:
             Session key string.
         """
-        # Normalize server kind
+        # Normalize server kind using same aliases as _get_server_command
         kind = server_kind.lower()
-        if kind in ("typescript", "ts"):
-            kind = "ts"
-        elif kind in ("python", "py"):
-            kind = "py"
+        aliases = {"typescript": "ts", "python": "py", "javascript": "ts"}
+        kind = aliases.get(kind, kind)
         return f"{kind}:{workspace_path}"
 
     def _get_workspace_config(self, server_kind: str) -> dict[str, Any] | None:
@@ -101,12 +103,16 @@ class LspSessionManager:
         Returns:
             Initialization options dict for the LSP server, or None if not applicable.
         """
+        # Normalize kind
         kind = server_kind.lower()
-        if kind in ("python", "py"):
+        aliases = {"typescript": "ts", "python": "py", "javascript": "ts"}
+        kind = aliases.get(kind, kind)
+
+        if kind == "py":
             # ty uses configuration from ty.toml or pyproject.toml [tool.ty]
             # No initialization options needed
             return None
-        if kind in ("typescript", "ts"):
+        if kind == "ts":
             # TypeScript language server configuration
             # Uses the VS Code-style settings format
             return {
@@ -122,6 +128,7 @@ class LspSessionManager:
                 },
             }
 
+        # Unknown languages: no special config needed
         return None
 
     async def get_or_create(
@@ -222,7 +229,7 @@ class LspSessionManager:
             try:
                 await client.shutdown()
                 logger.debug(f"Shutdown LSP session: {key}")
-            except Exception as e:
+            except (OSError, TimeoutError, RuntimeError) as e:
                 logger.warning(f"Error shutting down LSP session {key}: {e}")
         self._sessions.clear()
 

@@ -73,7 +73,7 @@ class TestCodeNode:
         assert node.id == "src/main.py:main"
         assert node.name == "main"
         assert node.node_type == NodeType.FUNCTION
-        assert node.line_start == 10
+        assert node.line_start == 10  # noqa: PLR2004
 
     def test_node_to_dict(self) -> None:
         """Test converting node to dictionary."""
@@ -106,7 +106,7 @@ class TestCodeEdge:
         assert edge.source == "a:foo"
         assert edge.target == "b:bar"
         assert edge.edge_type == EdgeType.CALLS
-        assert edge.weight == 2.0
+        assert edge.weight == 2.0  # noqa: PLR2004
 
     def test_edge_to_dict(self) -> None:
         """Test converting edge to dictionary."""
@@ -150,13 +150,13 @@ class TestCodeGraph:
         graph = CodeGraph()
 
         # Add nodes first
-        node_a = CodeNode("a", "a", NodeType.FUNCTION, "/a.py", 1, 5)
-        node_b = CodeNode("b", "b", NodeType.FUNCTION, "/b.py", 1, 5)
+        node_a = CodeNode(id="a", name="a", node_type=NodeType.FUNCTION, file_path="/a.py", line_start=1, line_end=5)
+        node_b = CodeNode(id="b", name="b", node_type=NodeType.FUNCTION, file_path="/b.py", line_start=1, line_end=5)
         graph.add_node(node_a)
         graph.add_node(node_b)
 
         # Add edge
-        edge = CodeEdge("a", "b", EdgeType.CALLS)
+        edge = CodeEdge(source="a", target="b", edge_type=EdgeType.CALLS)
         graph.add_edge(edge)
 
         assert graph.edge_count == 1
@@ -184,24 +184,42 @@ class TestCodeGraph:
     def test_get_nodes_by_type(self) -> None:
         """Test filtering nodes by type."""
         graph = CodeGraph()
-        graph.add_node(CodeNode("f1", "f1", NodeType.FUNCTION, "/a.py", 1, 5))
-        graph.add_node(CodeNode("f2", "f2", NodeType.FUNCTION, "/b.py", 1, 5))
-        graph.add_node(CodeNode("c1", "c1", NodeType.CLASS, "/c.py", 1, 10))
+        graph.add_node(CodeNode(
+            id="f1", name="f1", node_type=NodeType.FUNCTION,
+            file_path="/a.py", line_start=1, line_end=5,
+        ))
+        graph.add_node(CodeNode(
+            id="f2", name="f2", node_type=NodeType.FUNCTION,
+            file_path="/b.py", line_start=1, line_end=5,
+        ))
+        graph.add_node(CodeNode(
+            id="c1", name="c1", node_type=NodeType.CLASS,
+            file_path="/c.py", line_start=1, line_end=10,
+        ))
 
         functions = graph.get_nodes_by_type(NodeType.FUNCTION)
-        assert len(functions) == 2
+        assert len(functions) == 2  # noqa: PLR2004
         assert "f1" in functions
         assert "f2" in functions
 
     def test_get_view_filters_edges(self) -> None:
         """Test that get_view filters by edge type."""
         graph = CodeGraph()
-        graph.add_node(CodeNode("a", "a", NodeType.FUNCTION, "/a.py", 1, 5))
-        graph.add_node(CodeNode("b", "b", NodeType.FUNCTION, "/b.py", 1, 5))
-        graph.add_node(CodeNode("c", "c", NodeType.FUNCTION, "/c.py", 1, 5))
+        graph.add_node(CodeNode(
+            id="a", name="a", node_type=NodeType.FUNCTION,
+            file_path="/a.py", line_start=1, line_end=5,
+        ))
+        graph.add_node(CodeNode(
+            id="b", name="b", node_type=NodeType.FUNCTION,
+            file_path="/b.py", line_start=1, line_end=5,
+        ))
+        graph.add_node(CodeNode(
+            id="c", name="c", node_type=NodeType.FUNCTION,
+            file_path="/c.py", line_start=1, line_end=5,
+        ))
 
-        graph.add_edge(CodeEdge("a", "b", EdgeType.CALLS))
-        graph.add_edge(CodeEdge("a", "c", EdgeType.IMPORTS))
+        graph.add_edge(CodeEdge(source="a", target="b", edge_type=EdgeType.CALLS))
+        graph.add_edge(CodeEdge(source="a", target="c", edge_type=EdgeType.IMPORTS))
 
         # Get view with only CALLS
         calls_view = graph.get_view([EdgeType.CALLS])
@@ -211,18 +229,78 @@ class TestCodeGraph:
     def test_node_link_roundtrip(self) -> None:
         """Test exporting and importing graph as node-link data."""
         graph = CodeGraph()
-        graph.add_node(CodeNode("a", "a", NodeType.FUNCTION, "/a.py", 1, 5))
-        graph.add_node(CodeNode("b", "b", NodeType.FUNCTION, "/b.py", 1, 5))
-        graph.add_edge(CodeEdge("a", "b", EdgeType.CALLS))
+        graph.add_node(CodeNode(
+            id="a", name="a", node_type=NodeType.FUNCTION,
+            file_path="/a.py", line_start=1, line_end=5,
+        ))
+        graph.add_node(CodeNode(
+            id="b", name="b", node_type=NodeType.FUNCTION,
+            file_path="/b.py", line_start=1, line_end=5,
+        ))
+        graph.add_edge(CodeEdge(source="a", target="b", edge_type=EdgeType.CALLS))
 
         # Export
         data = graph.to_node_link_data()
         assert "nodes" in data
         # NetworkX 3.x uses "edges" instead of "links"
-        assert "edges" in data or "links" in data
+        assert "edges" in data
 
         # Import
         restored = CodeGraph.from_node_link_data(data)
-        assert restored.node_count == 2
+        assert restored.node_count == 2  # noqa: PLR2004
         assert restored.edge_count == 1
         assert restored.has_edge("a", "b")
+
+
+    def test_describe(self) -> None:
+        """Test the describe method returns a summary dict."""
+        graph = CodeGraph()
+        graph.add_node(CodeNode(
+            id="a", name="a", node_type=NodeType.FUNCTION,
+            file_path="/a.py", line_start=1, line_end=5,
+        ))
+        graph.add_node(CodeNode(
+            id="b", name="b", node_type=NodeType.CLASS,
+            file_path="/b.py", line_start=1, line_end=10,
+        ))
+        graph.add_edge(CodeEdge(source="a", target="b", edge_type=EdgeType.CALLS))
+
+        desc = graph.describe()
+        assert desc["node_count"] == 2  # noqa: PLR2004
+        assert desc["edge_count"] == 1
+        assert desc["node_types"]["function"] == 1
+        assert desc["node_types"]["class"] == 1
+        assert desc["edge_types"]["calls"] == 1
+        assert isinstance(desc["density"], float)
+
+    def test_describe_empty_graph(self) -> None:
+        """Test describe on an empty graph."""
+        graph = CodeGraph()
+        desc = graph.describe()
+        assert desc["node_count"] == 0
+        assert desc["edge_count"] == 0
+        assert desc["node_types"] == {}
+        assert desc["edge_types"] == {}
+
+    def test_from_node_link_data_legacy_links_format(self) -> None:
+        """Test that from_node_link_data handles the old 'links' format."""
+        graph = CodeGraph()
+        graph.add_node(CodeNode(
+            id="x", name="x", node_type=NodeType.FUNCTION,
+            file_path="/x.py", line_start=1, line_end=5,
+        ))
+        graph.add_node(CodeNode(
+            id="y", name="y", node_type=NodeType.FUNCTION,
+            file_path="/y.py", line_start=1, line_end=5,
+        ))
+        graph.add_edge(CodeEdge(source="x", target="y", edge_type=EdgeType.CALLS))
+
+        # Export and manually convert "edges" to "links" to simulate old format
+        data = graph.to_node_link_data()
+        if "edges" in data:
+            data["links"] = data.pop("edges")
+
+        restored = CodeGraph.from_node_link_data(data)
+        assert restored.node_count == 2  # noqa: PLR2004
+        assert restored.edge_count == 1
+        assert restored.has_edge("x", "y")

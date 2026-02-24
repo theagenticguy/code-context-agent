@@ -1,16 +1,18 @@
 """Mutable display state for agent event rendering.
 
-This module provides a dataclass for tracking the current state of agent
+This module provides Pydantic models for tracking the current state of agent
 execution, used by consumers to render live updates.
 """
 
 import time
-from dataclasses import dataclass, field
 from typing import Any
 
+from pydantic import ConfigDict, Field
 
-@dataclass
-class ToolCallState:
+from ..models.base import StrictModel
+
+
+class ToolCallState(StrictModel):
     """State for a single tool call.
 
     Attributes:
@@ -21,6 +23,14 @@ class ToolCallState:
         status: Current status ("running", "completed", "error").
     """
 
+    model_config = ConfigDict(
+        frozen=False,
+        validate_assignment=True,
+        extra="forbid",
+        str_strip_whitespace=True,
+        arbitrary_types_allowed=True,
+    )
+
     tool_call_id: str
     tool_name: str
     args_buffer: str = ""
@@ -28,8 +38,7 @@ class ToolCallState:
     status: str = "running"
 
 
-@dataclass
-class AgentDisplayState:
+class AgentDisplayState(StrictModel):
     """Mutable state for agent display rendering.
 
     This class tracks all state needed to render the agent's progress
@@ -51,15 +60,23 @@ class AgentDisplayState:
     Example:
         >>> state = AgentDisplayState()
         >>> state.text_buffer += "Analyzing repository..."
-        >>> state.active_tool = ToolCallState("t1", "rg_search")
+        >>> state.active_tool = ToolCallState(tool_call_id="t1", tool_name="rg_search")
     """
+
+    model_config = ConfigDict(
+        frozen=False,
+        validate_assignment=True,
+        extra="forbid",
+        str_strip_whitespace=True,
+        arbitrary_types_allowed=True,
+    )
 
     current_phase: str = ""
     text_buffer: str = ""
     active_message_id: str | None = None
     active_tool: ToolCallState | None = None
-    completed_tools: list[ToolCallState] = field(default_factory=list)
-    state_snapshot: dict[str, Any] = field(default_factory=dict)
+    completed_tools: list[ToolCallState] = Field(default_factory=list)
+    state_snapshot: dict[str, Any] = Field(default_factory=dict)
     error: str | None = None
     completed: bool = False
     thread_id: str | None = None
@@ -67,7 +84,7 @@ class AgentDisplayState:
 
     # Metrics for TUI dashboard
     start_time: float | None = None
-    max_duration: float = 600.0
+    max_duration: float = 1200.0
     max_turns: int = 1000
     turn_count: int = 0
     tool_errors: int = 0

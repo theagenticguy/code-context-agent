@@ -9,6 +9,7 @@ class SubprocessError(CodeContextAgentError):
     """Subprocess execution failed."""
 
     def __init__(self, cmd: str, exit_code: int, stderr: str):
+        """Initialize SubprocessError with command details."""
         self.cmd = cmd
         self.exit_code = exit_code
         self.stderr = stderr

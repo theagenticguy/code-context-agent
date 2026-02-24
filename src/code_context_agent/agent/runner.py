@@ -10,7 +10,7 @@ import asyncio
 import os
 import time
 from pathlib import Path
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from ag_ui.core import EventType, RunAgentInput, UserMessage
 from ag_ui_strands import StrandsAgent
@@ -20,6 +20,9 @@ from pydantic import BaseModel
 from ..config import get_settings
 from ..consumer import EventConsumer, QuietConsumer, RichEventConsumer
 from .factory import create_agent
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 # Disable shell tool approval prompts and console output - we're running non-interactively
 os.environ.setdefault("BYPASS_TOOL_CONSENT", "true")
@@ -39,11 +42,6 @@ def _patched_strands_agent_init(self, agent, name, description="", config=None):
 
 StrandsAgent.__init__ = _patched_strands_agent_init
 
-# Default execution bounds (can be overridden by config)
-DEFAULT_MAX_TURNS = 1000
-DEFAULT_MAX_DURATION = 600  # 10 minutes (FAST mode)
-DEFAULT_DEEP_MAX_DURATION = 1200  # 20 minutes (DEEP mode)
-
 
 class AnalysisContext(BaseModel):
     """Container for analysis components and configuration."""
@@ -52,7 +50,6 @@ class AnalysisContext(BaseModel):
 
     repo: Path
     output: Path
-    mode: str
     agui_agent: Any  # StrandsAgent instance
     consumer: EventConsumer
     max_turns: int
@@ -69,13 +66,12 @@ class StreamResult(BaseModel):
     exceeded_limit: str | None = None
 
 
-def _build_analysis_prompt(repo: Path, output: Path, mode: str, focus: str | None) -> str:
+def _build_analysis_prompt(repo: Path, output: Path, focus: str | None) -> str:
     """Build the analysis prompt with optional focus area.
 
     Args:
         repo: Repository path
         output: Output directory path
-        mode: Analysis mode (fast/deep)
         focus: Optional focus area
 
     Returns:
@@ -93,57 +89,25 @@ and writing narration, emphasize components, functions, and patterns relevant to
 Analyze the repository at: {repo}
 
 Output all files to: {output}
-
-Mode: {mode.upper()}
 {focus_instruction}
-Follow your SOP to produce the narrated context bundle.
-Start with Phase 0 (create_file_manifest) and proceed through all phases.
+Follow your analysis phases to produce the narrated context bundle.
+Start with Phase 1 (create_file_manifest) and proceed through all phases.
 """
-
-
-def _get_execution_bounds(mode: str) -> tuple[int, int]:
-    """Get execution bounds (max_turns, max_duration) for the given mode.
-
-    Args:
-        mode: Analysis mode (fast/deep)
-
-    Returns:
-        Tuple of (max_turns, max_duration_seconds)
-    """
-    settings = get_settings()
-    max_turns = getattr(settings, "agent_max_turns", DEFAULT_MAX_TURNS)
-
-    if mode == "deep":
-        max_duration = getattr(
-            settings,
-            "deep_mode_max_duration",
-            DEFAULT_DEEP_MAX_DURATION,
-        )
-    else:
-        max_duration = getattr(settings, "agent_max_duration", DEFAULT_MAX_DURATION)
-
-    return max_turns, max_duration
 
 
 def _setup_analysis_context(
     repo_path: str | Path,
     output_dir: str | Path | None,
-    mode: str,
-    focus: str | None,
     consumer: EventConsumer | None,
     quiet: bool,
-    use_steering: bool,
 ) -> AnalysisContext:
     """Initialize all analysis components.
 
     Args:
         repo_path: Path to repository
         output_dir: Optional output directory
-        mode: Analysis mode
-        focus: Optional focus area
         consumer: Optional event consumer
         quiet: Quiet mode flag
-        use_steering: Use steering flag
 
     Returns:
         AnalysisContext with all components initialized
@@ -156,29 +120,30 @@ def _setup_analysis_context(
 
     output.mkdir(parents=True, exist_ok=True)
 
-    logger.info(f"Starting {mode.upper()} analysis: {repo}")
+    logger.info(f"Starting analysis: {repo}")
 
     # Create consumer if not provided
     if consumer is None:
         consumer = QuietConsumer() if quiet else RichEventConsumer()
 
     # Create the strands agent
-    strands_agent = create_agent(mode=mode, use_steering=use_steering)
+    strands_agent = create_agent()
 
     # Wrap with ag-ui-strands for typed event streaming
     agui_agent = StrandsAgent(
         agent=strands_agent,
         name="code_context_agent",
-        description=f"Code context analysis agent ({mode} mode)",
+        description="Code context analysis agent",
     )
 
     # Get execution bounds
-    max_turns, max_duration = _get_execution_bounds(mode)
+    settings = get_settings()
+    max_turns = settings.agent_max_turns
+    max_duration = settings.agent_max_duration
 
     return AnalysisContext(
         repo=repo,
         output=output,
-        mode=mode,
         agui_agent=agui_agent,
         consumer=consumer,
         max_turns=max_turns,
@@ -202,7 +167,7 @@ async def _execute_analysis_stream(
     # Build input for ag-ui
     input_data = RunAgentInput(
         thread_id="analysis-thread",
-        run_id=f"run-{context.mode}",
+        run_id="run-analysis",
         messages=[UserMessage(id="msg-1", role="user", content=prompt)],
         state={},
         tools=[],
@@ -251,7 +216,7 @@ async def _execute_analysis_stream(
                 error_message = getattr(event, "message", "Unknown error")
                 break
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         import traceback
 
         tb = traceback.format_exc()
@@ -279,11 +244,7 @@ async def _execute_analysis_stream(
 
 
 async def _cleanup_context(context: AnalysisContext) -> None:
-    """Cleanup resources after analysis.
-
-    Args:
-        context: Analysis context
-    """
+    """Cleanup resources after analysis."""
     await context.consumer.stop()
 
     # Cleanup LSP sessions
@@ -295,16 +256,14 @@ async def _cleanup_context(context: AnalysisContext) -> None:
 async def run_analysis(
     repo_path: str | Path,
     output_dir: str | Path | None = None,
-    mode: str = "fast",
     focus: str | None = None,
     consumer: EventConsumer | None = None,
     quiet: bool = False,
-    use_steering: bool = True,
 ) -> dict[str, Any]:
     """Run code context analysis on a repository.
 
     This function orchestrates the analysis by:
-    1. Creating an agent with appropriate tools and SOP
+    1. Creating an agent with tools, prompt, hooks, and structured output
     2. Wrapping it with ag-ui-strands for typed event streaming
     3. Streaming events to the consumer for display
     4. Returning analysis results
@@ -312,32 +271,18 @@ async def run_analysis(
     Args:
         repo_path: Path to the repository to analyze.
         output_dir: Output directory for context files. Defaults to repo/.agent
-        mode: Analysis mode - "fast" (default) or "deep".
         focus: Optional focus area to steer analysis (e.g., "authentication", "API layer").
         consumer: Event consumer for display. Defaults to RichEventConsumer.
         quiet: If True and no consumer, use QuietConsumer.
-        use_steering: Enable progressive disclosure via steering hooks (default True).
 
     Returns:
         Dict with analysis status and output paths.
-
-    Example:
-        >>> result = await run_analysis("/path/to/repo", mode="fast")
-        >>> print(result["output_path"])
     """
     # Setup phase
-    context = _setup_analysis_context(
-        repo_path,
-        output_dir,
-        mode,
-        focus,
-        consumer,
-        quiet,
-        use_steering,
-    )
+    context = _setup_analysis_context(repo_path, output_dir, consumer, quiet)
 
     # Build prompt
-    prompt = _build_analysis_prompt(context.repo, context.output, mode, focus)
+    prompt = _build_analysis_prompt(context.repo, context.output, focus)
 
     # Execution phase
     try:
@@ -357,7 +302,6 @@ async def run_analysis(
         "repo_path": str(context.repo),
         "output_dir": str(context.output),
         "context_path": str(context_path) if context_path.exists() else None,
-        "mode": mode,
     }
 
 
@@ -455,12 +399,7 @@ async def _handle_run_error(event: Any, consumer: EventConsumer) -> None:
 
 
 async def _dispatch_event(event: Any, consumer: EventConsumer) -> None:
-    """Dispatch an AG-UI event to the appropriate consumer method.
-
-    Args:
-        event: AG-UI event object.
-        consumer: Event consumer instance.
-    """
+    """Dispatch an AG-UI event to the appropriate consumer method."""
     if not hasattr(event, "type"):
         return
 
@@ -472,31 +411,22 @@ async def _dispatch_event(event: Any, consumer: EventConsumer) -> None:
 def run_analysis_sync(
     repo_path: str | Path,
     output_dir: str | Path | None = None,
-    mode: str = "fast",
     quiet: bool = False,
-    use_steering: bool = True,
 ) -> dict[str, Any]:
     """Synchronous wrapper for run_analysis.
 
     Args:
         repo_path: Path to the repository.
         output_dir: Output directory for context files.
-        mode: Analysis mode - "fast" or "deep".
         quiet: Suppress live display.
-        use_steering: Enable progressive disclosure via steering hooks (default True).
 
     Returns:
         Dict with analysis status and output paths.
-
-    Example:
-        >>> result = run_analysis_sync("/path/to/repo")
     """
     return asyncio.run(
         run_analysis(
             repo_path=repo_path,
             output_dir=output_dir,
-            mode=mode,
             quiet=quiet,
-            use_steering=use_steering,
         ),
     )

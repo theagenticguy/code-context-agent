@@ -12,13 +12,12 @@ from pathlib import Path
 
 from strands import tool
 
-
 # Path to rule files relative to this module
 RULES_DIR = Path(__file__).parent.parent / "rules"
 
 
 @tool
-def astgrep_scan(
+def astgrep_scan(  # noqa: C901
     language: str,
     pattern: str,
     repo_path: str,
@@ -93,7 +92,7 @@ def astgrep_scan(
             "stderr": "Command timed out",
             "return_code": -1,
         }
-    except Exception as e:
+    except (subprocess.SubprocessError, OSError) as e:
         result = {
             "status": "error",
             "stdout": "",
@@ -134,7 +133,7 @@ def astgrep_scan(
 
 
 @tool
-def astgrep_scan_rule_pack(
+def astgrep_scan_rule_pack(  # noqa: C901
     rule_pack: str,
     repo_path: str,
     include_globs: list[str] | None = None,
@@ -220,7 +219,7 @@ def astgrep_scan_rule_pack(
             "stderr": "Command timed out",
             "return_code": -1,
         }
-    except Exception as e:
+    except (subprocess.SubprocessError, OSError) as e:
         result = {
             "status": "error",
             "stdout": "",
@@ -341,7 +340,7 @@ def astgrep_inline_rule(
             "stderr": "Command timed out",
             "return_code": -1,
         }
-    except Exception as e:
+    except (subprocess.SubprocessError, OSError) as e:
         result = {
             "status": "error",
             "stdout": "",

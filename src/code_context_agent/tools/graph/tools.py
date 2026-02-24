@@ -106,7 +106,7 @@ def code_graph_create(
 
 
 @tool
-def code_graph_ingest_lsp(
+def code_graph_ingest_lsp(  # noqa: C901
     graph_id: str,
     lsp_result: str,
     result_type: str,
@@ -565,7 +565,7 @@ def code_graph_ingest_tests(
 
 
 @tool
-def code_graph_analyze(
+def code_graph_analyze(  # noqa: C901
     graph_id: str,
     analysis_type: str,
     top_k: int = 10,
@@ -625,6 +625,8 @@ def code_graph_analyze(
             - "similar": Returns similar nodes (requires node_a)
             - "category": Returns nodes in category (requires category)
             - "dependencies": Returns dependency chain (requires node_a)
+            - "trust": TrustRank-based foundations (noise-resistant PageRank from entry points)
+            - "triangles": Find tightly-coupled code triads
         top_k: Maximum results for ranked analyses (hotspots, foundations,
             similar). Default 10. Use 20-30 for comprehensive analysis.
         node_a: Required for "coupling", "similar", "dependencies".
@@ -722,11 +724,19 @@ def code_graph_analyze(
         results = analyzer.get_dependency_chain(node_a, direction)
         return _json_response({"status": "success", "analysis": "dependencies", "results": results})
 
+    if analysis_type == "trust":
+        results = analyzer.find_trusted_foundations(top_k=top_k)
+        return _json_response({"status": "success", "analysis": "trust", "results": results})
+
+    if analysis_type == "triangles":
+        results = analyzer.find_triangles(top_k=top_k)
+        return _json_response({"status": "success", "analysis": "triangles", "results": results})
+
     return _json_response({"status": "error", "message": f"Unknown analysis_type: {analysis_type}"})
 
 
 @tool
-def code_graph_explore(
+def code_graph_explore(  # noqa: C901
     graph_id: str,
     action: str,
     node_id: str = "",
@@ -1115,7 +1125,7 @@ def code_graph_save(
         path = Path(file_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(data, indent=2, default=str))
-    except Exception as e:
+    except (OSError, ValueError, TypeError) as e:
         return _json_response({"status": "error", "message": f"Save failed: {e}"})
 
     return _json_response(
@@ -1193,7 +1203,7 @@ def code_graph_load(
         _graphs[graph_id] = graph
         # Reset explorer
         _explorers.pop(graph_id, None)
-    except Exception as e:
+    except (OSError, ValueError, TypeError, KeyError) as e:
         return _json_response({"status": "error", "message": f"Load failed: {e}"})
 
     return _json_response(

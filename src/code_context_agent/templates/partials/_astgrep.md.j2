@@ -1,0 +1,31 @@
+## ast-grep Tools
+
+### `astgrep_scan_rule_pack` (primary)
+Pre-built patterns for business logic detection:
+- `ts_business_logic`: TypeScript/JS - Prisma, TypeORM, Sequelize, Express, NestJS, GraphQL, JWT
+- `py_business_logic`: Python - SQLAlchemy, Django ORM, FastAPI, Flask, Celery, gRPC
+
+Severity levels in results:
+- `error`: Write ops, mutations, auth - highest priority
+- `warning`: Read ops, queries - secondary
+- `hint`: Schema/model definitions - informational
+
+Example: `astgrep_scan_rule_pack("ts_business_logic", repo_path)`
+
+### `astgrep_scan` (ad-hoc patterns)
+For custom structural searches not in rule packs.
+
+Pattern syntax:
+- `$VAR`: single node (e.g., `$OBJ.save()`)
+- `$$ARGS`: multiple args (e.g., `fetch($URL, $$OPTS)`)
+- `$$$`: any sequence (e.g., `class $NAME { $$$ }`)
+
+Examples:
+- `$OBJ.$METHOD($$ARGS)` with METHOD regex `^(create|update|delete)$`
+- `await $PROMISE` - find all awaited promises
+- `throw new $ERROR($$ARGS)` - find error throws
+
+### Strategy
+1. Start with rule packs - covers 80% of cases
+2. Use ad-hoc `astgrep_scan` for repo-specific patterns
+3. Combine with `rg_search` for string-based fallback (e.g., SQL keywords)

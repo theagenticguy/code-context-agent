@@ -9,8 +9,9 @@ from __future__ import annotations
 import json
 import shlex
 import subprocess
-from dataclasses import dataclass
 from typing import Any, TypedDict
+
+from ..models.base import FrozenModel
 
 
 class CommandResult(TypedDict):
@@ -23,8 +24,7 @@ class CommandResult(TypedDict):
     truncated: bool
 
 
-@dataclass
-class ToolResult:
+class ToolResult(FrozenModel):
     """Standardized result structure for tool responses.
 
     Provides a consistent JSON serialization pattern for tool outputs.
@@ -116,7 +116,7 @@ def run_command(
             "return_code": -1,
             "truncated": False,
         }
-    except Exception as e:
+    except (subprocess.SubprocessError, OSError) as e:
         return {
             "status": "error",
             "stdout": "",

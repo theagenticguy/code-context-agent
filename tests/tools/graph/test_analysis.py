@@ -1,5 +1,7 @@
 """Tests for code graph analysis."""
 
+import pytest
+
 from code_context_agent.tools.graph.analysis import CodeAnalyzer
 from code_context_agent.tools.graph.model import (
     CodeEdge,
@@ -17,18 +19,30 @@ def create_sample_graph() -> CodeGraph:
     # Create nodes: main -> helper1, helper2
     #                       helper1 -> util
     #                       helper2 -> util
-    graph.add_node(CodeNode("main", "main", NodeType.FUNCTION, "/main.py", 1, 10))
-    graph.add_node(CodeNode("helper1", "helper1", NodeType.FUNCTION, "/helpers.py", 1, 10))
-    graph.add_node(CodeNode("helper2", "helper2", NodeType.FUNCTION, "/helpers.py", 15, 25))
-    graph.add_node(CodeNode("util", "util", NodeType.FUNCTION, "/utils.py", 1, 5))
+    graph.add_node(CodeNode(
+        id="main", name="main", node_type=NodeType.FUNCTION,
+        file_path="/main.py", line_start=1, line_end=10,
+    ))
+    graph.add_node(CodeNode(
+        id="helper1", name="helper1", node_type=NodeType.FUNCTION,
+        file_path="/helpers.py", line_start=1, line_end=10,
+    ))
+    graph.add_node(CodeNode(
+        id="helper2", name="helper2", node_type=NodeType.FUNCTION,
+        file_path="/helpers.py", line_start=15, line_end=25,
+    ))
+    graph.add_node(CodeNode(
+        id="util", name="util", node_type=NodeType.FUNCTION,
+        file_path="/utils.py", line_start=1, line_end=5,
+    ))
 
     # main calls helpers
-    graph.add_edge(CodeEdge("main", "helper1", EdgeType.CALLS))
-    graph.add_edge(CodeEdge("main", "helper2", EdgeType.CALLS))
+    graph.add_edge(CodeEdge(source="main", target="helper1", edge_type=EdgeType.CALLS))
+    graph.add_edge(CodeEdge(source="main", target="helper2", edge_type=EdgeType.CALLS))
 
     # helpers call util
-    graph.add_edge(CodeEdge("helper1", "util", EdgeType.CALLS))
-    graph.add_edge(CodeEdge("helper2", "util", EdgeType.CALLS))
+    graph.add_edge(CodeEdge(source="helper1", target="util", edge_type=EdgeType.CALLS))
+    graph.add_edge(CodeEdge(source="helper2", target="util", edge_type=EdgeType.CALLS))
 
     return graph
 
@@ -38,25 +52,92 @@ def create_clustered_graph() -> CodeGraph:
     graph = CodeGraph()
 
     # Cluster 1: auth module
-    graph.add_node(CodeNode("auth/login", "login", NodeType.FUNCTION, "/auth/login.py", 1, 10))
-    graph.add_node(CodeNode("auth/logout", "logout", NodeType.FUNCTION, "/auth/logout.py", 1, 10))
-    graph.add_node(CodeNode("auth/session", "session", NodeType.FUNCTION, "/auth/session.py", 1, 10))
+    graph.add_node(CodeNode(
+        id="auth/login", name="login", node_type=NodeType.FUNCTION,
+        file_path="/auth/login.py", line_start=1, line_end=10,
+    ))
+    graph.add_node(CodeNode(
+        id="auth/logout", name="logout", node_type=NodeType.FUNCTION,
+        file_path="/auth/logout.py", line_start=1, line_end=10,
+    ))
+    graph.add_node(CodeNode(
+        id="auth/session", name="session", node_type=NodeType.FUNCTION,
+        file_path="/auth/session.py", line_start=1, line_end=10,
+    ))
 
-    graph.add_edge(CodeEdge("auth/login", "auth/session", EdgeType.CALLS))
-    graph.add_edge(CodeEdge("auth/logout", "auth/session", EdgeType.CALLS))
+    graph.add_edge(CodeEdge(source="auth/login", target="auth/session", edge_type=EdgeType.CALLS))
+    graph.add_edge(CodeEdge(source="auth/logout", target="auth/session", edge_type=EdgeType.CALLS))
 
     # Cluster 2: db module
-    graph.add_node(CodeNode("db/connect", "connect", NodeType.FUNCTION, "/db/connect.py", 1, 10))
-    graph.add_node(CodeNode("db/query", "query", NodeType.FUNCTION, "/db/query.py", 1, 10))
-    graph.add_node(CodeNode("db/pool", "pool", NodeType.FUNCTION, "/db/pool.py", 1, 10))
+    graph.add_node(CodeNode(
+        id="db/connect", name="connect", node_type=NodeType.FUNCTION,
+        file_path="/db/connect.py", line_start=1, line_end=10,
+    ))
+    graph.add_node(CodeNode(
+        id="db/query", name="query", node_type=NodeType.FUNCTION,
+        file_path="/db/query.py", line_start=1, line_end=10,
+    ))
+    graph.add_node(CodeNode(
+        id="db/pool", name="pool", node_type=NodeType.FUNCTION,
+        file_path="/db/pool.py", line_start=1, line_end=10,
+    ))
 
-    graph.add_edge(CodeEdge("db/connect", "db/pool", EdgeType.CALLS))
-    graph.add_edge(CodeEdge("db/query", "db/pool", EdgeType.CALLS))
+    graph.add_edge(CodeEdge(source="db/connect", target="db/pool", edge_type=EdgeType.CALLS))
+    graph.add_edge(CodeEdge(source="db/query", target="db/pool", edge_type=EdgeType.CALLS))
 
     # Cross-cluster edge (sparse)
-    graph.add_edge(CodeEdge("auth/login", "db/query", EdgeType.CALLS))
+    graph.add_edge(CodeEdge(source="auth/login", target="db/query", edge_type=EdgeType.CALLS))
 
     return graph
+
+
+@pytest.fixture()
+def sample_graph():
+    """Fixture providing a sample graph."""
+    return create_sample_graph()
+
+
+@pytest.fixture()
+def clustered_graph():
+    """Fixture providing a clustered graph."""
+    return create_clustered_graph()
+
+
+class TestTrustRankAndTriangles:
+    """Tests for TrustRank and triangle detection."""
+
+    def test_find_trusted_foundations(self, sample_graph: CodeGraph) -> None:
+        """Test TrustRank finds trusted foundations."""
+        analyzer = CodeAnalyzer(sample_graph)
+        results = analyzer.find_trusted_foundations(top_k=5)
+        assert isinstance(results, list)
+
+    def test_find_trusted_foundations_with_seeds(self, sample_graph: CodeGraph) -> None:
+        """Test TrustRank with explicit seed nodes."""
+        analyzer = CodeAnalyzer(sample_graph)
+        results = analyzer.find_trusted_foundations(seed_nodes=["main"], top_k=5)
+        assert isinstance(results, list)
+        assert len(results) > 0
+
+    def test_find_trusted_foundations_empty_graph(self) -> None:
+        """Test TrustRank on an empty graph."""
+        graph = CodeGraph()
+        analyzer = CodeAnalyzer(graph)
+        results = analyzer.find_trusted_foundations(top_k=5)
+        assert results == []
+
+    def test_find_triangles(self, clustered_graph: CodeGraph) -> None:
+        """Test triangle detection on a clustered graph."""
+        analyzer = CodeAnalyzer(clustered_graph)
+        results = analyzer.find_triangles(top_k=5)
+        assert isinstance(results, list)
+
+    def test_find_triangles_empty_graph(self) -> None:
+        """Test triangle detection on an empty graph."""
+        graph = CodeGraph()
+        analyzer = CodeAnalyzer(graph)
+        results = analyzer.find_triangles(top_k=5)
+        assert results == []
 
 
 class TestCodeAnalyzer:
@@ -165,9 +246,18 @@ class TestCodeAnalyzer:
         graph = CodeGraph()
 
         # Add nodes with category metadata
-        node1 = CodeNode("db1", "query1", NodeType.PATTERN_MATCH, "/a.py", 1, 5, metadata={"category": "db"})
-        node2 = CodeNode("db2", "query2", NodeType.PATTERN_MATCH, "/b.py", 1, 5, metadata={"category": "db"})
-        node3 = CodeNode("auth1", "login", NodeType.PATTERN_MATCH, "/c.py", 1, 5, metadata={"category": "auth"})
+        node1 = CodeNode(
+            id="db1", name="query1", node_type=NodeType.PATTERN_MATCH,
+            file_path="/a.py", line_start=1, line_end=5, metadata={"category": "db"},
+        )
+        node2 = CodeNode(
+            id="db2", name="query2", node_type=NodeType.PATTERN_MATCH,
+            file_path="/b.py", line_start=1, line_end=5, metadata={"category": "db"},
+        )
+        node3 = CodeNode(
+            id="auth1", name="login", node_type=NodeType.PATTERN_MATCH,
+            file_path="/c.py", line_start=1, line_end=5, metadata={"category": "auth"},
+        )
 
         graph.add_node(node1)
         graph.add_node(node2)
@@ -176,7 +266,7 @@ class TestCodeAnalyzer:
         analyzer = CodeAnalyzer(graph)
         db_nodes = analyzer.find_clusters_by_category("db")
 
-        assert len(db_nodes) == 2
+        assert len(db_nodes) == 2  # noqa: PLR2004
         assert all(n["category"] == "db" for n in db_nodes)
 
     def test_empty_graph(self) -> None:

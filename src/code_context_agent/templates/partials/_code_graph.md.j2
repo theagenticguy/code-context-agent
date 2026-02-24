@@ -1,0 +1,96 @@
+## Code Graph Tools
+
+The code graph unifies discovery results (LSP, AST-grep, ripgrep) into a
+queryable structure. Use it to surface structural insights that aren't
+obvious from raw tool outputs - hotspots, foundations, modules, coupling.
+
+### Lifecycle
+
+```
+code_graph_create("main")           # Initialize empty graph
+  │
+  ▼
+code_graph_ingest_lsp(...)          # Add LSP data (symbols, refs, defs)
+code_graph_ingest_astgrep(...)      # Add AST-grep matches
+  │
+  ▼
+code_graph_analyze("main", ...)     # Run algorithms
+code_graph_explore("main", ...)     # Progressive disclosure
+  │
+  ▼
+code_graph_export("main", "mermaid") # Generate diagrams
+code_graph_save("main", path)        # Persist for reuse
+```
+
+### Ingestion Tools
+
+| Tool | Input | What It Creates |
+|------|-------|-----------------|
+| `code_graph_ingest_lsp` | LSP result + type | Nodes (symbols) + edges (calls, refs) |
+| `code_graph_ingest_astgrep` | AST-grep result | Nodes with severity/category metadata |
+| `code_graph_ingest_inheritance` | Hover content | Inherits/implements edges |
+| `code_graph_ingest_tests` | Test + prod files | Tests edges |
+
+**LSP ingestion types**:
+- `"symbols"`: Creates nodes from `lsp_document_symbols` (requires `source_file`)
+- `"references"`: Creates edges from `lsp_references` (requires `source_symbol`)
+- `"definition"`: Creates edges from `lsp_definition`
+
+### Analysis Types
+
+| Type | Algorithm | Use For |
+|------|-----------|---------|
+| `"hotspots"` | Betweenness centrality | Bottleneck code, integration points |
+| `"foundations"` | PageRank | Core infrastructure, heavily depended-on |
+| `"entry_points"` | In-degree = 0, out > 0 | Execution starting points |
+| `"modules"` | Louvain clustering | Logical groupings, layer detection |
+| `"coupling"` | Shared neighbors + paths | Dependency strength between two nodes |
+| `"similar"` | Personalized PageRank | Related code to a given node |
+| `"category"` | Metadata filter | Business logic by category |
+| `"dependencies"` | BFS traversal | What a node depends on |
+| `"trust"` | TrustRank (personalized PageRank) | Noise-resistant foundations from entry points |
+| `"triangles"` | Clique enumeration | Tightly-coupled code triads |
+
+### Progressive Exploration
+
+Use `code_graph_explore` for staged context building:
+
+1. `"overview"` - Start here. Returns entry points, hotspots, modules, foundations
+2. `"expand_node"` - BFS from a node. Use `depth=1` or `depth=2`
+3. `"expand_module"` - Deep-dive into a detected module
+4. `"path"` - Find connection between two nodes
+5. `"category"` - Explore business logic category (db, auth, etc.)
+6. `"status"` - Check exploration coverage
+
+### Export Formats
+
+- `"json"`: NetworkX node-link format (for persistence or external tools)
+- `"mermaid"`: Diagram syntax (respects `max_nodes` for readability)
+
+### Typical Workflow
+
+```python
+# 1. Create graph
+code_graph_create("main")
+
+# 2. Run LSP, ingest results
+lsp_start("py", repo_path)
+symbols = lsp_document_symbols(session_id, "src/main.py")
+code_graph_ingest_lsp("main", symbols, "symbols", source_file="src/main.py")
+
+# 3. Run AST-grep, ingest results
+matches = astgrep_scan_rule_pack("py_business_logic", repo_path)
+code_graph_ingest_astgrep("main", matches, "rule_pack")
+
+# 4. Analyze - find what matters
+hotspots = code_graph_analyze("main", "hotspots", top_k=10)
+modules = code_graph_analyze("main", "modules")
+
+# 5. Explore progressively
+overview = code_graph_explore("main", "overview")
+details = code_graph_explore("main", "expand_node", node_id=top_node, depth=2)
+
+# 6. Export for output
+mermaid = code_graph_export("main", "mermaid", max_nodes=15)
+code_graph_save("main", ".agent/code_graph.json")
+```

@@ -1,17 +1,11 @@
 """Command-line interface for code-context-agent.
 
-This module provides the main CLI entry point using cyclopts. It integrates
-with the configuration system and Rich display utilities to provide a
-user-friendly command-line experience.
+This module provides the main CLI entry point using cyclopts.
 
 Example:
-    Run the CLI directly::
-
-        $ python -m code_context_agent.cli
-        $ code-context-agent --debug
-        $ code-context-agent --output-format=json
-        $ code-context-agent analyze /path/to/repo
-        $ code-context-agent analyze /path/to/repo --deep
+    $ code-context-agent analyze /path/to/repo
+    $ code-context-agent analyze /path/to/repo --focus "authentication"
+    $ code-context-agent analyze . --quiet
 """
 
 from pathlib import Path
@@ -64,10 +58,6 @@ def analyze(
         Parameter(help="Path to the repository to analyze."),
     ] = Path(),
     *,
-    deep: Annotated[
-        bool,
-        Parameter(help="Enable DEEP mode for comprehensive analysis (~50+ tool calls)."),
-    ] = False,
     output_dir: Annotated[
         Path | None,
         Parameter(help="Output directory for context files. Defaults to <repo>/.agent"),
@@ -76,10 +66,6 @@ def analyze(
         str,
         Parameter(help="Focus area for analysis (e.g., 'authentication', 'API endpoints', 'database layer')."),
     ] = "",
-    no_steering: Annotated[
-        bool,
-        Parameter(help="Disable progressive disclosure steering (enabled by default)."),
-    ] = False,
     quiet: Annotated[
         bool,
         Parameter(help="Suppress live display output."),
@@ -91,17 +77,10 @@ def analyze(
 ) -> None:
     """Analyze a codebase and produce a narrated context bundle.
 
-    This command runs the code context analysis agent on the specified
-    repository. The agent uses a combination of static analysis tools
-    (ripgrep, repomix, ast-grep) and LSP semantic analysis to understand
-    the codebase structure and produce a narrated markdown bundle.
-
-    Modes:
-        FAST (default): Quick overview for starting work safely.
-            ~10-15 tool calls, minimal LSP, 5-15 business logic candidates.
-
-        DEEP (--deep): Thorough analysis for onboarding or safe refactoring.
-            ~50+ tool calls, full dependency cones, comprehensive analysis.
+    The agent uses LSP, AST-grep, ripgrep, repomix, and git history
+    tools to understand the codebase, then produces a narrated markdown
+    bundle. Analysis depth is determined automatically based on repository
+    size and complexity.
 
     Outputs:
         .agent/CONTEXT.md - The narrated context bundle
@@ -110,7 +89,7 @@ def analyze(
 
     Example:
         $ code-context-agent analyze /path/to/repo
-        $ code-context-agent analyze . --deep
+        $ code-context-agent analyze . --focus "authentication"
         $ code-context-agent analyze . --output-dir ./output
     """
     import asyncio
@@ -134,20 +113,13 @@ def analyze(
         console.print(f"[red]Error:[/red] Path is not a directory: {repo_path}")
         raise SystemExit(1)
 
-    mode = "deep" if deep else "fast"
-    use_steering = not no_steering
-
     # Show analysis configuration
     if not quiet:
         console.print()
         console.print("[bold]Code Context Analysis[/bold]")
         console.print(f"  Repository: [cyan]{repo_path}[/cyan]")
-        tool_calls = "(~50+ tool calls)" if deep else "(~10-15 tool calls)"
-        console.print(f"  Mode: [yellow]{mode.upper()}[/yellow] {tool_calls}")
         if focus:
             console.print(f"  Focus: [magenta]{focus}[/magenta]")
-        if use_steering:
-            console.print("  Steering: [green]enabled[/green] (progressive disclosure)")
         console.print()
 
     # Run the analysis
@@ -155,23 +127,31 @@ def analyze(
         run_analysis(
             repo_path=repo_path,
             output_dir=output_dir,
-            mode=mode,
             focus=focus or None,
             quiet=quiet,
-            use_steering=use_steering,
         ),
     )
 
-    # Display results
+    _display_result(result, debug=debug)
+
+
+
+def _display_result(result: dict, *, debug: bool = False) -> None:
+    """Display analysis result to the console.
+
+    Args:
+        result: Analysis result dictionary.
+        debug: Whether debug mode is enabled.
+    """
     if result["status"] == "completed":
         console.print()
-        console.print("[green]✓[/green] Analysis completed successfully")
+        console.print("[green]Analysis completed successfully[/green]")
         console.print(f"  Output directory: [cyan]{result['output_dir']}[/cyan]")
         if result.get("context_path"):
             console.print(f"  Context file: [cyan]{result['context_path']}[/cyan]")
     elif result["status"] == "stopped":
         console.print()
-        console.print(f"[yellow]⚠[/yellow] Analysis stopped: {result.get('exceeded_limit', 'limit exceeded')}")
+        console.print(f"[yellow]Analysis stopped:[/yellow] {result.get('exceeded_limit', 'limit exceeded')}")
         console.print(f"  Turns: {result.get('turn_count', '?')}, Duration: {result.get('duration_seconds', 0):.1f}s")
         if result.get("context_path"):
             console.print(f"  Partial output: [cyan]{result['context_path']}[/cyan]")
@@ -179,7 +159,7 @@ def analyze(
     else:
         console.print()
         error = result.get("error") or "Unknown error (no error message captured)"
-        console.print(f"[red]✗[/red] Analysis failed: {error}")
+        console.print(f"[red]Analysis failed:[/red] {error}")
         if debug:
             console.print(f"[dim]Status: {result.get('status')}, Turns: {result.get('turn_count', 0)}[/dim]")
         raise SystemExit(1)

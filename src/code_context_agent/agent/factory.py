@@ -1,7 +1,8 @@
 """Agent factory for creating configured analysis agents.
 
 This module provides functions to create strands Agent instances
-configured with the appropriate tools and system prompts.
+configured with the appropriate tools, system prompt, hooks, and
+structured output model.
 """
 
 from __future__ import annotations
@@ -13,7 +14,9 @@ from strands import Agent
 from strands.models import BedrockModel
 
 from ..config import get_settings
-from .sop import DEEP_PROMPT, FAST_PROMPT
+from ..models.output import AnalysisResult
+from .hooks import create_all_hooks
+from .prompts import get_prompt
 
 
 def get_analysis_tools() -> list[Any]:
@@ -40,7 +43,11 @@ def get_analysis_tools() -> list[Any]:
         git_recent_commits,
         read_file_bounded,
         repomix_bundle,
+        repomix_bundle_with_context,
+        repomix_compressed_signatures,
+        repomix_json_export,
         repomix_orientation,
+        repomix_split_bundle,
         rg_search,
         write_file_list,
     )
@@ -58,11 +65,13 @@ def get_analysis_tools() -> list[Any]:
     from ..tools.graph.tools import code_graph_ingest_inheritance, code_graph_ingest_rg, code_graph_ingest_tests
     from ..tools.lsp import (
         lsp_definition,
+        lsp_diagnostics,
         lsp_document_symbols,
         lsp_hover,
         lsp_references,
         lsp_shutdown,
         lsp_start,
+        lsp_workspace_symbols,
     )
     from ..tools.shell_tool import shell
 
@@ -71,6 +80,10 @@ def get_analysis_tools() -> list[Any]:
         create_file_manifest,
         repomix_orientation,
         repomix_bundle,
+        repomix_bundle_with_context,
+        repomix_compressed_signatures,
+        repomix_json_export,
+        repomix_split_bundle,
         rg_search,
         write_file_list,
         read_file_bounded,
@@ -88,6 +101,8 @@ def get_analysis_tools() -> list[Any]:
         lsp_hover,
         lsp_references,
         lsp_definition,
+        lsp_workspace_symbols,
+        lsp_diagnostics,
         lsp_shutdown,
         # ast-grep tools (rule packs + ad-hoc + inline)
         astgrep_scan,
@@ -113,84 +128,49 @@ def get_analysis_tools() -> list[Any]:
     ]
 
 
-def _get_steering_hooks() -> list[Any]:
-    """Get optional steering hooks for progressive disclosure.
-
-    Returns:
-        List of steering handlers, or empty list if steering unavailable.
-    """
-    try:
-        from .steering import STEERING_AVAILABLE, create_all_steering_handlers
-
-        if STEERING_AVAILABLE:
-            return create_all_steering_handlers()
-    except ImportError:
-        pass
-    return []
-
-
-def create_agent(
-    mode: str = "fast",
-    use_steering: bool = True,
-) -> Agent:
+def create_agent() -> Agent:
     """Create a configured agent for code context analysis.
 
-    Args:
-        mode: Analysis mode - "fast" or "deep".
-        use_steering: Enable experimental steering for progressive disclosure.
-            When enabled, the agent receives contextual guidance at key points
-            (before tool calls, before output) rather than loading all rules upfront.
+    Creates an Agent with:
+    - Opus 4.6 on Bedrock with adaptive thinking and 1M context
+    - All analysis tools (35+)
+    - Unified system prompt rendered from Jinja2 templates
+    - Structured output model (AnalysisResult)
+    - Quality/efficiency hooks
 
     Returns:
         Configured Agent instance ready for analysis.
-
-    Example:
-        >>> agent = create_agent(mode="fast")
-        >>> response = await agent.stream_async("Analyze /path/to/repo")
     """
     settings = get_settings()
 
-    # Mode-specific thinking budget: FAST=8000, DEEP=20000
-    thinking_budget = 8000 if mode.lower() == "fast" else 20000
-
     logger.info(
-        f"Creating agent: mode={mode}, model={settings.model_id}, "
-        f"region={settings.region}, thinking_budget={thinking_budget}, "
-        f"steering={'enabled' if use_steering else 'disabled'}",
+        f"Creating agent: model={settings.model_id}, region={settings.region}, thinking=adaptive",
     )
 
-    # Create Bedrock model with extended thinking and 1M context enabled
+    # Create Bedrock model with adaptive thinking and 1M context
     model = BedrockModel(
         model_id=settings.model_id,
         region_name=settings.region,
         temperature=settings.temperature,
         additional_request_fields={
-            "thinking": {
-                "type": "enabled",
-                "budget_tokens": thinking_budget,
-            },
-            # Enable 1M context window (beta feature for Sonnet 4 and 4.5)
+            "thinking": {"type": "adaptive"},
             "anthropic_beta": ["context-1m-2025-08-07"],
         },
     )
 
-    # Select system prompt based on mode
-    system_prompt = DEEP_PROMPT if mode.lower() == "deep" else FAST_PROMPT
+    # Render system prompt from Jinja2 template
+    system_prompt = get_prompt()
 
-    # Get tools
     tools = get_analysis_tools()
+    hooks = create_all_hooks()
 
-    # Get optional steering hooks
-    hooks = _get_steering_hooks() if use_steering else []
-    if hooks:
-        logger.info(f"Steering enabled with {len(hooks)} hooks")
-
-    logger.info(f"Agent configured with {len(tools)} tools")
+    logger.info(f"Agent configured with {len(tools)} tools, {len(hooks)} hooks")
 
     return Agent(
         model=model,
         tools=tools,
         system_prompt=system_prompt,
-        hooks=hooks if hooks else None,
+        structured_output_model=AnalysisResult,
+        hooks=hooks,
         callback_handler=None,  # We use stream_async for events
     )

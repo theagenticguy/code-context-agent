@@ -21,7 +21,6 @@ from typing import Any
 from loguru import logger
 
 
-
 class LspClient:
     """LSP client using JSON-RPC 2.0 over stdio.
 
@@ -176,9 +175,9 @@ class LspClient:
                 self._process.kill()
                 try:
                     await self._process.wait()
-                except Exception as e:
+                except (OSError, ProcessLookupError) as e:
                     logger.debug(f"Process wait interrupted: {e}")
-            except Exception as e:
+            except (OSError, ProcessLookupError) as e:
                 logger.warning(f"Error terminating LSP process: {e}")
             self._process = None
 
@@ -263,7 +262,7 @@ class LspClient:
         self._process.stdin.write(header + body)
         await self._process.stdin.drain()
 
-    async def _read_responses(self) -> None:
+    async def _read_responses(self) -> None:  # noqa: C901
         """Background task to read and dispatch responses."""
         if self._process is None or self._process.stdout is None:
             return
@@ -320,7 +319,7 @@ class LspClient:
 
             except asyncio.CancelledError:
                 break
-            except Exception as e:
+            except (OSError, ValueError, UnicodeDecodeError) as e:
                 logger.error(f"LSP reader error: {e}")
                 break
 
@@ -418,7 +417,11 @@ class LspClient:
         return response.get("result")
 
     async def references(
-        self, file_path: str, line: int, character: int, include_declaration: bool = True,
+        self,
+        file_path: str,
+        line: int,
+        character: int,
+        include_declaration: bool = True,
     ) -> list[dict[str, Any]]:
         """Find all references to symbol at position.
 
@@ -472,6 +475,38 @@ class LspClient:
             return [result]
         return result
 
+    async def workspace_symbols(self, query: str) -> list[dict[str, Any]]:
+        """Search for workspace symbols matching query.
+
+        Args:
+            query: Search query string (partial name matching).
+
+        Returns:
+            List of SymbolInformation objects.
+        """
+        result = await self._request("workspace/symbol", {"query": query})
+        return result.get("result", []) or []
+
+    async def diagnostics(self, file_uri: str) -> list[dict[str, Any]]:
+        """Get diagnostics for a file. Uses textDocument/diagnostic (pull model).
+
+        Args:
+            file_uri: File URI (file:///path/to/file).
+
+        Returns:
+            List of Diagnostic objects.
+        """
+        result = await self._request(
+            "textDocument/diagnostic",
+            {"textDocument": {"uri": file_uri}},
+        )
+        response = result.get("result")
+        if response and isinstance(response, dict) and "items" in response:
+            return response["items"]
+        if isinstance(response, list):
+            return response
+        return []
+
     async def shutdown(self) -> None:
         """Shutdown the LSP server gracefully."""
         if self._process is None:
@@ -482,7 +517,7 @@ class LspClient:
             await self._request("shutdown", {})
             # Send exit notification
             await self._notify("exit", {})
-        except Exception as e:
+        except (OSError, TimeoutError, RuntimeError) as e:
             logger.warning(f"LSP shutdown error: {e}")
         finally:
             # Cancel reader task

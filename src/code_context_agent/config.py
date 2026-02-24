@@ -15,17 +15,17 @@ Environment Variables:
     CODE_CONTEXT_DEBUG: Enable debug mode (default: False)
     CODE_CONTEXT_LOG_LEVEL: Logging level (default: "INFO")
     CODE_CONTEXT_OUTPUT_FORMAT: Output format - "rich", "json", or "plain" (default: "rich")
-    CODE_CONTEXT_MODEL_ID: Bedrock model ID for the agent
+    CODE_CONTEXT_MODEL_ID: Bedrock model ID for the agent (default: Opus 4.6)
     CODE_CONTEXT_REGION: AWS region for Bedrock
-    CODE_CONTEXT_TEMPERATURE: Model temperature (default 1.0 for extended thinking)
+    CODE_CONTEXT_TEMPERATURE: Model temperature (default 1.0 for thinking)
     CODE_CONTEXT_LSP_TS_COMMAND: Command to start TypeScript LSP
     CODE_CONTEXT_LSP_PY_COMMAND: Command to start Python LSP (ty server)
+    CODE_CONTEXT_LSP_SERVERS: LSP server commands by language key (JSON dict)
     CODE_CONTEXT_LSP_TIMEOUT: LSP operation timeout in seconds
     CODE_CONTEXT_LSP_STARTUP_TIMEOUT: Maximum seconds to wait for LSP server to initialize
     CODE_CONTEXT_LSP_MAX_FILES: Maximum files before LSP analysis is skipped
     CODE_CONTEXT_AGENT_MAX_TURNS: Maximum agent turns before stopping (default: 1000)
-    CODE_CONTEXT_AGENT_MAX_DURATION: Maximum agent duration in seconds (default: 600)
-    CODE_CONTEXT_DEEP_MODE_MAX_DURATION: Maximum agent duration for DEEP mode (default: 1200)
+    CODE_CONTEXT_AGENT_MAX_DURATION: Maximum agent duration in seconds (default: 1200)
     CODE_CONTEXT_OTEL_DISABLED: Disable OpenTelemetry tracing (default: True)
 """
 
@@ -73,7 +73,7 @@ class Settings(BaseSettings):
 
     # Agent model settings
     model_id: str = Field(
-        default="global.anthropic.claude-sonnet-4-5-20250929-v1:0",
+        default="global.anthropic.claude-opus-4-6-v1",
         description="Bedrock model ID for the analysis agent",
     )
     region: str = Field(
@@ -84,7 +84,7 @@ class Settings(BaseSettings):
         default=1.0,
         ge=0.0,
         le=1.0,
-        description="Model temperature (must be 1.0 when extended thinking is enabled)",
+        description="Model temperature (must be 1.0 when thinking is enabled)",
     )
 
     # LSP settings
@@ -95,6 +95,18 @@ class Settings(BaseSettings):
     lsp_py_command: str = Field(
         default="ty server",
         description="Command to start Python LSP server (ty from astral.sh)",
+    )
+    lsp_servers: dict[str, str] = Field(
+        default={
+            "ts": "typescript-language-server --stdio",
+            "typescript": "typescript-language-server --stdio",
+            "py": "ty server",
+            "python": "ty server",
+            "rust": "rust-analyzer",
+            "go": "gopls serve",
+            "java": "jdtls",
+        },
+        description="Mapping of language identifiers to LSP server commands",
     )
     lsp_timeout: int = Field(
         default=30,
@@ -123,16 +135,10 @@ class Settings(BaseSettings):
         description="Maximum agent turns before stopping",
     )
     agent_max_duration: int = Field(
-        default=600,
-        ge=60,
-        le=3600,
-        description="Maximum agent duration in seconds",
-    )
-    deep_mode_max_duration: int = Field(
         default=1200,
         ge=60,
         le=7200,
-        description="Maximum agent duration in seconds for DEEP mode (default: 20 min)",
+        description="Maximum agent duration in seconds (default: 20 min)",
     )
 
     # Telemetry settings

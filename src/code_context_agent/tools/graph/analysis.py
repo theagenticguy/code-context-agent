@@ -78,6 +78,48 @@ class CodeAnalyzer:
 
         return self._format_ranked_results(pagerank, top_k)
 
+    def find_trusted_foundations(
+        self, seed_nodes: list[str] | None = None, top_k: int = 10,
+    ) -> list[dict[str, Any]]:
+        """Find foundational code using TrustRank (noise-resistant PageRank).
+
+        TrustRank propagates trust from seed nodes, making it more resistant
+        to noise than standard PageRank. If no seed nodes provided, uses
+        entry points as seeds.
+
+        Args:
+            seed_nodes: List of trusted node IDs (defaults to entry points)
+            top_k: Number of top results to return
+
+        Returns:
+            List of dictionaries with node info and trust score
+        """
+        view = self.graph.get_view([EdgeType.CALLS, EdgeType.IMPORTS])
+
+        if view.number_of_nodes() == 0:
+            return []
+
+        # Use entry points as default seeds
+        if not seed_nodes:
+            entry_points = self.find_entry_points()
+            seed_nodes = [ep["id"] for ep in entry_points[:5]]
+
+        if not seed_nodes:
+            return self.find_foundations(top_k)
+
+        # Build personalization dict for TrustRank
+        trust = dict.fromkeys(view.nodes(), 0.0)
+        for seed in seed_nodes:
+            if seed in trust:
+                trust[seed] = 1.0 / len(seed_nodes)
+
+        try:
+            scores = nx.pagerank(view, alpha=0.85, personalization=trust, weight="weight")
+        except nx.NetworkXError:
+            return []
+
+        return self._format_ranked_results(scores, top_k)
+
     def find_entry_points(self) -> list[dict[str, Any]]:
         """Find likely entry points in the code.
 
@@ -144,10 +186,14 @@ class CodeAnalyzer:
         undirected = view.to_undirected()
 
         try:
-            communities = nx.community.louvain_communities(undirected, resolution=resolution, seed=42)
-        except Exception:
-            # Fallback if Louvain fails
-            return []
+            # Try Leiden first (better community quality, requires backend)
+            communities = nx.community.leiden_communities(undirected, resolution=resolution, seed=42)
+        except (NotImplementedError, nx.NetworkXError, ValueError, RuntimeError):
+            try:
+                # Fallback to Louvain (pure NetworkX)
+                communities = nx.community.louvain_communities(undirected, resolution=resolution, seed=42)
+            except (nx.NetworkXError, ValueError, RuntimeError):
+                return []
 
         modules = []
         for i, community in enumerate(communities):
@@ -159,7 +205,7 @@ class CodeAnalyzer:
                 try:
                     local_pr = nx.pagerank(subgraph)
                     key_nodes = sorted(local_pr.items(), key=lambda x: x[1], reverse=True)[:3]
-                except Exception:
+                except (nx.NetworkXError, ValueError, RuntimeError):
                     key_nodes = [(n, 0) for n in community_list[:3]]
             else:
                 key_nodes = []
@@ -221,6 +267,39 @@ class CodeAnalyzer:
                 matches.append({"id": node_id, **data})
 
         return matches
+
+    def find_triangles(self, top_k: int = 10) -> list[dict[str, Any]]:
+        """Find tightly-coupled code triads using triangle detection.
+
+        Triangles in the call/import graph indicate three pieces of code
+        that all depend on each other — potential cohesion or coupling issues.
+
+        Args:
+            top_k: Maximum number of triangles to return
+
+        Returns:
+            List of triangle dictionaries with the three node IDs
+        """
+        view = self.graph.get_view([EdgeType.CALLS, EdgeType.IMPORTS])
+        undirected = view.to_undirected()
+
+        triangles = []
+        try:
+            for triangle in nx.enumerate_all_cliques(undirected):
+                if len(triangle) == 3:
+                    triangles.append({
+                        "nodes": list(triangle),
+                        "node_details": [
+                            {"id": n, **(self.graph.get_node_data(n) or {})}
+                            for n in triangle
+                        ],
+                    })
+                    if len(triangles) >= top_k:
+                        break
+        except nx.NetworkXError:
+            pass
+
+        return triangles
 
     def get_similar_nodes(self, node_id: str, top_k: int = 5) -> list[dict[str, Any]]:
         """Find nodes similar to a given node based on graph structure.

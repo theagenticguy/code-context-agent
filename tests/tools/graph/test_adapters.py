@@ -27,14 +27,14 @@ class TestIngestGitCochanges:
 
         edges = ingest_git_cochanges(cochanges_result, min_percentage=20.0)
 
-        assert len(edges) == 3  # Only files above 20%
+        assert len(edges) == 3  # Only files above 20%  # noqa: PLR2004
         assert all(e.edge_type == EdgeType.COCHANGES for e in edges)
         assert all(e.source == "src/auth.py" for e in edges)
 
         # Check highest coupling file
         user_edge = next(e for e in edges if e.target == "src/user.py")
-        assert user_edge.weight == 0.75
-        assert user_edge.metadata["percentage"] == 75.0
+        assert user_edge.weight == 0.75  # noqa: PLR2004
+        assert user_edge.metadata["percentage"] == 75.0  # noqa: PLR2004
 
     def test_respects_min_percentage(self) -> None:
         """Test that min_percentage filters edges."""
@@ -52,7 +52,7 @@ class TestIngestGitCochanges:
         edges_30 = ingest_git_cochanges(cochanges_result, min_percentage=30.0)
 
         assert len(edges_50) == 1
-        assert len(edges_30) == 2
+        assert len(edges_30) == 2  # noqa: PLR2004
 
     def test_handles_error_status(self) -> None:
         """Test that it returns empty list on error."""
@@ -90,12 +90,12 @@ class TestIngestGitHotspots:
 
         nodes = ingest_git_hotspots(hotspots_result)
 
-        assert len(nodes) == 2
+        assert len(nodes) == 2  # noqa: PLR2004
         assert all(n.node_type == NodeType.FILE for n in nodes)
 
         auth_node = next(n for n in nodes if "auth" in n.id)
-        assert auth_node.metadata["commits"] == 25
-        assert auth_node.metadata["churn_percentage"] == 50.0
+        assert auth_node.metadata["commits"] == 25  # noqa: PLR2004
+        assert auth_node.metadata["churn_percentage"] == 50.0  # noqa: PLR2004
         assert auth_node.metadata["source"] == "git_hotspots"
 
     def test_handles_error_status(self) -> None:
@@ -151,7 +151,7 @@ class TestIngestGitContributors:
         metadata = ingest_git_contributors(contributors_result)
 
         assert metadata["primary_author"] == "dev1@example.com"
-        assert metadata["author_count"] == 2
+        assert metadata["author_count"] == 2  # noqa: PLR2004
         assert "dev1@example.com" in metadata["authors"]
         assert "dev2@example.com" in metadata["authors"]
         assert metadata["source"] == "git_contributors"
@@ -196,5 +196,5 @@ class TestIngestGitContributors:
 
         metadata = ingest_git_contributors(contributors_result)
 
-        assert len(metadata["authors"]) == 5
-        assert metadata["author_count"] == 10
+        assert len(metadata["authors"]) == 5  # noqa: PLR2004
+        assert metadata["author_count"] == 10  # noqa: PLR2004

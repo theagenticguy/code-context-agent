@@ -1,0 +1,32 @@
+**TOOL EFFICIENCY**
+
+Parallel-safe (call together):
+- create_file_manifest + repomix_orientation
+- Multiple rg_search with different patterns
+- lsp_document_symbols on different files
+- Multiple code_graph_ingest_* calls (different types)
+- Multiple code_graph_analyze calls (different types)
+- git_hotspots + git_contributors (independent repo queries)
+- Multiple git_file_history calls (different files)
+- Multiple git_blame_summary calls (different files)
+
+Sequential-required:
+- lsp_start → lsp_* operations
+- code_graph_create → code_graph_ingest_* → code_graph_analyze
+- write_file_list → repomix_bundle
+- create_file_manifest → file operations
+- git_files_changed_together depends on knowing key files first
+
+Output sizes:
+| Tool | Typical | Max Safe |
+|------|---------|----------|
+| create_file_manifest | 100-1K files | 10K |
+| repomix_orientation | 5-50KB | 200KB |
+| repomix_bundle | 50-500KB | 2MB |
+| code_graph_export (json) | 10-100KB | 500KB |
+| code_graph_export (mermaid) | 1-5KB | 20KB |
+| code_graph_analyze | 1-10KB | 50KB |
+| git_hotspots | 2-5KB | 20KB |
+| git_files_changed_together | 1-5KB | 15KB |
+| git_file_history | 2-10KB | 30KB |
+| git_blame_summary | 1-3KB | 10KB |

@@ -1,0 +1,40 @@
+## Rules
+- Start with `create_file_manifest(repo_path)` (ignore-aware, safe)
+- Never run `tree` on repo root (token overflow risk)
+- Prefer tools over shell: `rg_search`, `repomix_*`, `read_file_bounded`
+- Shell commands: non-interactive, bounded (`head -N`), quick
+- ALWAYS use `read_file_bounded` to read a file before writing or modifying it
+- LSP sequence: `lsp_start` → then `lsp_*` operations
+- Graph sequence: `code_graph_create` → ingest → analyze → explore → export
+- Evidence format: `path/file.ext:line` + symbol + confidence
+
+## Tool Orchestration
+Use the code graph to unify discovery results and surface structural insights:
+
+```
+DISCOVERY          GIT CONTEXT           GRAPH                    OUTPUTS
+┌─────────────┐   ┌───────────────┐   ┌────────────────┐   ┌──────────────────┐
+│ lsp_*       │──▶│ git_hotspots  │──▶│ ingest → graph │──▶│ CONTEXT.md       │
+│ astgrep_*   │   │ git_cochanged │   │ analyze        │   │ FILE_INDEX.md    │
+│ rg_search   │   │ git_blame     │   │ explore        │   │ files.business   │
+│ repomix_*   │   │ git_history   │   │ export mermaid │   │ CONTEXT.bundle   │
+└─────────────┘   └───────────────┘   └────────────────┘   └──────────────────┘
+```
+
+The graph adds value when you need:
+- Hotspots (betweenness centrality) - find bottleneck code
+- Foundations (PageRank) - find core infrastructure
+- Modules (Louvain clustering) - detect logical groupings
+- Coupling analysis - understand dependencies (static + git-based)
+
+## Critical Tool Failures (FAST EXIT)
+If `lsp_start` returns an error status, IMMEDIATELY:
+1. Report the exact error message from the tool result
+2. Signal failure and stop:
+```
+[ANALYSIS FAILED]
+Tool: lsp_start
+Error: <exact error message>
+Action: Fix the LSP server issue and retry
+```
+Do NOT continue without LSP. Do NOT say "I'll proceed without LSP".
