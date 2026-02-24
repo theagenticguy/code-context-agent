@@ -19,7 +19,8 @@ from .session import get_session_manager
 
 
 async def _try_fallback_session(
-    session_id: str, file_path: str,
+    session_id: str,
+    file_path: str,
 ) -> tuple[list, str] | None:
     """Try fallback LSP servers when the primary returned empty results.
 

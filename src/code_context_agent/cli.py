@@ -32,7 +32,8 @@ app = App(
 def main(
     debug: Annotated[bool, Parameter(help="Enable debug mode.")] = False,
     output_format: Annotated[
-        Literal["rich", "json", "plain"], Parameter(help="Output format: rich, json, plain."),
+        Literal["rich", "json", "plain"],
+        Parameter(help="Output format: rich, json, plain."),
     ] = "rich",
 ) -> None:
     """Run the code-context-agent CLI.
@@ -168,7 +169,6 @@ def analyze(
     )
 
     _display_result(result, debug=debug)
-
 
 
 def _display_result(result: dict, *, debug: bool = False) -> None:

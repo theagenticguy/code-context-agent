@@ -79,7 +79,9 @@ class CodeAnalyzer:
         return self._format_ranked_results(pagerank, top_k)
 
     def find_trusted_foundations(
-        self, seed_nodes: list[str] | None = None, top_k: int = 10,
+        self,
+        seed_nodes: list[str] | None = None,
+        top_k: int = 10,
     ) -> list[dict[str, Any]]:
         """Find foundational code using TrustRank (noise-resistant PageRank).
 
@@ -287,13 +289,12 @@ class CodeAnalyzer:
         try:
             for triangle in nx.enumerate_all_cliques(undirected):
                 if len(triangle) == 3:
-                    triangles.append({
-                        "nodes": list(triangle),
-                        "node_details": [
-                            {"id": n, **(self.graph.get_node_data(n) or {})}
-                            for n in triangle
-                        ],
-                    })
+                    triangles.append(
+                        {
+                            "nodes": list(triangle),
+                            "node_details": [{"id": n, **(self.graph.get_node_data(n) or {})} for n in triangle],
+                        }
+                    )
                     if len(triangles) >= top_k:
                         break
         except nx.NetworkXError:

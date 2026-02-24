@@ -14,7 +14,6 @@ class ValidationError(ValueError):
     """Raised when input validation fails."""
 
 
-
 def validate_repo_path(path: str) -> Path:
     """Validate repository path is safe to use.
 

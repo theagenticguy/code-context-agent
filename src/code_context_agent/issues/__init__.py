@@ -67,10 +67,7 @@ def render_issue_context(issue: Issue, max_body_chars: int = 5000) -> str:
     comments_xml = ""
     for c in issue.comments[:20]:  # Max 20 comments
         comment_body = c.body[:2000]
-        comments_xml += (
-            f'    <comment author="{c.author}" date="{c.created_at}">'
-            f"{comment_body}</comment>\n"
-        )
+        comments_xml += f'    <comment author="{c.author}" date="{c.created_at}">{comment_body}</comment>\n'
 
     labels_str = ", ".join(issue.labels) if issue.labels else "none"
 

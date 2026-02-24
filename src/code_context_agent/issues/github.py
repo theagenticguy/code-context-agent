@@ -33,8 +33,12 @@ class GitHubIssueProvider(IssueProvider):
             issue_number = ref
 
         cmd = [
-            "gh", "issue", "view", issue_number,
-            "--json", "title,body,state,labels,comments,url",
+            "gh",
+            "issue",
+            "view",
+            issue_number,
+            "--json",
+            "title,body,state,labels,comments,url",
             *repo_flag,
         ]
 
@@ -92,8 +96,7 @@ def parse_issue_ref(ref_string: str) -> tuple[str, str]:
     """
     if ":" not in ref_string:
         raise ValueError(
-            f"Invalid issue reference: {ref_string}. "
-            "Expected format: provider:ref (e.g., gh:1694, gh:owner/repo#1694)",
+            f"Invalid issue reference: {ref_string}. Expected format: provider:ref (e.g., gh:1694, gh:owner/repo#1694)",
         )
     provider, ref = ref_string.split(":", 1)
     return provider.lower(), ref

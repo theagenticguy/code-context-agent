@@ -167,17 +167,18 @@ class RichEventConsumer(EventConsumer):
             return None
 
         table = Table(
-            show_header=False, show_edge=False,
-            padding=(0, 1), expand=True, box=None,
+            show_header=False,
+            show_edge=False,
+            padding=(0, 1),
+            expand=True,
+            box=None,
         )
         table.add_column("status", width=3)
         table.add_column("name", ratio=3)
         table.add_column("info", ratio=2, justify="right")
 
         for tool in reversed(recent):
-            is_error = tool.status == "error" or (
-                isinstance(tool.result, str) and '"status": "error"' in tool.result
-            )
+            is_error = tool.status == "error" or (isinstance(tool.result, str) and '"status": "error"' in tool.result)
             icon = "[red]✗[/red]" if is_error else "[green]✓[/green]"
             info = self._extract_tool_info(tool.result)
             table.add_row(icon, f"[bold]{tool.tool_name}[/bold]", info)
@@ -257,8 +258,7 @@ class RichEventConsumer(EventConsumer):
         total = len(self.state.completed_tools)
         errors = self.state.tool_errors
         self.console.print(
-            f"[dim]  {total} tools in {self._format_time(elapsed)}"
-            f"  ✓ {total - errors}  ✗ {errors}[/dim]",
+            f"[dim]  {total} tools in {self._format_time(elapsed)}  ✓ {total - errors}  ✗ {errors}[/dim]",
         )
 
     def _refresh(self) -> None:
