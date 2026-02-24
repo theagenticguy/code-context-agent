@@ -44,7 +44,7 @@ test:
   variables:
     GIT_DEPTH: 0
   before_script:
-    - apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev graphviz libgraphviz-dev pkg-config
+    - apt-get update && apt-get install -y --no-install-recommends git gcc libc6-dev graphviz libgraphviz-dev pkg-config
   script:
     - uv sync --group dev
     - uv run pytest --junitxml=report.xml
