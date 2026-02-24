@@ -1,3 +1,9 @@
+## v4.3.0 (2026-02-24)
+
+### Feat
+
+- add MkDocs Material documentation site and GitLab CI/CD pipeline
+
 ## v4.2.0 (2026-02-24)
 
 ### Feat
