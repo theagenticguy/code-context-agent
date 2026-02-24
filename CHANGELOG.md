@@ -1,3 +1,9 @@
+## v4.0.1 (2026-02-24)
+
+### Fix
+
+- TUI glitchiness and unfortunate run ID truncation
+
 ## v4.0.0 (2026-02-24)
 
 ### BREAKING CHANGE
