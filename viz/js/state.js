@@ -193,9 +193,9 @@ export function findEntryPoints() {
   const hasDependencyEdges = state.graph.links.some(l => DEPENDENCY_EDGE_TYPES.has(l.edgeType));
 
   if (!hasDependencyEdges) {
-    // Fallback: show top-level containers (files/modules with outgoing contains, no incoming contains)
+    // Fallback: show containment roots (nodes with outgoing contains but no incoming contains).
+    // These are top-level files, modules, or classes that contain other symbols.
     return state.graph.nodes.filter(n => {
-      if (n.nodeType !== 'file' && n.nodeType !== 'module') return false;
       const inc = (incoming.get(n.id) || []).filter(e => e.edge.edgeType === 'contains');
       const out = (outgoing.get(n.id) || []).filter(e => e.edge.edgeType === 'contains');
       return inc.length === 0 && out.length > 0;
