@@ -1,3 +1,20 @@
+## v5.0.0 (2026-02-25)
+
+### Feat
+
+- add interactive visualization UI for analysis results
+- add lefthook git hooks and mise.toml task runner
+
+### Fix
+
+- install git in test job for git tool tests
+- use full git clone depth for test job
+- add libc6-dev for C standard library headers in CI
+- install gcc, graphviz-dev, and pkg-config for pygraphviz in CI
+- restore networkx[extra] and skip pygraphviz install in CI
+- drop networkx[extra] to remove pygraphviz C dependency from CI
+- install graphviz dev headers in CI for pygraphviz compilation
+
 ## v4.3.0 (2026-02-24)
 
 ### Feat

@@ -1,5 +1,6 @@
 {
   "enabledPlugins": {
-    "workspace-manager@claude-workspaces": false
+    "workspace-manager@claude-workspaces": false,
+    "frontend-design@claude-plugins-official": true
   }
 }
