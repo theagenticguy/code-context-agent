@@ -1,5 +1,7 @@
 [tools]
+gitleaks = "latest"
 python = "3.13"
+semgrep = "latest"
 
 [env]
 _.python.venv = { path = ".venv", create = true }
@@ -36,8 +38,20 @@ description = "Run tests with verbose output"
 run = "uv run pytest -v"
 
 [tasks.security]
-description = "Run security scans"
-run = ["uv run bandit -r src/", "uv run pip-audit"]
+description = "Run all security scans (gitleaks + semgrep + pip-audit)"
+depends = ["security:secrets", "security:sast", "security:deps"]
+
+[tasks."security:secrets"]
+description = "Scan for secrets with gitleaks"
+run = "gitleaks detect --source . --no-banner"
+
+[tasks."security:sast"]
+description = "SAST scan with semgrep (auto + OWASP top 10)"
+run = "semgrep scan --config auto --config p/owasp-top-ten --error --quiet src/"
+
+[tasks."security:deps"]
+description = "Audit dependencies for known vulnerabilities"
+run = "uv run pip-audit"
 
 [tasks.check]
 description = "Run all checks (lint + format + typecheck + test)"
