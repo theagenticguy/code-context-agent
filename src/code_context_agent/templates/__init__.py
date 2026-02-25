@@ -18,7 +18,7 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined
 def _get_environment() -> Environment:
     """Get the configured Jinja2 environment (cached singleton)."""
     template_dir = Path(__file__).parent
-    return Environment(  # noqa: S701 - autoescape not needed for prompt templates
+    return Environment(  # nosemgrep  # noqa: S701 -- prompt templates, not web HTML
         loader=FileSystemLoader(str(template_dir)),
         undefined=StrictUndefined,
         trim_blocks=True,
@@ -39,7 +39,7 @@ def render_prompt(template_name: str, **context: Any) -> str:
     """
     env = _get_environment()
     template = env.get_template(template_name)
-    return template.render(**context)
+    return template.render(**context)  # nosemgrep -- prompt templates, not web HTML
 
 
 def render_steering(name: str, **context: Any) -> str:
