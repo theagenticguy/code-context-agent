@@ -1,363 +1,212 @@
-# Developer Tools Guide
+# code-context-agent
 
-This document describes the developer tools configured for this project and how to use them effectively.
+AI-powered CLI tool that analyzes codebases and produces structured context
+documentation for AI coding assistants. v5.1.0.
 
-## Prerequisites
+## Architecture
 
-All tools are managed via [uv](https://docs.astral.sh/uv/) and installed in the dev dependency group:
+Single Strands Agent (Claude Opus 4.6 on Bedrock) with 40+ tools, AG-UI
+event streaming, and Pydantic structured output (`AnalysisResult`).
 
-```bash
-uv sync --all-groups
+```
+CLI (cyclopts) → run_analysis() → Strands Agent (Opus 4.6)
+                                      ├── 40+ @tool functions
+                                      ├── context7 MCP (library docs)
+                                      ├── AG-UI event stream → Rich TUI
+                                      └── AnalysisResult (structured output)
+
+FastMCP v3 Server (code-context-agent serve)
+    ├── start_analysis / check_analysis (kickoff/poll)
+    ├── query_code_graph (10 graph algorithms)
+    ├── explore_code_graph (progressive disclosure)
+    └── 6 resource templates (analysis artifacts)
 ```
 
----
+### Key source locations
 
-## Ruff (Linting & Formatting)
+| Path | What |
+|------|------|
+| `src/code_context_agent/cli.py` | CLI entry point: `analyze`, `serve`, `viz` commands |
+| `src/code_context_agent/config.py` | Settings via pydantic-settings, `CODE_CONTEXT_` prefix |
+| `src/code_context_agent/agent/factory.py` | Agent creation: tools, model, hooks, context7 MCP |
+| `src/code_context_agent/agent/runner.py` | Analysis runner with AG-UI event streaming |
+| `src/code_context_agent/agent/prompts.py` | Jinja2 template rendering |
+| `src/code_context_agent/mcp/server.py` | FastMCP v3 server (MCP tools + resources) |
+| `src/code_context_agent/tools/discovery.py` | ripgrep, repomix tools |
+| `src/code_context_agent/tools/lsp/` | LSP client, session manager, tool wrappers |
+| `src/code_context_agent/tools/graph/` | CodeGraph model, CodeAnalyzer, ProgressiveExplorer |
+| `src/code_context_agent/tools/git.py` | Git history analysis tools |
+| `src/code_context_agent/tools/astgrep.py` | AST-grep pattern matching tools |
+| `src/code_context_agent/templates/` | Jinja2 system prompt (system.md.j2 + partials/ + steering/) |
+| `src/code_context_agent/models/output.py` | AnalysisResult, BusinessLogicItem, ArchitecturalRisk |
 
-**Version**: `>=0.14.11`
-**Documentation**: https://docs.astral.sh/ruff/
+### Tool categories (40+)
 
-Ruff is an extremely fast Python linter and formatter written in Rust. It replaces flake8, isort, pyupgrade, and black.
+- **Discovery** (9): `create_file_manifest`, `repomix_*`, `rg_search`, `read_file_bounded`, `write_file_list`
+- **LSP** (8): `lsp_start`, `lsp_document_symbols`, `lsp_references`, `lsp_definition`, `lsp_hover`, `lsp_workspace_symbols`, `lsp_diagnostics`, `lsp_shutdown`
+- **Graph** (12): `code_graph_create`, `code_graph_ingest_*`, `code_graph_analyze`, `code_graph_explore`, `code_graph_export`, `code_graph_save/load`, `code_graph_stats`
+- **Git** (7): `git_hotspots`, `git_files_changed_together`, `git_blame_summary`, `git_file_history`, `git_contributors`, `git_recent_commits`, `git_diff_file`
+- **AST** (3): `astgrep_scan`, `astgrep_scan_rule_pack`, `astgrep_inline_rule`
+- **Shell** (1): `shell`
+- **MCP** (via context7): `context7_resolve-library-id`, `context7_query-docs`
+- **Orchestration** (1): `graph` (from strands_tools, multi-agent DAG)
 
-### Configuration
+### State management
 
-Located in `pyproject.toml` under `[tool.ruff]`:
+- **Code graphs**: Module-level `_graphs: dict[str, CodeGraph]` in `tools/graph/tools.py`
+- **LSP sessions**: Singleton `LspSessionManager` in `tools/lsp/session.py` with fallback chains
+- **MCP jobs**: Module-level `_jobs` dict in `mcp/server.py` for kickoff/poll pattern
+- **Config**: Cached singleton via `get_settings()` with `@lru_cache`
 
-- **Line length**: 120 characters
-- **Target**: Python 3.13
-- **Docstring style**: Google convention
+## Patterns and conventions
 
-### Enabled Rule Categories
-
-| Code | Category | Description |
-|------|----------|-------------|
-| E | pycodestyle errors | PEP 8 style errors |
-| W | pycodestyle warnings | PEP 8 style warnings |
-| F | Pyflakes | Logical errors (undefined names, unused imports) |
-| I | isort | Import sorting |
-| B | flake8-bugbear | Common bugs and design problems |
-| C4 | flake8-comprehensions | Simplify comprehensions |
-| UP | pyupgrade | Upgrade syntax to newer Python |
-| ARG | flake8-unused-arguments | Unused function arguments |
-| SIM | flake8-simplify | Simplify code |
-| TCH | flake8-type-checking | Type checking imports optimization |
-| PTH | flake8-use-pathlib | Prefer pathlib over os.path |
-| ERA | eradicate | Remove commented-out code |
-| PL | pylint | Pylint rules |
-| RUF | Ruff-specific | Ruff's own rules |
-| D | pydocstyle | Docstring conventions |
-| S | flake8-bandit | Security checks |
-
-### Commands
-
-```bash
-# Check for linting errors
-uv run ruff check src/
-
-# Check and auto-fix
-uv run ruff check src/ --fix
-
-# Check formatting
-uv run ruff format --check src/
-
-# Apply formatting
-uv run ruff format src/
-
-# Check everything (lint + format)
-uv run ruff check src/ && uv run ruff format --check src/
-```
-
-### Per-file Ignores
-
-- `tests/**/*.py`: Docstrings (D), assert statements (S101), unused args (ARG)
-- `__init__.py`: Unused imports (F401)
-
----
-
-## Ty (Type Checking)
-
-**Version**: `>=0.0.11`
-**Documentation**: https://docs.astral.sh/ty/
-
-Ty is Astral's extremely fast Python type checker written in Rust. It's a modern alternative to mypy and pyright.
-
-### Configuration
-
-Located in `pyproject.toml` under `[tool.ty]`:
-
-```toml
-[tool.ty.rules]
-possibly-unresolved-reference = "error"
-invalid-argument-type = "error"
-missing-argument = "error"
-unsupported-operator = "error"
-division-by-zero = "error"
-unused-ignore-comment = "warn"
-redundant-cast = "warn"
-
-[tool.ty.environment]
-python-version = "3.13"
-
-[tool.ty.src]
-include = ["src"]
-```
-
-### Rule Severity Levels
-
-- **error**: Fails the check, blocks CI
-- **warn**: Shows warning but doesn't fail
-- **ignore**: Rule is disabled
-
-### Commands
-
-```bash
-# Type check src/ directory
-uv run ty check src/
-
-# Type check specific file
-uv run ty check src/code_context_agent/cli.py
-
-# Check with verbose output
-uv run ty check src/ --verbose
-```
-
-### Typing Guidelines
-
-This project uses Python 3.13+ typing conventions:
+### Tools use the `@tool` decorator from strands
 
 ```python
-# DO: Use built-in generics
-def process(items: list[str]) -> dict[str, int]: ...
+from strands import tool
 
-# DON'T: Use typing module generics
-from typing import List, Dict  # Deprecated
-def process(items: List[str]) -> Dict[str, int]: ...
+@tool
+def my_tool(param: str, option: int = 10) -> str:
+    """Docstring becomes the tool description for the LLM.
 
-# DO: Use X | None for optional
-def get_user(id: int) -> User | None: ...
-
-# DON'T: Use Optional
-from typing import Optional  # Deprecated
-def get_user(id: int) -> Optional[User]: ...
-
-# DO: Use X | Y for unions
-def parse(value: str | int) -> Result: ...
-
-# DON'T: Use Union
-from typing import Union  # Deprecated
-def parse(value: Union[str, int]) -> Result: ...
+    Args:
+        param: Description used by the LLM for parameter understanding.
+        option: Description with default shown.
+    """
+    return json.dumps({"status": "success", "result": ...})
 ```
 
----
+All tools return JSON strings. Error responses use `{"status": "error", "message": "..."}`.
 
-## Commitizen (Conventional Commits)
+### MCP tools use `@mcp.tool` from FastMCP v3
 
-**Version**: `>=4.11.3`
-**Documentation**: https://commitizen-tools.github.io/commitizen/
+```python
+from fastmcp import FastMCP
+from typing import Annotated
+from pydantic import Field
 
-Commitizen enforces [Conventional Commits](https://www.conventionalcommits.org/) format and automates version bumping and changelog generation.
+mcp = FastMCP("server-name")
 
-### Configuration
+@mcp.tool
+def my_mcp_tool(
+    param: Annotated[str, Field(description="Description for AI")],
+) -> dict:
+    """First line = tool summary for search indexing.
 
-Located in `pyproject.toml` under `[tool.commitizen]`:
+    USE THIS WHEN: ...
+    PREREQUISITE: ...
 
-```toml
-[tool.commitizen]
-name = "cz_conventional_commits"
-version = "0.1.0"
-version_files = [
-    "pyproject.toml:project.version",
-    "src/code_context_agent/__init__.py:__version__"
-]
-tag_format = "v$version"
-update_changelog_on_bump = true
-version_scheme = "semver"
+    Returns:
+        {"key": "value", ...}
+    """
+    return {"key": "value"}
 ```
 
-### Commit Message Format
+MCP tools return dicts (FastMCP handles serialization). Include `USE THIS WHEN` /
+`DO NOT USE IF` in docstrings so AI assistants know when to select the tool.
 
-```
-<type>(<scope>): <subject>
+### Imports inside functions to avoid circular imports
 
-<body>
+The `factory.py` imports all tool modules inside `get_analysis_tools()` rather
+than at module level. Follow this pattern when adding new tool modules.
 
-<footer>
-```
+### LSP tools have fallback chains
 
-**Types**:
-- `feat`: New feature (bumps MINOR)
-- `fix`: Bug fix (bumps PATCH)
-- `docs`: Documentation only
-- `style`: Formatting, no code change
-- `refactor`: Code change that neither fixes nor adds
-- `perf`: Performance improvement
-- `test`: Adding tests
-- `chore`: Maintenance tasks
-- `ci`: CI/CD changes
+Each language has an ordered list of LSP servers in `config.py`. If the primary
+returns empty results, `_try_fallback_session()` in `tools/lsp/tools.py` tries
+the next server. When adding a new language, add it to `Settings.lsp_servers`.
 
-**Breaking Changes**: Add `!` after type or `BREAKING CHANGE:` in footer (bumps MAJOR)
+### Pydantic models use custom base classes
+
+- `FrozenModel`: Immutable, for data transfer (output models, graph nodes/edges)
+- `StrictModel`: Mutable, for internal state
+
+Both are in `models/base.py`. Use `FrozenModel` for new data models.
+
+## Development
+
+### Prerequisites
+
+- Python 3.13+ (managed via `mise`)
+- `uv` for package management
+- External CLIs: `rg` (ripgrep), `ast-grep`, `repomix`, `npx` (for context7)
+- AWS credentials configured for Bedrock access
 
 ### Commands
-
-```bash
-# Interactive commit
-uv run cz commit
-# or
-uv run cz c
-
-# Bump version (auto-detects from commits)
-uv run cz bump
-
-# Bump specific version type
-uv run cz bump --increment PATCH
-uv run cz bump --increment MINOR
-uv run cz bump --increment MAJOR
-
-# Dry run (see what would happen)
-uv run cz bump --dry-run
-
-# Generate changelog only
-uv run cz changelog
-
-# Check if commits follow convention
-uv run cz check --rev-range HEAD~5..HEAD
-```
-
-### Version Files
-
-Commitizen automatically updates version in:
-1. `pyproject.toml` → `project.version`
-2. `src/code_context_agent/__init__.py` → `__version__`
-
----
-
-## Pytest (Testing)
-
-**Version**: `>=9.0.2`
-**Documentation**: https://docs.pytest.org/
-
-### Configuration
-
-Located in `pyproject.toml` under `[tool.pytest.ini_options]`:
-
-```toml
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "function"
-```
-
-### Commands
-
-```bash
-# Run all tests
-uv run pytest
-
-# Run with verbose output
-uv run pytest -v
-
-# Run specific test file
-uv run pytest tests/test_cli.py
-
-# Run tests matching pattern
-uv run pytest -k "test_settings"
-
-# Run with coverage
-uv run pytest --cov=src/code_context_agent
-
-# Run in parallel (requires pytest-xdist)
-uv run pytest -n auto
-```
-
----
-
-## Security Tools
-
-### Bandit
-
-**Version**: `>=1.9.2`
-Static security analyzer for Python.
-
-```bash
-# Scan source code
-uv run bandit -r src/
-
-# Scan with specific severity
-uv run bandit -r src/ -ll  # Low and above
-```
-
-### pip-audit
-
-**Version**: `>=2.10.0`
-Audits dependencies for known vulnerabilities.
-
-```bash
-# Audit all dependencies
-uv run pip-audit
-
-# Output as JSON
-uv run pip-audit --format=json
-```
-
----
-
-## CI/CD Integration
-
-### Pre-commit Checks
-
-Run all checks before committing:
-
-```bash
-# Full validation
-uv run ruff check src/ && \
-uv run ruff format --check src/ && \
-uv run ty check src/ && \
-uv run pytest
-```
-
-### Recommended Git Hooks
-
-Create `.git/hooks/pre-commit`:
-
-```bash
-#!/bin/sh
-uv run ruff check src/ --fix
-uv run ruff format src/
-uv run ty check src/
-```
-
-### GitHub Actions Example
-
-```yaml
-name: CI
-on: [push, pull_request]
-
-jobs:
-  check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
-      - run: uv sync --all-groups
-      - run: uv run ruff check src/
-      - run: uv run ruff format --check src/
-      - run: uv run ty check src/
-      - run: uv run pytest
-```
-
----
-
-## Quick Reference
 
 | Task | Command |
 |------|---------|
-| Install deps | `uv sync --all-groups` |
-| Lint | `uv run ruff check src/` |
-| Format | `uv run ruff format src/` |
-| Type check | `uv run ty check src/` |
-| Test | `uv run pytest` |
-| Commit | `uv run cz commit` |
-| Bump version | `uv run cz bump` |
-| Security scan | `uv run bandit -r src/` |
-| Audit deps | `uv run pip-audit` |
+| Install all deps | `uv sync --all-groups` |
 | Run CLI | `uv run code-context-agent` |
+| Analyze a repo | `uv run code-context-agent analyze /path/to/repo` |
+| Start MCP server | `uv run code-context-agent serve` |
+| Lint | `uvx ruff check src/` |
+| Format | `uvx ruff format src/` |
+| Type check | `uvx ty check src/` |
+| Test | `uv run pytest` |
+| All checks | `mise run check` |
+| Commit | `uv run cz commit` |
+| Bump + tag | `uv run cz bump` then `git push origin <tag>` |
+
+### Git hooks (lefthook)
+
+Hooks are enforced automatically. Do not skip them.
+
+- **pre-commit**: ruff check+fix, ruff format, ty check, gitleaks
+- **commit-msg**: conventional commit validation via commitizen
+- **pre-push**: lint, format-check, typecheck, test (93 tests), gitleaks, semgrep OWASP
+
+### Conventional commits
+
+All commits must follow conventional commit format. Commitizen enforces this.
+
+- `feat:` → MINOR bump
+- `fix:` → PATCH bump
+- `feat!:` or `BREAKING CHANGE:` footer → MAJOR bump
+- `docs:`, `chore:`, `refactor:`, `test:`, `ci:` → no version bump
+
+**Important**: Do not include `BREAKING CHANGE:` in the commit body unless there
+is an actual breaking change. Commitizen parses it literally and will trigger a
+MAJOR version bump.
+
+After `cz bump`, push the tag explicitly: `git push origin v<version>` (commitizen
+creates lightweight tags, `--follow-tags` only pushes annotated tags).
+
+### Code style
+
+- Line length: 120
+- Python 3.13+ typing: `list[str]` not `List[str]`, `X | None` not `Optional[X]`
+- Google-style docstrings
+- `pathlib.Path` over `os.path`
+- `from __future__ import annotations` in all modules
+- Tools directory has relaxed lint rules (PLR0911, PLR0912, etc.) for dispatch patterns
+
+### Testing
+
+- `pytest` with `asyncio_mode = "auto"`
+- Tests in `tests/` mirroring `src/` structure
+- Graph model and analysis have thorough unit tests
+- No integration tests yet for MCP server or full analysis pipeline
+
+## CI/CD (GitLab)
+
+Pipeline stages: lint → test → build-docs → pages → build → release
+
+- **Release** only triggers on tags matching `^v\d+\.\d+\.\d+$`
+- **Pages** deploys mkdocs to GitLab Pages on main branch pushes
+- Uses `ghcr.io/astral-sh/uv:0.9-python3.13-bookworm-slim` image
+
+## Configuration reference
+
+All env vars use the `CODE_CONTEXT_` prefix:
+
+| Variable | Default | Notes |
+|----------|---------|-------|
+| `CODE_CONTEXT_MODEL_ID` | `global.anthropic.claude-opus-4-6-v1` | Bedrock model |
+| `CODE_CONTEXT_REGION` | `us-east-1` | AWS region |
+| `CODE_CONTEXT_TEMPERATURE` | `1.0` | Must be 1.0 for adaptive thinking |
+| `CODE_CONTEXT_LSP_SERVERS` | `{"py": ["ty server", "pyright-langserver --stdio"], ...}` | Ordered fallback chains |
+| `CODE_CONTEXT_AGENT_MAX_TURNS` | `1000` | |
+| `CODE_CONTEXT_AGENT_MAX_DURATION` | `1200` | 20 min default |
+| `CODE_CONTEXT_CONTEXT7_ENABLED` | `true` | Requires npx |
+| `CODE_CONTEXT_OTEL_DISABLED` | `true` | Avoids context detachment errors |
