@@ -1,3 +1,10 @@
+## v5.0.4 (2026-02-25)
+
+### Fix
+
+- handle workspace/configuration requests to unblock Pyright initialization
+- resolve ruff lint warnings in viz CLI command
+
 ## v5.0.3 (2026-02-25)
 
 ### Fix
