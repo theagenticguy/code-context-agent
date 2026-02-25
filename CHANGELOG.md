@@ -1,3 +1,9 @@
+## v5.3.0 (2026-02-25)
+
+### Feat
+
+- **viz**: improve contrast, font sizes, edge visibility, and add autocomplete
+
 ## v5.2.0 (2026-02-25)
 
 ### Feat
