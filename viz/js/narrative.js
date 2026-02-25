@@ -54,6 +54,14 @@ export function renderNarrative() {
     }
   });
 
+  // Render mermaid diagrams
+  const mermaidBlocks = content.querySelectorAll('.mermaid');
+  if (mermaidBlocks.length > 0 && typeof mermaid !== 'undefined') {
+    mermaid.run({ nodes: mermaidBlocks }).catch(() => {
+      // Silently handle render failures (malformed diagrams)
+    });
+  }
+
   // Build table of contents
   buildTOC(content);
 

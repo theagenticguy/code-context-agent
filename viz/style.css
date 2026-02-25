@@ -234,10 +234,11 @@ a:hover { color: var(--accent-hover); }
 
 /* --- Landing / Drop Zone --- */
 #view-landing {
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: center;
 }
+#view-landing.active { display: flex; }
 
 .drop-zone {
   text-align: center;
