@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Code Context Visualizer</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- D3.js for graph visualization -->
+  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+  <!-- marked for markdown rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <!-- highlight.js for code syntax highlighting -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github-dark.min.css">
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+</head>
+<body>
+  <div id="app">
+    <!-- Sidebar -->
+    <nav id="sidebar">
+      <div class="sidebar-brand">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
+        </svg>
+        <span class="brand-text">Code Context</span>
+      </div>
+      <ul class="nav-items">
+        <li class="nav-item active" data-view="dashboard">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          <span>Dashboard</span>
+        </li>
+        <li class="nav-item" data-view="graph">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="18" r="3"/><path d="M8.5 8.5l7 7M15.5 8.5l-7 7"/></svg>
+          <span>Network Graph</span>
+        </li>
+        <li class="nav-item" data-view="modules">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+          <span>Modules</span>
+        </li>
+        <li class="nav-item" data-view="hotspots">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2c-4 4-8 7.33-8 12a8 8 0 0016 0c0-4.67-4-8-8-12z"/><circle cx="12" cy="16" r="2"/></svg>
+          <span>Hotspots</span>
+        </li>
+        <li class="nav-item" data-view="dependencies">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3v12"/><path d="M18 9v12"/><path d="M6 9a6 6 0 006 6h0a6 6 0 006-6"/></svg>
+          <span>Dependencies</span>
+        </li>
+        <li class="nav-item" data-view="narrative">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8M16 17H8M10 9H8"/></svg>
+          <span>Narrative</span>
+        </li>
+      </ul>
+      <div class="sidebar-footer">
+        <button id="btn-load" class="btn-load">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          Load Data
+        </button>
+      </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main id="content">
+      <!-- Loading / Drop Zone (shown when no data loaded) -->
+      <div id="view-landing" class="view active">
+        <div class="drop-zone" id="drop-zone">
+          <div class="drop-icon">
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+          </div>
+          <h2>Load Analysis Results</h2>
+          <p class="drop-subtitle">Drag and drop your <code>.agent</code> directory files, or use the buttons below</p>
+          <div class="drop-actions">
+            <button class="btn btn-primary" id="btn-load-dir">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+              Open Directory
+            </button>
+            <button class="btn btn-secondary" id="btn-load-files">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
+              Select Files
+            </button>
+            <button class="btn btn-ghost" id="btn-load-demo">Load Demo Data</button>
+          </div>
+          <input type="file" id="file-input" multiple accept=".json,.md,.txt" style="display:none">
+          <input type="file" id="dir-input" webkitdirectory style="display:none">
+          <div class="drop-formats">
+            <span>Supported: <code>code_graph.json</code></span>
+            <span><code>CONTEXT.md</code></span>
+            <span><code>analysis_result.json</code></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Dashboard View -->
+      <div id="view-dashboard" class="view">
+        <div class="view-header">
+          <h1>Analysis Dashboard</h1>
+          <span class="view-subtitle" id="dashboard-subtitle"></span>
+        </div>
+        <div class="stats-grid" id="stats-cards"></div>
+        <div class="dashboard-grid">
+          <div class="card card-lg" id="card-business-logic">
+            <div class="card-header">
+              <h3>Business Logic Items</h3>
+              <span class="badge" id="bl-count"></span>
+            </div>
+            <div class="card-body">
+              <table class="data-table" id="table-business-logic">
+                <thead>
+                  <tr>
+                    <th>Rank</th>
+                    <th>Name</th>
+                    <th>Role</th>
+                    <th>Location</th>
+                    <th>Score</th>
+                    <th>Category</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card" id="card-risks">
+            <div class="card-header">
+              <h3>Architectural Risks</h3>
+              <span class="badge badge-warn" id="risk-count"></span>
+            </div>
+            <div class="card-body" id="risks-list"></div>
+          </div>
+          <div class="card" id="card-node-dist">
+            <div class="card-header"><h3>Node Type Distribution</h3></div>
+            <div class="card-body"><div id="chart-node-types"></div></div>
+          </div>
+          <div class="card" id="card-edge-dist">
+            <div class="card-header"><h3>Edge Type Distribution</h3></div>
+            <div class="card-body"><div id="chart-edge-types"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Network Graph View -->
+      <div id="view-graph" class="view">
+        <div class="graph-toolbar">
+          <div class="toolbar-group">
+            <label>Node Types</label>
+            <div class="filter-chips" id="node-type-filters"></div>
+          </div>
+          <div class="toolbar-group">
+            <label>Edge Types</label>
+            <div class="filter-chips" id="edge-type-filters"></div>
+          </div>
+          <div class="toolbar-group">
+            <label>Layout</label>
+            <select id="graph-layout" class="select-control">
+              <option value="force">Force-Directed</option>
+              <option value="radial">Radial</option>
+              <option value="hierarchy">Hierarchical</option>
+            </select>
+          </div>
+          <div class="toolbar-group">
+            <input type="text" id="graph-search" class="search-input" placeholder="Search nodes...">
+          </div>
+          <div class="toolbar-actions">
+            <button class="btn-icon" id="btn-zoom-in" title="Zoom In">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+            </button>
+            <button class="btn-icon" id="btn-zoom-out" title="Zoom Out">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+            </button>
+            <button class="btn-icon" id="btn-zoom-fit" title="Fit to View">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+            </button>
+            <button class="btn-icon" id="btn-graph-screenshot" title="Screenshot">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="graph-container">
+          <svg id="graph-svg"></svg>
+          <div class="graph-detail-panel" id="graph-detail" style="display:none">
+            <button class="panel-close" id="detail-close">&times;</button>
+            <div id="detail-content"></div>
+          </div>
+          <div class="graph-legend" id="graph-legend"></div>
+          <div class="graph-minimap" id="graph-minimap">
+            <svg id="minimap-svg"></svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modules View -->
+      <div id="view-modules" class="view">
+        <div class="view-header">
+          <h1>Code Modules</h1>
+          <span class="view-subtitle">Community detection via Louvain/Leiden clustering</span>
+        </div>
+        <div class="modules-container">
+          <div class="modules-chart" id="modules-chart"></div>
+          <div class="modules-sidebar" id="modules-detail">
+            <div class="card">
+              <div class="card-header"><h3>Module Details</h3></div>
+              <div class="card-body">
+                <p class="text-muted">Click a module cluster to view details</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hotspots View -->
+      <div id="view-hotspots" class="view">
+        <div class="view-header">
+          <h1>Hotspots &amp; Foundations</h1>
+          <span class="view-subtitle">Centrality analysis identifies critical code paths</span>
+        </div>
+        <div class="hotspots-grid">
+          <div class="card card-lg">
+            <div class="card-header">
+              <h3>Hotspots</h3>
+              <span class="text-muted">Betweenness Centrality</span>
+            </div>
+            <div class="card-body" id="hotspots-chart"></div>
+          </div>
+          <div class="card card-lg">
+            <div class="card-header">
+              <h3>Foundations</h3>
+              <span class="text-muted">PageRank</span>
+            </div>
+            <div class="card-body" id="foundations-chart"></div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <h3>Entry Points</h3>
+              <span class="text-muted">No incoming calls, outgoing calls > 0</span>
+            </div>
+            <div class="card-body" id="entry-points-list"></div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <h3>Degree Distribution</h3>
+            </div>
+            <div class="card-body" id="degree-chart"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Dependencies View -->
+      <div id="view-dependencies" class="view">
+        <div class="view-header">
+          <h1>Dependency Explorer</h1>
+          <span class="view-subtitle">Trace call chains and import paths</span>
+        </div>
+        <div class="dep-toolbar">
+          <input type="text" id="dep-search" class="search-input" placeholder="Search for a node...">
+          <div class="dep-controls">
+            <label>
+              <input type="radio" name="dep-dir" value="outgoing" checked> Outgoing
+            </label>
+            <label>
+              <input type="radio" name="dep-dir" value="incoming"> Incoming
+            </label>
+            <label>
+              Depth: <input type="range" id="dep-depth" min="1" max="6" value="3" class="range-input">
+              <span id="dep-depth-val">3</span>
+            </label>
+          </div>
+        </div>
+        <div class="dep-container">
+          <svg id="dep-svg"></svg>
+          <div class="dep-info" id="dep-info">
+            <p class="text-muted">Search for a node to explore its dependency chain</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Narrative View -->
+      <div id="view-narrative" class="view">
+        <div class="narrative-container">
+          <div class="narrative-toc" id="narrative-toc"></div>
+          <article class="narrative-content" id="narrative-content">
+            <div class="empty-state">
+              <p>No CONTEXT.md loaded. Load analysis results to view the narrative.</p>
+            </div>
+          </article>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Toast container -->
+  <div id="toast-container"></div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

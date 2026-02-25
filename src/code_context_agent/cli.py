@@ -171,6 +171,118 @@ def analyze(
     _display_result(result, debug=debug)
 
 
+@app.command
+def viz(
+    path: Annotated[
+        Path,
+        Parameter(help="Path to the repository (must contain .agent/ output)."),
+    ] = Path(),
+    *,
+    output_dir: Annotated[
+        Path | None,
+        Parameter(help="Output directory containing analysis results. Defaults to <path>/.agent"),
+    ] = None,
+    port: Annotated[
+        int,
+        Parameter(help="Port for the local HTTP server."),
+    ] = 8765,
+    no_open: Annotated[
+        bool,
+        Parameter(help="Don't auto-open the browser."),
+    ] = False,
+) -> None:
+    """Launch an interactive visualization of analysis results.
+
+    Serves a local web UI that displays the code graph, modules,
+    hotspots, dependency chains, and the CONTEXT.md narrative.
+
+    Requires a prior `analyze` run to generate .agent/ output files.
+
+    Example:
+        $ code-context-agent viz /path/to/repo
+        $ code-context-agent viz . --port 9000
+    """
+    import http.server
+    import socketserver
+    import threading
+    import webbrowser
+
+    repo_path = path.resolve()
+    agent_dir = (output_dir or repo_path / ".agent").resolve()
+
+    if not agent_dir.exists():
+        console.print(f"[red]Error:[/red] No analysis output found at {agent_dir}")
+        console.print("Run [cyan]code-context-agent analyze[/cyan] first.")
+        raise SystemExit(1)
+
+    # Resolve viz directory (shipped alongside the package)
+    viz_dir = Path(__file__).parent.parent.parent / "viz"
+    if not viz_dir.exists():
+        # Fallback: look relative to the project root
+        viz_dir = Path(__file__).resolve().parent.parent.parent / "viz"
+    if not viz_dir.exists():
+        console.print("[red]Error:[/red] Visualization files not found.")
+        raise SystemExit(1)
+
+    # Build URL params pointing to the agent output files
+    params = []
+    graph_file = agent_dir / "code_graph.json"
+    context_file = agent_dir / "CONTEXT.md"
+    result_file = agent_dir / "analysis_result.json"
+
+    # Check what files exist
+    files_found = []
+    if graph_file.exists():
+        params.append(f"graph=/data/code_graph.json")
+        files_found.append("code_graph.json")
+    if context_file.exists():
+        params.append(f"narrative=/data/CONTEXT.md")
+        files_found.append("CONTEXT.md")
+    if result_file.exists():
+        params.append(f"result=/data/analysis_result.json")
+        files_found.append("analysis_result.json")
+
+    if not files_found:
+        console.print(f"[yellow]Warning:[/yellow] No analysis files found in {agent_dir}")
+        console.print("The visualizer will open but you'll need to load data manually.")
+
+    query = "&".join(params)
+    url = f"http://localhost:{port}/{'?' + query if query else ''}"
+
+    # Custom handler that serves viz files and proxies /data/ to agent_dir
+    class VizHandler(http.server.SimpleHTTPRequestHandler):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, directory=str(viz_dir), **kwargs)
+
+        def translate_path(self, path):  # noqa: A002
+            """Route /data/ requests to the agent output directory."""
+            if path.startswith("/data/"):
+                relative = path[6:]  # strip /data/
+                return str(agent_dir / relative)
+            return super().translate_path(path)
+
+        def log_message(self, format, *args):  # noqa: A002
+            pass  # Suppress request logs
+
+    console.print()
+    console.print("[bold]Code Context Visualizer[/bold]")
+    console.print(f"  Data: [cyan]{agent_dir}[/cyan]")
+    console.print(f"  Files: {', '.join(files_found) or 'none'}")
+    console.print(f"  URL: [link={url}]{url}[/link]")
+    console.print()
+    console.print("[dim]Press Ctrl+C to stop[/dim]")
+
+    if not no_open:
+        threading.Timer(0.5, lambda: webbrowser.open(url)).start()
+
+    with socketserver.TCPServer(("", port), VizHandler) as httpd:
+        httpd.allow_reuse_address = True
+        try:
+            httpd.serve_forever()
+        except KeyboardInterrupt:
+            console.print("\n[dim]Server stopped[/dim]")
+
+
 def _display_result(result: dict, *, debug: bool = False) -> None:
     """Display analysis result to the console.
 
