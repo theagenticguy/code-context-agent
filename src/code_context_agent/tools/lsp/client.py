@@ -40,18 +40,28 @@ class LspClient:
         >>> await client.shutdown()
     """
 
-    def __init__(self, request_timeout: float = 30.0) -> None:
+    def __init__(
+        self,
+        request_timeout: float = 30.0,
+        workspace_settings: dict[str, Any] | None = None,
+    ) -> None:
         """Initialize the LSP client.
 
         Args:
             request_timeout: Timeout in seconds for LSP requests (default 30.0).
+            workspace_settings: Settings dict used to respond to workspace/configuration
+                requests from the server. Keys are dot-notation sections (e.g.,
+                ``{"python": {"analysis": {"diagnosticMode": "openFilesOnly"}}}``)
+                that the server fetches after initialization.
         """
         self._process: asyncio.subprocess.Process | None = None
         self._msg_id = 0
         self._pending: dict[int, asyncio.Future[dict[str, Any]]] = {}
+        self._background_tasks: set[asyncio.Task[None]] = set()
         self._reader_task: asyncio.Task[None] | None = None
         self._initialized = False
         self._opened_docs: set[str] = set()
+        self._workspace_settings: dict[str, Any] = workspace_settings or {}
         self.workspace_path: str = ""
         self.server_cmd: list[str] = []
         self.request_timeout: float = request_timeout
@@ -117,7 +127,11 @@ class LspClient:
                 "processId": None,
                 "rootUri": root_uri,
                 "capabilities": {
-                    "workspace": {"workspaceFolders": True},
+                    "workspace": {
+                        "workspaceFolders": True,
+                        "configuration": True,
+                        "didChangeConfiguration": {"dynamicRegistration": False},
+                    },
                     "textDocument": {
                         "documentSymbol": {
                             "hierarchicalDocumentSymbolSupport": True,
@@ -151,6 +165,16 @@ class LspClient:
 
             # Send initialized notification
             await self._notify("initialized", {})
+
+            # Send workspace/didChangeConfiguration as a fallback mechanism.
+            # Pyright uses this to trigger workspace initialization when
+            # workspace/configuration capability is declared.
+            if self._workspace_settings:
+                await self._notify(
+                    "workspace/didChangeConfiguration",
+                    {"settings": self._workspace_settings},
+                )
+
             self._initialized = True
 
             logger.info("LSP server initialized successfully")
@@ -345,10 +369,82 @@ class LspClient:
                 future = self._pending.pop(msg_id)
                 if not future.done():
                     future.set_result(message)
+        # Server-initiated request (has method + id, no result/error)
+        elif "method" in message and "id" in message:
+            task = asyncio.ensure_future(self._handle_server_request(message))
+            self._background_tasks.add(task)
+            task.add_done_callback(self._background_tasks.discard)
         # Server notification (e.g., diagnostics)
         elif "method" in message and "id" not in message:
-            # Could handle notifications like publishDiagnostics here
             logger.debug(f"LSP notification: {message.get('method')}")
+
+    async def _handle_server_request(self, message: dict[str, Any]) -> None:
+        """Handle a server-initiated JSON-RPC request.
+
+        The most important case is ``workspace/configuration``, which Pyright
+        sends after ``initialized`` to fetch analysis settings. If the client
+        doesn't respond, Pyright's workspace never finishes initializing and
+        all subsequent requests block indefinitely.
+
+        Args:
+            message: Server request with ``method``, ``id``, and ``params``.
+        """
+        method = message["method"]
+        msg_id = message["id"]
+        params = message.get("params", {})
+
+        if method == "workspace/configuration":
+            items = params.get("items", [])
+            result = [self._get_setting_section(item.get("section", "")) for item in items]
+            logger.debug(f"Responding to workspace/configuration with {len(items)} items")
+            await self._respond(msg_id, result)
+        elif method == "client/registerCapability":
+            # Acknowledge dynamic capability registration
+            await self._respond(msg_id, None)
+        elif method == "window/workDoneProgress/create":
+            # Acknowledge progress token creation
+            await self._respond(msg_id, None)
+        else:
+            logger.debug(f"Unhandled server request: {method}")
+            await self._respond(msg_id, None)
+
+    def _get_setting_section(self, section: str) -> dict[str, Any] | None:
+        """Extract a nested settings section using dot notation.
+
+        For example, section ``"python.analysis"`` returns
+        ``self._workspace_settings["python"]["analysis"]``.
+
+        Args:
+            section: Dot-separated settings path.
+
+        Returns:
+            Settings dict for the section, or empty dict if not found.
+        """
+        if not section:
+            return self._workspace_settings
+
+        parts = section.split(".")
+        value: Any = self._workspace_settings
+        for part in parts:
+            if isinstance(value, dict) and part in value:
+                value = value[part]
+            else:
+                return {}
+        return value if isinstance(value, dict) else {}
+
+    async def _respond(self, msg_id: int | str, result: Any) -> None:
+        """Send a JSON-RPC response to a server-initiated request.
+
+        Args:
+            msg_id: Request ID to respond to.
+            result: Response result payload.
+        """
+        payload: dict[str, Any] = {
+            "jsonrpc": "2.0",
+            "id": msg_id,
+            "result": result,
+        }
+        await self._send(payload)
 
     async def did_open(self, file_path: str, language_id: str | None = None, *, force: bool = False) -> None:
         """Notify server that a document was opened.

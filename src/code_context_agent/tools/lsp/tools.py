@@ -66,7 +66,11 @@ async def _try_fallback_session(
     for i, cmd_str in enumerate(cmd_list[1:], start=1):
         cmd = shlex.split(cmd_str)
         try:
-            client = LspClient(request_timeout=float(settings.lsp_timeout))
+            ws_settings = manager._get_workspace_settings(kind)
+            client = LspClient(
+                request_timeout=float(settings.lsp_timeout),
+                workspace_settings=ws_settings,
+            )
             init_options = manager._get_workspace_config(kind)
             await client.start(
                 cmd,

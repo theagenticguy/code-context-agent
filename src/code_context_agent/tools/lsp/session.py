@@ -112,20 +112,11 @@ class LspSessionManager:
         kind = aliases.get(kind, kind)
 
         if kind == "py":
-            # Pyright-specific settings to minimize startup indexing cost.
-            # ty server ignores unrecognized initializationOptions, so this is safe
-            # for the full fallback chain.
-            # - diagnosticMode "openFilesOnly" prevents analyzing the entire workspace
-            #   upfront, which is the main cause of documentSymbol timeouts on large repos.
-            # - typeCheckingMode "off" skips type checking (we only need navigation).
-            return {
-                "python": {
-                    "analysis": {
-                        "diagnosticMode": "openFilesOnly",
-                        "typeCheckingMode": "off",
-                    },
-                },
-            }
+            # Pyright initializationOptions are minimal — they only control
+            # whether pull diagnostics are enabled. Actual analysis settings
+            # are provided via workspace/configuration responses (see
+            # _get_workspace_settings below).
+            return None
         if kind == "ts":
             # TypeScript language server configuration
             # Uses the VS Code-style settings format
@@ -143,6 +134,48 @@ class LspSessionManager:
             }
 
         # Unknown languages: no special config needed
+        return None
+
+    def _get_workspace_settings(self, server_kind: str) -> dict[str, Any] | None:
+        """Generate workspace settings for workspace/configuration responses.
+
+        These settings are sent to the LSP server when it requests
+        ``workspace/configuration``. For Pyright this is the primary mechanism
+        for configuring analysis scope, type checking mode, etc. — it does NOT
+        use ``initializationOptions`` for these.
+
+        Args:
+            server_kind: Server type identifier ("ts", "py", etc.).
+
+        Returns:
+            Nested settings dict keyed by configuration section, or None.
+        """
+        kind = server_kind.lower()
+        aliases = {"typescript": "ts", "python": "py", "javascript": "ts"}
+        kind = aliases.get(kind, kind)
+
+        if kind == "py":
+            return {
+                # Pyright reads from "python", "python.analysis", and "pyright" sections
+                "python": {
+                    "analysis": {
+                        "diagnosticMode": "openFilesOnly",
+                        "typeCheckingMode": "off",
+                        "autoSearchPaths": True,
+                        "useLibraryCodeForTypes": True,
+                        "autoImportCompletions": False,
+                    },
+                },
+                "pyright": {
+                    "disableOrganizeImports": True,
+                    "disableTaggedHints": True,
+                },
+                # ty reads from "ty" section
+                "ty": {
+                    "diagnosticMode": "openFilesOnly",
+                },
+            }
+
         return None
 
     def get_server_command_for_session(self, session_id: str) -> str | None:
@@ -209,7 +242,11 @@ class LspSessionManager:
 
         for i, cmd in enumerate(commands):
             try:
-                client = LspClient(request_timeout=float(settings.lsp_timeout))
+                ws_settings = self._get_workspace_settings(kind)
+                client = LspClient(
+                    request_timeout=float(settings.lsp_timeout),
+                    workspace_settings=ws_settings,
+                )
                 init_options = self._get_workspace_config(kind)
                 await client.start(
                     cmd,
