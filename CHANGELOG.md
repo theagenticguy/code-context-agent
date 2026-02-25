@@ -1,3 +1,9 @@
+## v5.0.1 (2026-02-25)
+
+### Fix
+
+- resolve viz landing page bleed-through and add mermaid rendering
+
 ## v5.0.0 (2026-02-25)
 
 ### Feat
