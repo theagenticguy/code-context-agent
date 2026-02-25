@@ -1,3 +1,13 @@
+## v5.1.0 (2026-02-25)
+
+### BREAKING CHANGE
+
+- None. All existing CLI commands and tool interfaces unchanged.
+
+### Feat
+
+- add MCP server and context7 integration
+
 ## v5.0.4 (2026-02-25)
 
 ### Fix
