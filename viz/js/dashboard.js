@@ -26,7 +26,7 @@ function renderStatCards(g, ar) {
 
   const cards = [
     { label: 'Files', value: totalFiles.toLocaleString(), color: NODE_COLORS.file },
-    { label: 'Graph Nodes', value: nodeCount.toLocaleString(), color: '#6366f1' },
+    { label: 'Graph Nodes', value: nodeCount.toLocaleString(), color: '#a78bfa' },
     { label: 'Graph Edges', value: edgeCount.toLocaleString(), color: '#22d3ee' },
     { label: 'Node Types', value: Object.keys(state.nodeTypes).length, color: NODE_COLORS.function },
     { label: 'Edge Types', value: Object.keys(state.edgeTypes).length, color: EDGE_COLORS.imports },

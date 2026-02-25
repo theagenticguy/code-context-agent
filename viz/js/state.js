@@ -7,30 +7,30 @@
 
 // ── Node / Edge type color maps ──────────────────────────────────
 export const NODE_COLORS = {
-  file:          '#3b82f6',
+  file:          '#60a5fa',
   class:         '#a78bfa',
   function:      '#34d399',
   method:        '#22d3ee',
   variable:      '#fbbf24',
   module:        '#f472b6',
-  pattern_match: '#fb7185',
+  pattern_match: '#fb923c',
 };
 
 export const EDGE_COLORS = {
-  calls:      '#6366f1',
-  imports:    '#3b82f6',
-  references: '#6a6a86',
-  contains:   '#2a2a44',
-  inherits:   '#a78bfa',
+  calls:      '#a78bfa',
+  imports:    '#60a5fa',
+  references: '#52525b',
+  contains:   'rgba(255, 255, 255, 0.06)',
+  inherits:   '#c084fc',
   implements: '#22d3ee',
   tests:      '#34d399',
   cochanges:  '#fbbf24',
 };
 
 export const SEVERITY_COLORS = {
-  high:   '#ef4444',
-  medium: '#f59e0b',
-  low:    '#22c55e',
+  high:   '#f87171',
+  medium: '#fbbf24',
+  low:    '#4ade80',
 };
 
 /** Edge types that represent actual code dependencies (not structural containment) */
