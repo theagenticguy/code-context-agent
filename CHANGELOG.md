@@ -1,3 +1,9 @@
+## v5.0.3 (2026-02-25)
+
+### Fix
+
+- entry point fallback should not filter by node type
+
 ## v5.0.2 (2026-02-25)
 
 ### Fix
