@@ -1,3 +1,9 @@
+## v5.0.2 (2026-02-25)
+
+### Fix
+
+- add viz tooltips, broaden entry point detection, and optimize LSP performance
+
 ## v5.0.1 (2026-02-25)
 
 ### Fix
