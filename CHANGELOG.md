@@ -1,3 +1,9 @@
+## v5.2.0 (2026-02-25)
+
+### Feat
+
+- **viz**: redesign UI with dark precision SaaS aesthetic
+
 ## v5.1.0 (2026-02-25)
 
 ### BREAKING CHANGE
