@@ -172,7 +172,7 @@ def analyze(
 
 
 @app.command
-def viz(
+def viz(  # noqa: C901, PLR0915
     path: Annotated[
         Path,
         Parameter(help="Path to the repository (must contain .agent/ output)."),
@@ -233,13 +233,13 @@ def viz(
     # Check what files exist
     files_found = []
     if graph_file.exists():
-        params.append(f"graph=/data/code_graph.json")
+        params.append("graph=/data/code_graph.json")
         files_found.append("code_graph.json")
     if context_file.exists():
-        params.append(f"narrative=/data/CONTEXT.md")
+        params.append("narrative=/data/CONTEXT.md")
         files_found.append("CONTEXT.md")
     if result_file.exists():
-        params.append(f"result=/data/analysis_result.json")
+        params.append("result=/data/analysis_result.json")
         files_found.append("analysis_result.json")
 
     if not files_found:
@@ -254,14 +254,14 @@ def viz(
         def __init__(self, *args, **kwargs):
             super().__init__(*args, directory=str(viz_dir), **kwargs)
 
-        def translate_path(self, path):  # noqa: A002
+        def translate_path(self, path):
             """Route /data/ requests to the agent output directory."""
             if path.startswith("/data/"):
                 relative = path[6:]  # strip /data/
                 return str(agent_dir / relative)
             return super().translate_path(path)
 
-        def log_message(self, format, *args):  # noqa: A002
+        def log_message(self, format, *args):
             pass  # Suppress request logs
 
     console.print()
