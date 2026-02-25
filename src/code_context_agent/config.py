@@ -27,6 +27,7 @@ Environment Variables:
     CODE_CONTEXT_OTEL_DISABLED: Disable OpenTelemetry tracing (default: True)
 """
 
+import functools
 from typing import Literal
 
 from pydantic import Field
@@ -136,11 +137,15 @@ class Settings(BaseSettings):
     )
 
 
+@functools.lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    """Get application settings instance.
+    """Get application settings instance (cached singleton).
 
-    Creates and returns a new Settings instance with values loaded from
-    environment variables and the optional .env file.
+    Returns the same Settings instance on subsequent calls. Settings are
+    loaded from environment variables and the optional .env file on first call.
+
+    Call ``get_settings.cache_clear()`` if you need to reload from environment
+    (e.g., in tests).
 
     Returns:
         Settings instance loaded from environment.

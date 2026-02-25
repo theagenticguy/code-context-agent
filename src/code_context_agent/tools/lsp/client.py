@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from pathlib import Path
 from typing import Any
 
@@ -50,6 +51,7 @@ class LspClient:
         self._pending: dict[int, asyncio.Future[dict[str, Any]]] = {}
         self._reader_task: asyncio.Task[None] | None = None
         self._initialized = False
+        self._opened_docs: set[str] = set()
         self.workspace_path: str = ""
         self.server_cmd: list[str] = []
         self.request_timeout: float = request_timeout
@@ -81,7 +83,11 @@ class LspClient:
         logger.info(f"Starting LSP server: {' '.join(server_cmd)} (timeout: {startup_timeout}s)")
 
         try:
-            # Create subprocess with timeout
+            # Use a shared deadline so subprocess spawn + initialize share the budget
+            deadline = time.monotonic() + startup_timeout
+
+            # Create subprocess (near-instant, but cap at 10s to leave budget for init)
+            spawn_timeout = min(10.0, startup_timeout * 0.3)
             try:
                 self._process = await asyncio.wait_for(
                     asyncio.create_subprocess_exec(
@@ -91,11 +97,11 @@ class LspClient:
                         stderr=asyncio.subprocess.PIPE,
                         cwd=workspace_path,
                     ),
-                    timeout=startup_timeout,
+                    timeout=spawn_timeout,
                 )
             except TimeoutError as err:
-                logger.error(f"LSP server failed to start within {startup_timeout}s")
-                raise RuntimeError(f"LSP server failed to start within {startup_timeout}s") from err
+                logger.error(f"LSP server failed to start within {spawn_timeout}s")
+                raise RuntimeError(f"LSP server failed to start within {spawn_timeout}s") from err
 
             if self._process.stdout is None or self._process.stdin is None:
                 raise RuntimeError("Failed to create subprocess pipes")
@@ -103,7 +109,9 @@ class LspClient:
             # Start background reader
             self._reader_task = asyncio.create_task(self._read_responses())
 
-            # Send initialize request per LSP spec with timeout
+            # Send initialize request with remaining time budget
+            remaining = max(5.0, deadline - time.monotonic())
+
             root_uri = Path(workspace_path).as_uri()
             init_params: dict[str, Any] = {
                 "processId": None,
@@ -132,11 +140,11 @@ class LspClient:
             try:
                 init_result = await asyncio.wait_for(
                     self._request("initialize", init_params),
-                    timeout=startup_timeout,
+                    timeout=remaining,
                 )
             except TimeoutError as err:
-                logger.error(f"LSP initialization timed out after {startup_timeout}s")
-                raise RuntimeError(f"LSP initialization timed out after {startup_timeout}s") from err
+                logger.error(f"LSP initialization timed out after {remaining:.1f}s")
+                raise RuntimeError(f"LSP initialization timed out after {remaining:.1f}s") from err
 
             if "error" in init_result:
                 raise RuntimeError(f"LSP initialize error: {init_result['error']}")
@@ -186,6 +194,7 @@ class LspClient:
             if not future.done():
                 future.cancel()
         self._pending.clear()
+        self._opened_docs.clear()
 
         self._initialized = False
 
@@ -272,7 +281,7 @@ class LspClient:
         while True:
             try:
                 # Read available data
-                chunk = await self._process.stdout.read(4096)
+                chunk = await self._process.stdout.read(65536)
                 if not chunk:
                     logger.debug("LSP server stdout closed")
                     break
@@ -341,17 +350,27 @@ class LspClient:
             # Could handle notifications like publishDiagnostics here
             logger.debug(f"LSP notification: {message.get('method')}")
 
-    async def did_open(self, file_path: str, language_id: str | None = None) -> None:
+    async def did_open(self, file_path: str, language_id: str | None = None, *, force: bool = False) -> None:
         """Notify server that a document was opened.
+
+        Skips the notification if the document was already opened (unless force=True),
+        avoiding redundant file reads and server re-parsing.
 
         Args:
             file_path: Absolute path to the file.
             language_id: Language identifier (auto-detected if not provided).
+            force: If True, re-send didOpen even if already tracked.
 
         Raises:
             FileNotFoundError: If the file does not exist.
         """
         path = Path(file_path)
+        uri = path.as_uri()
+
+        # Skip if already opened (avoids redundant file read + server re-parse)
+        if not force and uri in self._opened_docs:
+            return
+
         if not path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
 
@@ -364,13 +383,14 @@ class LspClient:
             "textDocument/didOpen",
             {
                 "textDocument": {
-                    "uri": path.as_uri(),
+                    "uri": uri,
                     "languageId": language_id,
                     "version": 1,
                     "text": text,
                 },
             },
         )
+        self._opened_docs.add(uri)
 
     async def document_symbols(self, file_path: str) -> list[dict[str, Any]]:
         """Get document symbols (outline).
@@ -539,6 +559,7 @@ class LspClient:
             self._process = None
             self._initialized = False
             self._pending.clear()
+            self._opened_docs.clear()
 
     def _detect_language(self, path: Path) -> str:
         """Detect language ID from file extension.

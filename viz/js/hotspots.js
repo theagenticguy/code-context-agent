@@ -1,7 +1,7 @@
 /**
  * Hotspots & Foundations view — centrality visualizations.
  */
-import { state, NODE_COLORS, computeDegreeCentrality, findEntryPoints } from './state.js';
+import { state, NODE_COLORS, computeDegreeCentrality, findEntryPoints, showTooltip, hideTooltip } from './state.js';
 
 export function renderHotspots() {
   if (!state.graph) return;
@@ -30,7 +30,7 @@ function renderHotspotBars(ranked) {
     const pct = (n.totalDegree / maxDegree * 100).toFixed(0);
     const color = NODE_COLORS[n.nodeType] || '#6a6a86';
     return `
-      <div class="hotspot-bar">
+      <div class="hotspot-bar" data-idx="${i}">
         <span class="hotspot-name" title="${esc(n.id)}">
           <span class="node-type-dot" style="background:${color}"></span>
           ${esc(n.name)}
@@ -42,6 +42,25 @@ function renderHotspotBars(ranked) {
       </div>
     `;
   }).join('');
+
+  // Tooltips via event delegation
+  container.addEventListener('mouseover', (event) => {
+    const bar = event.target.closest('.hotspot-bar');
+    if (!bar) return;
+    const idx = parseInt(bar.dataset.idx, 10);
+    const n = top[idx];
+    if (!n) return;
+    const color = NODE_COLORS[n.nodeType] || '#6a6a86';
+    showTooltip(event,
+      `<div class="tt-label">${esc(n.name)}</div>` +
+      `<span class="tt-type" style="background:${color}20;color:${color}">${n.nodeType}</span>` +
+      (n.filePath ? `<div class="tt-mono tt-muted">${esc(n.filePath.split('/').slice(-3).join('/'))}</div>` : '') +
+      `<div class="tt-row" style="margin-top:3px">${n.inDegree} in &middot; ${n.outDegree} out &middot; ${n.totalDegree} total</div>`
+    );
+  });
+  container.addEventListener('mouseout', (event) => {
+    if (event.target.closest('.hotspot-bar')) hideTooltip();
+  });
 }
 
 // ── Foundation Bars (top by in-degree - most depended upon) ──────
@@ -57,11 +76,11 @@ function renderFoundationBars(ranked) {
 
   const maxIn = byInDegree[0].inDegree || 1;
 
-  container.innerHTML = byInDegree.map(n => {
+  container.innerHTML = byInDegree.map((n, i) => {
     const pct = (n.inDegree / maxIn * 100).toFixed(0);
     const color = NODE_COLORS[n.nodeType] || '#6a6a86';
     return `
-      <div class="hotspot-bar">
+      <div class="hotspot-bar" data-idx="${i}">
         <span class="hotspot-name" title="${esc(n.id)}">
           <span class="node-type-dot" style="background:${color}"></span>
           ${esc(n.name)}
@@ -73,6 +92,25 @@ function renderFoundationBars(ranked) {
       </div>
     `;
   }).join('');
+
+  // Tooltips via event delegation
+  container.addEventListener('mouseover', (event) => {
+    const bar = event.target.closest('.hotspot-bar');
+    if (!bar) return;
+    const idx = parseInt(bar.dataset.idx, 10);
+    const n = byInDegree[idx];
+    if (!n) return;
+    const color = NODE_COLORS[n.nodeType] || '#6a6a86';
+    showTooltip(event,
+      `<div class="tt-label">${esc(n.name)}</div>` +
+      `<span class="tt-type" style="background:${color}20;color:${color}">${n.nodeType}</span>` +
+      (n.filePath ? `<div class="tt-mono tt-muted">${esc(n.filePath.split('/').slice(-3).join('/'))}</div>` : '') +
+      `<div class="tt-row" style="margin-top:3px">${n.inDegree} in &middot; ${n.outDegree} out &middot; ${n.totalDegree} total</div>`
+    );
+  });
+  container.addEventListener('mouseout', (event) => {
+    if (event.target.closest('.hotspot-bar')) hideTooltip();
+  });
 }
 
 // ── Entry Points ─────────────────────────────────────────────────
@@ -82,17 +120,22 @@ function renderEntryPoints() {
 
   const entries = findEntryPoints();
   if (entries.length === 0) {
-    container.innerHTML = '<p class="text-muted">No entry points found</p>';
+    container.innerHTML = '<p class="text-muted">No entry points detected. Requires call or import edges in the graph.</p>';
     return;
   }
 
-  container.innerHTML = entries.slice(0, 15).map(n => {
+  const isTopLevel = entries[0]?.entryReason === 'top-level';
+  const notice = isTopLevel
+    ? '<p class="text-muted" style="margin-bottom:10px">No call/import edges found. Showing top-level containers instead.</p>'
+    : '';
+
+  container.innerHTML = notice + entries.slice(0, 15).map(n => {
     const color = NODE_COLORS[n.nodeType] || '#6a6a86';
     return `
       <div class="entry-point-item">
         <span class="node-type-dot" style="background:${color}"></span>
         <span class="entry-point-name">${esc(n.name)}</span>
-        <span class="entry-point-degree">${n.outDegree} calls</span>
+        <span class="entry-point-degree">${n.outDegree} ${isTopLevel ? 'members' : 'deps'}</span>
       </div>
     `;
   }).join('');
@@ -150,7 +193,22 @@ function renderDegreeDistribution(ranked) {
     .attr('height', d => ih - y(d))
     .attr('fill', 'var(--accent)')
     .attr('opacity', 0.7)
-    .attr('rx', 2);
+    .attr('rx', 2)
+    .style('cursor', 'pointer')
+    .on('mouseover', function(event, d) {
+      d3.select(this).attr('opacity', 1);
+      const i = bins.indexOf(d);
+      const lo = i * binSize;
+      const hi = lo + binSize - 1;
+      showTooltip(event,
+        `<div class="tt-label">Degree ${lo}${hi > lo ? '–' + hi : ''}</div>` +
+        `<div class="tt-row">${d} node${d !== 1 ? 's' : ''}</div>`
+      );
+    })
+    .on('mouseout', function() {
+      d3.select(this).attr('opacity', 0.7);
+      hideTooltip();
+    });
 
   // X axis
   g.append('g')

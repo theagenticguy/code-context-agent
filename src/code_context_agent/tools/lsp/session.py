@@ -112,9 +112,20 @@ class LspSessionManager:
         kind = aliases.get(kind, kind)
 
         if kind == "py":
-            # ty uses configuration from ty.toml or pyproject.toml [tool.ty]
-            # No initialization options needed
-            return None
+            # Pyright-specific settings to minimize startup indexing cost.
+            # ty server ignores unrecognized initializationOptions, so this is safe
+            # for the full fallback chain.
+            # - diagnosticMode "openFilesOnly" prevents analyzing the entire workspace
+            #   upfront, which is the main cause of documentSymbol timeouts on large repos.
+            # - typeCheckingMode "off" skips type checking (we only need navigation).
+            return {
+                "python": {
+                    "analysis": {
+                        "diagnosticMode": "openFilesOnly",
+                        "typeCheckingMode": "off",
+                    },
+                },
+            }
         if kind == "ts":
             # TypeScript language server configuration
             # Uses the VS Code-style settings format

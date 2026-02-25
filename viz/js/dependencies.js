@@ -1,7 +1,7 @@
 /**
  * Dependencies view — interactive dependency chain explorer.
  */
-import { state, NODE_COLORS, EDGE_COLORS, buildAdjacency } from './state.js';
+import { state, NODE_COLORS, EDGE_COLORS, buildAdjacency, showTooltip, hideTooltip } from './state.js';
 
 let depSvg, depG, depZoom;
 
@@ -186,7 +186,16 @@ function renderDepTree(rootNode, nodes, edges, direction) {
 
     const nodeG = depG.append('g')
       .attr('transform', `translate(${pos.x},${pos.y})`)
-      .style('cursor', 'pointer');
+      .style('cursor', 'pointer')
+      .on('mouseover', (event) => {
+        showTooltip(event,
+          `<div class="tt-label">${esc(node.name)}</div>` +
+          `<span class="tt-type" style="background:${color}20;color:${color}">${node.nodeType}</span>` +
+          (node.filePath ? `<div class="tt-mono tt-muted">${esc(node.filePath.split('/').slice(-3).join('/'))}</div>` : '') +
+          `<div class="tt-muted" style="margin-top:2px">Depth: ${node.distance}</div>`
+        );
+      })
+      .on('mouseout', () => hideTooltip());
 
     nodeG.append('circle')
       .attr('r', r)

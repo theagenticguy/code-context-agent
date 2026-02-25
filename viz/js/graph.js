@@ -1,7 +1,7 @@
 /**
  * Network Graph view — force-directed D3 visualization.
  */
-import { state, NODE_COLORS, EDGE_COLORS, buildAdjacency } from './state.js';
+import { state, NODE_COLORS, EDGE_COLORS, buildAdjacency, showTooltip, hideTooltip } from './state.js';
 
 let simulation = null;
 let svg, g, linkGroup, nodeGroup, labelGroup;
@@ -213,15 +213,45 @@ function runSimulation() {
 
   // Tooltip on hover
   node.on('mouseover', function(event, d) {
+    const degree = getNodeDegree(d);
+    const color = NODE_COLORS[d.nodeType] || '#6a6a86';
+    const { outgoing: adjOut, incoming: adjIn } = buildAdjacency();
+    const inDeg = (adjIn.get(d.id) || []).length;
+    const outDeg = (adjOut.get(d.id) || []).length;
+    showTooltip(event,
+      `<div class="tt-label">${esc(d.name)}</div>` +
+      `<span class="tt-type" style="background:${color}20;color:${color}">${d.nodeType}</span>` +
+      (d.filePath ? `<div class="tt-mono tt-muted">${esc(shortPath(d.filePath))}${d.lineStart ? ':' + d.lineStart : ''}</div>` : '') +
+      `<div class="tt-row" style="margin-top:3px"><span class="tt-muted">Degree ${degree}</span> &middot; ${inDeg} in &middot; ${outDeg} out</div>`
+    );
     if (selectedNodeId && selectedNodeId !== d.id) return;
     highlightNeighbors(d.id);
     d3.select(this).classed('highlight', true);
   }).on('mouseout', function() {
+    hideTooltip();
     if (selectedNodeId) return;
     clearHighlights();
   }).on('click', function(event, d) {
     event.stopPropagation();
+    hideTooltip();
     selectNode(d);
+  });
+
+  // Edge tooltip
+  link.on('mouseover', function(event, d) {
+    const sName = nameFromId(typeof d.source === 'object' ? d.source.id : d.source);
+    const tName = nameFromId(typeof d.target === 'object' ? d.target.id : d.target);
+    const color = EDGE_COLORS[d.edgeType] || '#6a6a86';
+    showTooltip(event,
+      `<span class="tt-type" style="background:${color}20;color:${color}">${d.edgeType}</span>` +
+      `<div class="tt-mono" style="margin-top:3px">${esc(sName)} → ${esc(tName)}</div>` +
+      (d.weight > 1 ? `<div class="tt-muted">weight: ${d.weight}</div>` : '')
+    );
+    d3.select(this).attr('stroke-opacity', 0.9).attr('stroke-width', 3);
+  }).on('mouseout', function(event, d) {
+    hideTooltip();
+    const w = d.edgeType === 'contains' ? 0.5 : Math.max(1, Math.min(3, d.weight));
+    d3.select(this).attr('stroke-opacity', 0.4).attr('stroke-width', w);
   });
 
   svg.on('click', () => {

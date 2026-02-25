@@ -33,6 +33,35 @@ export const SEVERITY_COLORS = {
   low:    '#22c55e',
 };
 
+/** Edge types that represent actual code dependencies (not structural containment) */
+export const DEPENDENCY_EDGE_TYPES = new Set(['calls', 'imports', 'inherits', 'implements']);
+
+// ── Shared Tooltip ──────────────────────────────────────────────
+let _tooltipEl = null;
+
+export function showTooltip(event, html) {
+  if (!_tooltipEl) {
+    _tooltipEl = document.createElement('div');
+    _tooltipEl.className = 'viz-tooltip';
+    document.body.appendChild(_tooltipEl);
+  }
+  _tooltipEl.innerHTML = html;
+  _tooltipEl.style.display = 'block';
+  // Position with boundary checking
+  const rect = _tooltipEl.getBoundingClientRect();
+  let x = event.clientX + 14;
+  let y = event.clientY - 10;
+  if (x + rect.width > window.innerWidth - 12) x = event.clientX - rect.width - 14;
+  if (y + rect.height > window.innerHeight - 12) y = window.innerHeight - rect.height - 12;
+  if (y < 8) y = 8;
+  _tooltipEl.style.left = x + 'px';
+  _tooltipEl.style.top = y + 'px';
+}
+
+export function hideTooltip() {
+  if (_tooltipEl) _tooltipEl.style.display = 'none';
+}
+
 // ── Mutable state ────────────────────────────────────────────────
 export const state = {
   /** @type {{ nodes: any[], links: any[] } | null} */
@@ -154,17 +183,37 @@ export function detectSimpleModules() {
     .sort((a, b) => b.size - a.size);
 }
 
-/** Get entry points (nodes with zero in-degree for calls edges, positive out-degree) */
+/** Get entry points — nodes with no incoming dependency edges but outgoing ones.
+ *  Falls back to top-level containers when no dependency edges exist. */
 export function findEntryPoints() {
   if (!state.graph) return [];
   const { outgoing, incoming } = buildAdjacency();
 
+  // Check if the graph has any dependency (non-contains) edges
+  const hasDependencyEdges = state.graph.links.some(l => DEPENDENCY_EDGE_TYPES.has(l.edgeType));
+
+  if (!hasDependencyEdges) {
+    // Fallback: show top-level containers (files/modules with outgoing contains, no incoming contains)
+    return state.graph.nodes.filter(n => {
+      if (n.nodeType !== 'file' && n.nodeType !== 'module') return false;
+      const inc = (incoming.get(n.id) || []).filter(e => e.edge.edgeType === 'contains');
+      const out = (outgoing.get(n.id) || []).filter(e => e.edge.edgeType === 'contains');
+      return inc.length === 0 && out.length > 0;
+    }).map(n => ({
+      ...n,
+      outDegree: (outgoing.get(n.id) || []).filter(e => e.edge.edgeType === 'contains').length,
+      entryReason: 'top-level',
+    })).sort((a, b) => b.outDegree - a.outDegree).slice(0, 20);
+  }
+
   return state.graph.nodes.filter(n => {
-    const inc = (incoming.get(n.id) || []).filter(e => e.edge.edgeType === 'calls');
-    const out = (outgoing.get(n.id) || []).filter(e => e.edge.edgeType === 'calls');
+    if (!['function', 'method', 'class'].includes(n.nodeType)) return false;
+    const inc = (incoming.get(n.id) || []).filter(e => DEPENDENCY_EDGE_TYPES.has(e.edge.edgeType));
+    const out = (outgoing.get(n.id) || []).filter(e => DEPENDENCY_EDGE_TYPES.has(e.edge.edgeType));
     return inc.length === 0 && out.length > 0;
   }).map(n => ({
     ...n,
-    outDegree: (outgoing.get(n.id) || []).filter(e => e.edge.edgeType === 'calls').length,
+    outDegree: (outgoing.get(n.id) || []).filter(e => DEPENDENCY_EDGE_TYPES.has(e.edge.edgeType)).length,
+    entryReason: 'dependency',
   })).sort((a, b) => b.outDegree - a.outDegree).slice(0, 20);
 }

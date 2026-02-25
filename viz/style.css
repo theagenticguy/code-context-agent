@@ -1258,6 +1258,53 @@ a:hover { color: var(--accent-hover); }
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* --- Shared Tooltip --- */
+.viz-tooltip {
+  position: fixed;
+  z-index: 200;
+  padding: 8px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  color: var(--text-primary);
+  pointer-events: none;
+  white-space: nowrap;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+  line-height: 1.5;
+  max-width: 360px;
+}
+
+.viz-tooltip .tt-label {
+  font-weight: 700;
+  font-size: 12px;
+  margin-bottom: 2px;
+}
+
+.viz-tooltip .tt-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  color: var(--text-secondary);
+}
+
+.viz-tooltip .tt-muted {
+  color: var(--text-muted);
+}
+
+.viz-tooltip .tt-type {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.viz-tooltip .tt-mono {
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
 /* --- Utility --- */
 .text-muted { color: var(--text-muted); font-size: var(--text-xs); }
 .text-mono { font-family: var(--font-mono); }

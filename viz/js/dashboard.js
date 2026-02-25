@@ -1,7 +1,7 @@
 /**
  * Dashboard view — executive summary with stats, tables, and charts.
  */
-import { state, NODE_COLORS, EDGE_COLORS, SEVERITY_COLORS } from './state.js';
+import { state, NODE_COLORS, EDGE_COLORS, SEVERITY_COLORS, showTooltip, hideTooltip } from './state.js';
 
 export function renderDashboard() {
   const g = state.graph;
@@ -179,7 +179,17 @@ function renderDonut(container, data, labelKey, valueKey, colorFn) {
     .attr('fill', d => colorFn(d.data))
     .attr('stroke', 'var(--bg-card)')
     .attr('stroke-width', 2)
-    .style('opacity', 0.85);
+    .style('opacity', 0.85)
+    .style('cursor', 'pointer')
+    .on('mouseover', function(event, d) {
+      d3.select(this).style('opacity', 1).attr('stroke', 'var(--text-primary)');
+      const pct = ((d.data[valueKey] / total) * 100).toFixed(1);
+      showTooltip(event, `<div class="tt-label">${esc(d.data[labelKey])}</div><div class="tt-row">${d.data[valueKey]} &middot; ${pct}%</div>`);
+    })
+    .on('mouseout', function() {
+      d3.select(this).style('opacity', 0.85).attr('stroke', 'var(--bg-card)');
+      hideTooltip();
+    });
 
   // Total in center
   const total = data.reduce((s, d) => s + d[valueKey], 0);

@@ -1,7 +1,7 @@
 /**
  * Modules view — community/cluster visualization with D3 pack layout.
  */
-import { state, NODE_COLORS, detectSimpleModules } from './state.js';
+import { state, NODE_COLORS, detectSimpleModules, showTooltip, hideTooltip } from './state.js';
 
 export function renderModules() {
   if (!state.graph) return;
@@ -80,9 +80,24 @@ function renderPackLayout(modules) {
     .on('click', (event, d) => showModuleDetail(d, moduleColors))
     .on('mouseover', function(event, d) {
       d3.select(this).attr('fill-opacity', 0.15).attr('stroke-opacity', 0.6);
+      const members = d.leaves();
+      const typeCounts = {};
+      for (const leaf of members) {
+        const t = leaf.data.nodeType || 'unknown';
+        typeCounts[t] = (typeCounts[t] || 0) + 1;
+      }
+      const breakdown = Object.entries(typeCounts).map(([t, c]) =>
+        `<span class="node-type-dot" style="background:${NODE_COLORS[t] || '#6a6a86'};display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:3px"></span>${t}: ${c}`
+      ).join('<br>');
+      showTooltip(event,
+        `<div class="tt-label">${esc(d.data.name)}</div>` +
+        `<div class="tt-muted" style="margin-bottom:3px">${members.length} members</div>` +
+        breakdown
+      );
     })
     .on('mouseout', function() {
       d3.select(this).attr('fill-opacity', 0.08).attr('stroke-opacity', 0.3);
+      hideTooltip();
     });
 
   // Module labels
@@ -114,7 +129,13 @@ function renderPackLayout(modules) {
     .style('cursor', 'pointer')
     .on('mouseover', function(event, d) {
       d3.select(this).attr('fill-opacity', 1).attr('r', Math.max(3, d.r + 1));
-      showTooltip(event, d.data.name, d.data.nodeType);
+      const color = NODE_COLORS[d.data.nodeType] || '#6a6a86';
+      const nodeData = d.data.nodeData;
+      showTooltip(event,
+        `<div class="tt-label">${esc(d.data.name)}</div>` +
+        `<span class="tt-type" style="background:${color}20;color:${color}">${d.data.nodeType}</span>` +
+        (nodeData?.filePath ? `<div class="tt-mono tt-muted">${esc(nodeData.filePath.split('/').slice(-3).join('/'))}</div>` : '')
+      );
     })
     .on('mouseout', function(event, d) {
       d3.select(this).attr('fill-opacity', 0.7).attr('r', Math.max(2, d.r));
@@ -172,30 +193,6 @@ function showModuleDetail(d, colorScale) {
 
 function renderModuleList(modules) {
   // Already handled by pack layout click
-}
-
-// ── Tooltip ──────────────────────────────────────────────────────
-let tooltipEl = null;
-
-function showTooltip(event, name, type) {
-  if (!tooltipEl) {
-    tooltipEl = document.createElement('div');
-    tooltipEl.style.cssText = `
-      position:fixed;z-index:100;padding:4px 10px;background:var(--bg-elevated);
-      border:1px solid var(--border-default);border-radius:4px;font-size:11px;
-      color:var(--text-primary);pointer-events:none;white-space:nowrap;
-      box-shadow:0 4px 12px rgba(0,0,0,0.4);
-    `;
-    document.body.appendChild(tooltipEl);
-  }
-  tooltipEl.innerHTML = `<strong>${esc(name)}</strong> <span style="color:var(--text-muted)">${type}</span>`;
-  tooltipEl.style.left = event.clientX + 12 + 'px';
-  tooltipEl.style.top = event.clientY - 8 + 'px';
-  tooltipEl.style.display = 'block';
-}
-
-function hideTooltip() {
-  if (tooltipEl) tooltipEl.style.display = 'none';
 }
 
 // ── Utils ────────────────────────────────────────────────────────
