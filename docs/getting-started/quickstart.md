@@ -62,3 +62,17 @@ cat .agent/CONTEXT.md | your-ai-assistant
 ```
 
 The narrated context includes architecture diagrams, ranked file tables, risk assessments, and business logic summaries --- all formatted for machine parsing (tables over prose, typed schemas, bounded diagrams).
+
+## MCP Server
+
+After analysis, you can expose the results to coding agents via MCP:
+
+```bash
+# Start MCP server (stdio for Claude Desktop/Code)
+code-context-agent serve
+
+# Start MCP server (HTTP for networked access)
+code-context-agent serve --transport http --port 8000
+```
+
+The MCP server provides tools for querying the code graph (`query_code_graph`), progressive exploration (`explore_code_graph`), and kicking off new analyses (`start_analysis`). It also exposes the analysis artifacts as MCP resources.

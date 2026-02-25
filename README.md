@@ -29,6 +29,8 @@ These principles guide every design decision. See [tenets.md](tenets.md) for ful
 - **Tree-sitter compression**: Extract signatures/types only, stripping function bodies for token efficiency
 - **Structured output**: Pydantic-typed `AnalysisResult` with ranked business logic, risks, and graph stats
 - **Rich terminal UI**: Real-time progress display with Rich library
+- **MCP server**: Expose graph algorithms and analysis as MCP tools for Claude Code, Cursor, and other agents
+- **context7 integration**: Library documentation lookup during analysis via MCP
 
 ---
 
@@ -50,6 +52,9 @@ flowchart TD
     H --> M[Git<br/>coupling, churn, blame]
     H --> N[Shell<br/>bounded execution]
     H --> O[Output Files<br/>.agent/ directory]
+    H --> P[context7 MCP<br/>library docs]
+    D -.-> Q[FastMCP Server<br/>MCP protocol]
+    Q --> R[Claude Code / Cursor<br/>MCP clients]
 ```
 
 ### Tool Categories
@@ -119,6 +124,8 @@ uv run code-context-agent
 
 ## Usage
 
+### Analyze a Codebase
+
 ```bash
 # Analyze current directory
 code-context-agent analyze .
@@ -128,6 +135,9 @@ code-context-agent analyze /path/to/repo
 
 # Focus on specific area
 code-context-agent analyze . --focus "authentication system"
+
+# Issue-focused analysis
+code-context-agent analyze . --issue "gh:1694"
 
 # Custom output directory
 code-context-agent analyze . --output-dir ./analysis
@@ -140,6 +150,33 @@ code-context-agent analyze . --debug
 ```
 
 The agent automatically determines analysis depth based on repository size and complexity. No mode flags needed.
+
+### MCP Server
+
+Expose the analysis capabilities to coding agents (Claude Code, Cursor, etc.) via the Model Context Protocol:
+
+```bash
+# stdio transport (for Claude Desktop, Claude Code)
+code-context-agent serve
+
+# HTTP transport (for networked/multi-client access)
+code-context-agent serve --transport http --port 8000
+```
+
+The MCP server exposes the core differentiators — graph algorithms, progressive exploration, and the full analysis pipeline — as tools that any MCP client can use. Commodity tools (ripgrep, LSP, git) are intentionally not exposed since they're already available in every coding agent.
+
+**MCP Tools:**
+- `start_analysis` / `check_analysis` — kickoff/poll for the full analysis pipeline
+- `query_code_graph` — run algorithms (PageRank, betweenness centrality, Louvain community detection, etc.)
+- `explore_code_graph` — progressive drill-down into graph structure
+- `get_graph_stats` — graph composition summary
+
+### Visualize Results
+
+```bash
+# Launch interactive web visualization
+code-context-agent viz .
+```
 
 ---
 
@@ -172,6 +209,7 @@ All configuration uses the `CODE_CONTEXT_` prefix:
 | `CODE_CONTEXT_LSP_SERVERS` | `{"ts": "typescript-language-server --stdio", "py": "ty server", ...}` | LSP server registry (JSON) |
 | `CODE_CONTEXT_AGENT_MAX_TURNS` | `1000` | Max agent turns |
 | `CODE_CONTEXT_AGENT_MAX_DURATION` | `1200` | Timeout in seconds (default: 20 min) |
+| `CODE_CONTEXT_CONTEXT7_ENABLED` | `true` | Enable context7 MCP for library doc lookup |
 
 ---
 
@@ -195,10 +233,13 @@ src/code_context_agent/
 ├── cli.py              # CLI entry point (cyclopts)
 ├── config.py           # Configuration (pydantic-settings)
 ├── agent/              # Agent orchestration
-│   ├── factory.py      # Agent creation with tools + structured output
+│   ├── factory.py      # Agent creation with tools + MCP providers
 │   ├── runner.py       # Analysis runner with event streaming
 │   ├── prompts.py      # Jinja2 template rendering
 │   └── hooks.py        # HookProvider for quality/efficiency
+├── mcp/                # FastMCP v3 server
+│   ├── __init__.py     # Package init
+│   └── server.py       # MCP tools, resources, and server definition
 ├── templates/          # Jinja2 prompt templates
 │   ├── system.md.j2    # Unified system prompt
 │   ├── partials/       # Composable prompt sections

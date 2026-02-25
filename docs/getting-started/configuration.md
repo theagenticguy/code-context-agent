@@ -12,6 +12,7 @@ All configuration uses environment variables with the `CODE_CONTEXT_` prefix.
 | `CODE_CONTEXT_LSP_SERVERS` | See below | LSP server registry (JSON) |
 | `CODE_CONTEXT_AGENT_MAX_TURNS` | `1000` | Max agent turns |
 | `CODE_CONTEXT_AGENT_MAX_DURATION` | `1200` | Timeout in seconds (default: 20 min) |
+| `CODE_CONTEXT_CONTEXT7_ENABLED` | `true` | Enable context7 MCP server for library documentation lookup |
 
 ## LSP Server Registry
 
@@ -39,3 +40,14 @@ Configuration is implemented using `pydantic-settings`, which provides:
 - JSON parsing for complex types (like `LSP_SERVERS`)
 
 See the [`config` module](../reference/config.md) in the API reference for the full `Settings` model.
+
+## context7 Integration
+
+When `CODE_CONTEXT_CONTEXT7_ENABLED` is `true` (the default), the analysis agent gains access to the [context7](https://context7.com) MCP server for looking up library documentation during analysis. This requires `npx` to be available on the system.
+
+The context7 tools are prefixed with `context7_` in the agent's tool namespace:
+
+- `context7_resolve-library-id` — resolve a library name to a context7 ID
+- `context7_query-docs` — query documentation for a resolved library
+
+To disable: `export CODE_CONTEXT_CONTEXT7_ENABLED=false`

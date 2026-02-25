@@ -18,6 +18,9 @@ flowchart TD
     H --> M[Git<br/>coupling, churn, blame]
     H --> N[Shell<br/>bounded execution]
     H --> O[Output Files<br/>.agent/ directory]
+    H --> P[context7 MCP<br/>library docs]
+    D -.-> Q[FastMCP Server<br/>MCP protocol]
+    Q --> R[Claude Code / Cursor<br/>MCP clients]
 ```
 
 ## Component Layout
@@ -38,6 +41,9 @@ src/code_context_agent/
 ├── models/             # Pydantic models
 │   ├── base.py         # StrictModel, FrozenModel
 │   └── output.py       # AnalysisResult, BusinessLogicItem, etc.
+├── mcp/                # FastMCP v3 server
+│   ├── __init__.py     # Package init
+│   └── server.py       # MCP tools, resources, and server definition
 ├── consumer/           # Event display (Rich TUI)
 ├── tools/              # Analysis tools (40+)
 │   ├── discovery.py    # ripgrep, repomix (6 tools)
@@ -91,3 +97,17 @@ Files are ranked by graph metrics rather than heuristics, following [Tenet 1: Me
 ### Structured Output
 
 The agent produces a Pydantic-typed `AnalysisResult` rather than freeform text, following [Tenet 5: Machines read it first](tenets.md#5-machines-read-it-first). This enables downstream agents to parse the output programmatically.
+
+### MCP Server (FastMCP v3)
+
+The `mcp/` package exposes the core differentiators via the [Model Context Protocol](https://modelcontextprotocol.io), enabling coding agents (Claude Code, Cursor, etc.) to use the analysis capabilities directly:
+
+- **Tools**: `start_analysis`/`check_analysis` (kickoff/poll), `query_code_graph` (10 algorithms), `explore_code_graph` (progressive disclosure), `get_graph_stats`
+- **Resources**: Read-only access to analysis artifacts via `analysis://` URI templates
+- **Transport**: stdio (default, for local MCP clients) or HTTP (for networked access)
+
+Commodity tools (ripgrep, LSP, git, ast-grep) are intentionally not exposed — they're already available in every coding agent's MCP marketplace.
+
+### context7 MCP Integration
+
+The analysis agent loads [context7](https://context7.com) documentation tools via `strands.tools.mcp.MCPClient`, enabling library documentation lookup during analysis. This is controlled by `CODE_CONTEXT_CONTEXT7_ENABLED` (default: true) and requires `npx`.
