@@ -23,7 +23,7 @@ def get_analysis_tools() -> list[Any]:
     """Get the list of tools for code analysis.
 
     Returns:
-        List of tool functions for the agent.
+        List of tool functions and MCP tool providers for the agent.
     """
     # Import tools here to avoid circular imports
     # Import graph from strands_tools, but use custom shell for proper STDIO capture
@@ -75,7 +75,7 @@ def get_analysis_tools() -> list[Any]:
     )
     from ..tools.shell_tool import shell
 
-    return [
+    tools: list[Any] = [
         # Discovery tools
         create_file_manifest,
         repomix_orientation,
@@ -126,6 +126,50 @@ def get_analysis_tools() -> list[Any]:
         # Multi-agent DAG orchestration
         graph,
     ]
+
+    # Add context7 MCP server for library documentation lookup
+    context7_provider = _create_context7_provider()
+    if context7_provider is not None:
+        tools.append(context7_provider)
+
+    return tools
+
+
+def _create_context7_provider() -> Any | None:
+    """Create an MCPClient for the context7 documentation server.
+
+    Returns the MCPClient (a ToolProvider that the Agent handles natively),
+    or None if context7 is disabled or npx is not available.
+    """
+    settings = get_settings()
+    if not settings.context7_enabled:
+        logger.info("context7 MCP server disabled via settings")
+        return None
+
+    import shutil
+
+    if not shutil.which("npx"):
+        logger.warning("npx not found, skipping context7 MCP server")
+        return None
+
+    try:
+        from mcp import StdioServerParameters, stdio_client
+        from strands.tools.mcp import MCPClient
+
+        context7 = MCPClient(
+            lambda: stdio_client(
+                StdioServerParameters(
+                    command="npx",
+                    args=["-y", "@upstash/context7-mcp@latest"],
+                ),
+            ),
+            prefix="context7",
+        )
+        logger.info("context7 MCP server configured (tools will be prefixed with 'context7_')")
+        return context7
+    except (ImportError, Exception) as e:  # noqa: BLE001
+        logger.warning(f"Failed to configure context7 MCP server: {e}")
+        return None
 
 
 def create_agent() -> Agent:

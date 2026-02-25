@@ -283,6 +283,47 @@ def viz(  # noqa: C901, PLR0915
             console.print("\n[dim]Server stopped[/dim]")
 
 
+@app.command
+def serve(
+    *,
+    transport: Annotated[
+        Literal["stdio", "http", "sse"],
+        Parameter(help="MCP transport: stdio (default, for Claude Desktop/CLI), http (networked), sse (legacy)."),
+    ] = "stdio",
+    host: Annotated[
+        str,
+        Parameter(help="Host to bind for http/sse transport."),
+    ] = "127.0.0.1",
+    port: Annotated[
+        int,
+        Parameter(help="Port for http/sse transport."),
+    ] = 8000,
+) -> None:
+    """Start the MCP server exposing code-context-agent's analysis capabilities.
+
+    Exposes the core differentiators — full analysis pipeline, code graph
+    algorithms, and progressive exploration — via the Model Context Protocol.
+
+    Transports:
+        stdio: For Claude Desktop, Claude Code, and local MCP clients (default)
+        http:  For networked/multi-client access (Streamable HTTP)
+        sse:   For legacy MCP clients only
+
+    Example:
+        $ code-context-agent serve                          # stdio for Claude Desktop
+        $ code-context-agent serve --transport http         # HTTP on localhost:8000
+        $ code-context-agent serve --transport http --port 9000
+    """
+    from code_context_agent.mcp import mcp as mcp_server
+
+    if transport == "stdio":
+        console.print("[dim]Starting MCP server (stdio transport)...[/dim]")
+    else:
+        console.print(f"[dim]Starting MCP server ({transport} transport on {host}:{port})...[/dim]")
+
+    mcp_server.run(transport=transport, host=host, port=port)
+
+
 def _display_result(result: dict, *, debug: bool = False) -> None:
     """Display analysis result to the console.
 

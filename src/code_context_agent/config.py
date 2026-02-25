@@ -130,6 +130,12 @@ class Settings(BaseSettings):
         description="Maximum agent duration in seconds (default: 20 min)",
     )
 
+    # MCP tool sources for the analysis agent
+    context7_enabled: bool = Field(
+        default=True,
+        description="Enable context7 MCP server for library documentation lookup during analysis",
+    )
+
     # Telemetry settings
     otel_disabled: bool = Field(
         default=True,
