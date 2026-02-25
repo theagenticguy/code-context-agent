@@ -197,7 +197,7 @@ function renderDonut(container, data, labelKey, valueKey, colorFn) {
     .attr('text-anchor', 'middle')
     .attr('dy', '-0.1em')
     .attr('fill', 'var(--text-primary)')
-    .attr('font-size', '18px')
+    .attr('font-size', '22px')
     .attr('font-weight', '800')
     .text(total.toLocaleString());
 
@@ -205,7 +205,7 @@ function renderDonut(container, data, labelKey, valueKey, colorFn) {
     .attr('text-anchor', 'middle')
     .attr('dy', '1.2em')
     .attr('fill', 'var(--text-muted)')
-    .attr('font-size', '10px')
+    .attr('font-size', '13px')
     .text('total');
 
   // Legend on the right
@@ -220,7 +220,7 @@ function renderDonut(container, data, labelKey, valueKey, colorFn) {
     row.append('text')
       .attr('x', 16).attr('y', 9)
       .attr('fill', 'var(--text-secondary)')
-      .attr('font-size', '11px')
+      .attr('font-size', '13px')
       .text(`${d[labelKey]} (${d[valueKey]})`);
   });
 }

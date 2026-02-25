@@ -168,8 +168,8 @@ function runSimulation() {
     .attr('class', 'graph-link')
     .attr('stroke', d => EDGE_COLORS[d.edgeType] || '#6a6a86')
     .attr('stroke-width', d => {
-      if (d.edgeType === 'contains') return 0.5;
-      return Math.max(1, Math.min(3, d.weight));
+      if (d.edgeType === 'contains') return 1.5;
+      return Math.max(2, Math.min(4, d.weight * 1.5));
     })
     .attr('stroke-dasharray', d => {
       if (d.edgeType === 'imports') return '4,3';
@@ -205,8 +205,8 @@ function runSimulation() {
     .attr('class', 'graph-node-label')
     .attr('text-anchor', 'middle')
     .attr('dy', d => nodeRadius(d) + 12)
-    .attr('fill', 'var(--text-muted)')
-    .attr('font-size', '9px')
+    .attr('fill', 'var(--text-secondary)')
+    .attr('font-size', '11px')
     .attr('pointer-events', 'none')
     .text(d => truncate(d.name, 20))
     .style('display', d => showLabels && getNodeDegree(d) > minDegreeForLabel ? null : 'none');
@@ -247,11 +247,11 @@ function runSimulation() {
       `<div class="tt-mono" style="margin-top:3px">${esc(sName)} → ${esc(tName)}</div>` +
       (d.weight > 1 ? `<div class="tt-muted">weight: ${d.weight}</div>` : '')
     );
-    d3.select(this).attr('stroke-opacity', 0.9).attr('stroke-width', 3);
+    d3.select(this).attr('stroke-opacity', 1).attr('stroke-width', 3);
   }).on('mouseout', function(event, d) {
     hideTooltip();
     const w = d.edgeType === 'contains' ? 0.5 : Math.max(1, Math.min(3, d.weight));
-    d3.select(this).attr('stroke-opacity', 0.4).attr('stroke-width', w);
+    d3.select(this).attr('stroke-opacity', 0.75).attr('stroke-width', w);
   });
 
   svg.on('click', () => {

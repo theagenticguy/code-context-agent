@@ -218,14 +218,14 @@ function renderDegreeDistribution(ranked) {
     ))
     .selectAll('text')
     .attr('fill', 'var(--text-muted)')
-    .attr('font-size', '9px');
+    .attr('font-size', '11px');
 
   g.append('text')
     .attr('x', iw / 2)
     .attr('y', ih + 26)
     .attr('text-anchor', 'middle')
     .attr('fill', 'var(--text-muted)')
-    .attr('font-size', '9px')
+    .attr('font-size', '11px')
     .text('Degree');
 
   // Y axis
@@ -233,7 +233,7 @@ function renderDegreeDistribution(ranked) {
     .call(d3.axisLeft(y).ticks(4))
     .selectAll('text')
     .attr('fill', 'var(--text-muted)')
-    .attr('font-size', '9px');
+    .attr('font-size', '11px');
 
   // Style axes
   g.selectAll('.domain, .tick line').attr('stroke', 'var(--border-subtle)');

@@ -43,26 +43,119 @@ function setupDepSVG() {
 
 function bindDepControls() {
   const searchInput = document.getElementById('dep-search');
+  const acList = document.getElementById('dep-autocomplete');
   const depthRange = document.getElementById('dep-depth');
   const depthVal = document.getElementById('dep-depth-val');
+  let acIndex = -1;
 
   depthRange.addEventListener('input', () => {
     depthVal.textContent = depthRange.value;
     if (searchInput.value) exploreDeps(searchInput.value);
   });
 
-  let searchTimeout;
+  // Autocomplete + search
   searchInput.addEventListener('input', () => {
-    clearTimeout(searchTimeout);
-    searchTimeout = setTimeout(() => {
-      if (searchInput.value) exploreDeps(searchInput.value);
-    }, 300);
+    const q = searchInput.value.trim().toLowerCase();
+    if (!q || q.length < 1) {
+      closeAutocomplete();
+      return;
+    }
+    showAutocomplete(q);
   });
 
-  // Autocomplete: suggest matching nodes
-  searchInput.addEventListener('focus', () => {
-    // Could add a dropdown here, keeping it simple for now
+  searchInput.addEventListener('keydown', (e) => {
+    const items = acList.querySelectorAll('.autocomplete-item');
+    if (!items.length) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        exploreDeps(searchInput.value);
+      }
+      return;
+    }
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      acIndex = Math.min(acIndex + 1, items.length - 1);
+      updateAcSelection(items);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      acIndex = Math.max(acIndex - 1, 0);
+      updateAcSelection(items);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (acIndex >= 0 && items[acIndex]) {
+        selectAcItem(items[acIndex].dataset.name);
+      } else {
+        exploreDeps(searchInput.value);
+      }
+    } else if (e.key === 'Escape') {
+      closeAutocomplete();
+    }
   });
+
+  // Close on click outside
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.autocomplete-wrap')) closeAutocomplete();
+  });
+
+  function showAutocomplete(q) {
+    if (!state.graph) return;
+    const matches = state.graph.nodes
+      .filter(n => n.name.toLowerCase().includes(q) || n.id.toLowerCase().includes(q))
+      .slice(0, 12);
+
+    if (matches.length === 0) {
+      closeAutocomplete();
+      return;
+    }
+
+    acIndex = -1;
+    acList.innerHTML = matches.map(n => {
+      const color = NODE_COLORS[n.nodeType] || '#71717a';
+      const highlighted = highlightMatch(esc(n.name), q);
+      return `<li class="autocomplete-item" data-name="${esc(n.name)}" data-id="${esc(n.id)}">
+        <span class="node-type-dot" style="background:${color}"></span>
+        <span class="ac-name">${highlighted}</span>
+        <span class="ac-type">${n.nodeType}</span>
+      </li>`;
+    }).join('');
+
+    acList.classList.add('open');
+
+    acList.querySelectorAll('.autocomplete-item').forEach(item => {
+      item.addEventListener('click', () => selectAcItem(item.dataset.name));
+      item.addEventListener('mouseenter', () => {
+        acIndex = -1;
+        acList.querySelectorAll('.autocomplete-item').forEach(i => i.classList.remove('selected'));
+        item.classList.add('selected');
+      });
+    });
+  }
+
+  function selectAcItem(name) {
+    searchInput.value = name;
+    closeAutocomplete();
+    exploreDeps(name);
+  }
+
+  function closeAutocomplete() {
+    acList.classList.remove('open');
+    acList.innerHTML = '';
+    acIndex = -1;
+  }
+
+  function updateAcSelection(items) {
+    items.forEach((item, i) => item.classList.toggle('selected', i === acIndex));
+    if (acIndex >= 0 && items[acIndex]) {
+      items[acIndex].scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  function highlightMatch(text, query) {
+    const idx = text.toLowerCase().indexOf(query.toLowerCase());
+    if (idx === -1) return text;
+    return text.slice(0, idx) + '<mark>' + text.slice(idx, idx + query.length) + '</mark>' + text.slice(idx + query.length);
+  }
 }
 
 function exploreDeps(query) {
@@ -170,8 +263,8 @@ function renderDepTree(rootNode, nodes, edges, direction) {
       .attr('d', `M${from.x},${from.y} C${from.x + levelSpacing * 0.4},${from.y} ${to.x - levelSpacing * 0.4},${to.y} ${to.x},${to.y}`)
       .attr('fill', 'none')
       .attr('stroke', color)
-      .attr('stroke-width', 1.5)
-      .attr('stroke-opacity', 0.5)
+      .attr('stroke-width', 2)
+      .attr('stroke-opacity', 0.7)
       .attr('marker-end', `url(#dep-arrow-${edge.edgeType})`);
   }
 
@@ -207,7 +300,7 @@ function renderDepTree(rootNode, nodes, edges, direction) {
       .attr('x', r + 6)
       .attr('y', 4)
       .attr('fill', isRoot ? 'var(--text-primary)' : 'var(--text-secondary)')
-      .attr('font-size', isRoot ? '12px' : '10px')
+      .attr('font-size', isRoot ? '14px' : '12px')
       .attr('font-weight', isRoot ? '700' : '400')
       .attr('font-family', 'var(--font-mono)')
       .text(truncate(node.name, 30));

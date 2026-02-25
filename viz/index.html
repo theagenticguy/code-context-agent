@@ -259,7 +259,10 @@
           <span class="view-subtitle">Trace call chains and import paths</span>
         </div>
         <div class="dep-toolbar">
-          <input type="text" id="dep-search" class="search-input" placeholder="Search for a node...">
+          <div class="autocomplete-wrap">
+            <input type="text" id="dep-search" class="search-input" placeholder="Search for a node..." autocomplete="off">
+            <ul class="autocomplete-list" id="dep-autocomplete"></ul>
+          </div>
           <div class="dep-controls">
             <label>
               <input type="radio" name="dep-dir" value="outgoing" checked> Outgoing

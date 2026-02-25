@@ -17,14 +17,14 @@ export const NODE_COLORS = {
 };
 
 export const EDGE_COLORS = {
-  calls:      '#a78bfa',
-  imports:    '#60a5fa',
-  references: '#52525b',
-  contains:   'rgba(255, 255, 255, 0.06)',
-  inherits:   '#c084fc',
-  implements: '#22d3ee',
-  tests:      '#34d399',
-  cochanges:  '#fbbf24',
+  calls:      '#c4b5fd',
+  imports:    '#93c5fd',
+  references: '#a1a1aa',
+  contains:   '#71717a',
+  inherits:   '#d8b4fe',
+  implements: '#67e8f9',
+  tests:      '#6ee7b7',
+  cochanges:  '#fde68a',
 };
 
 export const SEVERITY_COLORS = {
