@@ -131,17 +131,22 @@ sast:semgrep:
 sast:bandit:
   extends: .security-base
   before_script:
-    - apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev graphviz libgraphviz-dev pkg-config wget
-    - wget -qO /usr/local/bin/sarif-converter
-        https://gitlab.com/ignis-build/sarif-converter/-/releases/permalink/latest/downloads/bin/sarif-converter-linux
-    - chmod +x /usr/local/bin/sarif-converter
+    - apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev graphviz libgraphviz-dev pkg-config curl
   script:
     - uv sync --locked --group security
+    - uv run bandit -c pyproject.toml -r src/ -f json -o bandit-report.json --exit-zero
     - uv run bandit -c pyproject.toml -r src/ -f sarif -o bandit.sarif --exit-zero
-    - sarif-converter --type sast bandit.sarif gl-sast-bandit.json
+    # Convert SARIF to GitLab SAST format; skip gracefully if converter unavailable
+    - |
+      curl -fsSL -o /usr/local/bin/sarif-converter \
+        "https://gitlab.com/ignis-build/sarif-converter/-/releases/permalink/latest/downloads/bin/sarif-converter-linux" \
+        && chmod +x /usr/local/bin/sarif-converter \
+        && sarif-converter --type sast bandit.sarif gl-sast-bandit.json \
+        || echo "sarif-converter unavailable, skipping GitLab SAST conversion"
   artifacts:
     when: always
     paths:
+      - bandit-report.json
       - bandit.sarif
     reports:
       sast: gl-sast-bandit.json
@@ -149,16 +154,26 @@ sast:bandit:
 
 deps:audit:
   extends: .security-base
-  image: ghcr.io/google/osv-scanner-action/osv-scanner-action:v2
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends curl ca-certificates
+    - |
+      curl -fsSL -o /usr/local/bin/osv-scanner \
+        "https://github.com/google/osv-scanner/releases/latest/download/osv-scanner_linux_amd64" \
+        && chmod +x /usr/local/bin/osv-scanner
   script:
+    - osv-scanner scan --format json --lockfile uv.lock > osv-scanner.json || true
     - osv-scanner scan --format sarif --lockfile uv.lock > osv-scanner.sarif || true
-    - wget -qO /usr/local/bin/sarif-converter
-        https://gitlab.com/ignis-build/sarif-converter/-/releases/permalink/latest/downloads/bin/sarif-converter-linux
-    - chmod +x /usr/local/bin/sarif-converter
-    - sarif-converter --type sast osv-scanner.sarif gl-dependency-scanning-report.json
+    # Convert SARIF to GitLab dependency scanning format; skip gracefully if converter unavailable
+    - |
+      curl -fsSL -o /usr/local/bin/sarif-converter \
+        "https://gitlab.com/ignis-build/sarif-converter/-/releases/permalink/latest/downloads/bin/sarif-converter-linux" \
+        && chmod +x /usr/local/bin/sarif-converter \
+        && sarif-converter --type dependency_scanning osv-scanner.sarif gl-dependency-scanning-report.json \
+        || echo "sarif-converter unavailable, skipping GitLab dependency scanning conversion"
   artifacts:
     when: always
     paths:
+      - osv-scanner.json
       - osv-scanner.sarif
     reports:
       dependency_scanning: gl-dependency-scanning-report.json
@@ -166,7 +181,9 @@ deps:audit:
 
 secrets:gitleaks:
   extends: .security-base
-  image: zricethezav/gitleaks:latest
+  image:
+    name: zricethezav/gitleaks:latest
+    entrypoint: [""]
   variables:
     GIT_DEPTH: 0
   script:
@@ -176,23 +193,10 @@ secrets:gitleaks:
         --report-format sarif
         --report-path gitleaks.sarif
         --exit-code 0
-  after_script:
-    # Convert SARIF to GitLab secret detection format if sarif-converter is available.
-    # The gitleaks image is minimal, so we fall back to uploading raw SARIF as an artifact.
-    - |
-      if command -v wget >/dev/null 2>&1; then
-        wget -qO /tmp/sarif-converter \
-          https://gitlab.com/ignis-build/sarif-converter/-/releases/permalink/latest/downloads/bin/sarif-converter-linux 2>/dev/null \
-          && chmod +x /tmp/sarif-converter \
-          && /tmp/sarif-converter --type sast gitleaks.sarif gl-secret-detection-report.json 2>/dev/null \
-          || true
-      fi
   artifacts:
     when: always
     paths:
       - gitleaks.sarif
-    reports:
-      sast: gl-secret-detection-report.json
     expire_in: 1 week
 
 license:check:

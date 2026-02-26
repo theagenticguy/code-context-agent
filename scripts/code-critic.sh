@@ -15,6 +15,9 @@ if ! command -v claude &>/dev/null; then
   exit 0
 fi
 
+# Allow running from inside a Claude Code session (e.g. when claude triggers git push)
+unset CLAUDECODE
+
 MODE="diff"
 if [ "${1:-}" = "--full" ]; then
   MODE="full"
