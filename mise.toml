@@ -1,5 +1,6 @@
 [tools]
 gitleaks = "latest"
+osv-scanner = "latest"
 python = "3.13"
 semgrep = "latest"
 syft = "latest"
@@ -62,8 +63,8 @@ uv run bandit -c pyproject.toml -r src/ --severity-level=high --confidence-level
 """
 
 [tasks."security:deps"]
-description = "Audit dependencies for known vulnerabilities"
-run = "uv run pip-audit --progress-spinner off --skip-editable"
+description = "Audit dependencies for known vulnerabilities (osv-scanner)"
+run = "osv-scanner scan --lockfile uv.lock"
 
 [tasks."security:licenses"]
 description = "Check 3P dependency licenses against allowlist"

@@ -4,7 +4,7 @@
 Usage:
     uv run python scripts/security_report.py [--output report.json]
 
-Runs bandit, pip-audit, semgrep, gitleaks, pip-licenses, and guarddog,
+Runs bandit, osv-scanner, semgrep, gitleaks, pip-licenses, and guarddog,
 then merges all findings into a single JSON report with summary statistics.
 """
 
@@ -53,34 +53,55 @@ def run_bandit(src: str = "src/") -> list[dict]:
     return findings
 
 
-def run_pip_audit() -> list[dict]:
-    """Run pip-audit and return findings."""
-    result = _run(
-        ["uv", "run", "pip-audit", "--skip-editable", "--progress-spinner", "off", "-f", "json"],
-    )
+_CVSS_THRESHOLDS = [(9.0, "CRITICAL"), (7.0, "HIGH"), (4.0, "MEDIUM")]
+
+
+def _cvss_to_severity(score_str: str) -> str:
+    """Map a CVSS score string (e.g. '7.5' or 'CVSS:3.1/.../7.5') to a severity label."""
+    try:
+        cvss = float(score_str.split("/", maxsplit=1)[0]) if "/" in score_str else float(score_str)
+    except (ValueError, IndexError):
+        return "UNKNOWN"
+    for threshold, label in _CVSS_THRESHOLDS:
+        if cvss >= threshold:
+            return label
+    return "LOW"
+
+
+def run_osv_scanner() -> list[dict]:
+    """Run osv-scanner against uv.lock and return findings."""
+    result = _run(["osv-scanner", "scan", "--format", "json", "--lockfile", "uv.lock"])
     try:
         data = json.loads(result.stdout)
     except json.JSONDecodeError:
         return []
 
-    deps = data if isinstance(data, list) else data.get("dependencies", data)
     findings = []
-    for dep in deps:
-        for vuln in dep.get("vulns", []):
-            fix = ", ".join(vuln.get("fix_versions", []))
-            findings.append(
-                {
-                    "tool": "pip-audit",
-                    "rule": vuln["id"],
-                    "name": f"{vuln['id']} in {dep['name']}",
-                    "severity": "UNKNOWN",
-                    "confidence": "HIGH",
-                    "message": vuln.get("description", "")[:200],
-                    "package": dep["name"],
-                    "version": dep["version"],
-                    "fix_versions": fix,
-                },
-            )
+    for scan_result in data.get("results", []):
+        for pkg_info in scan_result.get("packages", []):
+            pkg = pkg_info.get("package", {})
+            pkg_name = pkg.get("name", "unknown")
+            pkg_version = pkg.get("version", "unknown")
+            for vuln in pkg_info.get("vulnerabilities", []):
+                vuln_id = vuln.get("id", "UNKNOWN")
+                severity = "UNKNOWN"
+                for sev in vuln.get("severity", []):
+                    if "CVSS" in sev.get("type", ""):
+                        severity = _cvss_to_severity(sev.get("score", ""))
+                        break
+                findings.append(
+                    {
+                        "tool": "osv-scanner",
+                        "rule": vuln_id,
+                        "name": f"{vuln_id} in {pkg_name}",
+                        "severity": severity,
+                        "confidence": "HIGH",
+                        "message": vuln.get("summary", "")[:200],
+                        "package": pkg_name,
+                        "version": pkg_version,
+                        "aliases": vuln.get("aliases", []),
+                    },
+                )
     return findings
 
 
@@ -240,9 +261,9 @@ def main() -> None:
     bandit = run_bandit()
     print(f"         {len(bandit)} findings")
 
-    print("  [2/6] pip-audit (dependency vulnerabilities)...")
-    pip_audit = run_pip_audit()
-    print(f"         {len(pip_audit)} findings")
+    print("  [2/6] osv-scanner (dependency vulnerabilities)...")
+    osv = run_osv_scanner()
+    print(f"         {len(osv)} findings")
 
     print("  [3/6] semgrep (SAST + OWASP)...")
     semgrep = run_semgrep()
@@ -261,7 +282,7 @@ def main() -> None:
     print(f"         {len(guarddog)} findings")
 
     # Build unified report
-    all_findings = bandit + pip_audit + semgrep + gitleaks + licenses + guarddog
+    all_findings = bandit + osv + semgrep + gitleaks + licenses + guarddog
     severity_counts: dict[str, int] = {}
     for f in all_findings:
         sev = f.get("severity", "UNKNOWN")
@@ -269,7 +290,7 @@ def main() -> None:
 
     tool_counts = {
         "bandit": len(bandit),
-        "pip-audit": len(pip_audit),
+        "osv-scanner": len(osv),
         "semgrep": len(semgrep),
         "gitleaks": len(gitleaks),
         "pip-licenses": len(licenses),

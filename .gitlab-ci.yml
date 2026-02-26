@@ -149,24 +149,17 @@ sast:bandit:
 
 deps:audit:
   extends: .security-base
-  before_script:
-    - apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev graphviz libgraphviz-dev pkg-config
+  image: ghcr.io/google/osv-scanner-action/osv-scanner-action:v2
   script:
-    - uv sync --locked --group security
-    - uv run pip-audit
-        --skip-editable
-        --progress-spinner off
-        --desc on
-        -f json
-        -o pip-audit-report.json
-        || true
-    - python3 scripts/convert_pip_audit_to_gitlab.py
-        pip-audit-report.json
-        gl-dependency-scanning-report.json
+    - osv-scanner scan --format sarif --lockfile uv.lock > osv-scanner.sarif || true
+    - wget -qO /usr/local/bin/sarif-converter
+        https://gitlab.com/ignis-build/sarif-converter/-/releases/permalink/latest/downloads/bin/sarif-converter-linux
+    - chmod +x /usr/local/bin/sarif-converter
+    - sarif-converter --type sast osv-scanner.sarif gl-dependency-scanning-report.json
   artifacts:
     when: always
     paths:
-      - pip-audit-report.json
+      - osv-scanner.sarif
     reports:
       dependency_scanning: gl-dependency-scanning-report.json
     expire_in: 1 week
@@ -329,6 +322,8 @@ deps-update:
     - apt-get update && apt-get install -y --no-install-recommends
         git curl ca-certificates jq
         gcc libc6-dev graphviz libgraphviz-dev pkg-config
+    - curl -sSfL https://github.com/google/osv-scanner/releases/latest/download/osv-scanner_linux_amd64
+        -o /usr/local/bin/osv-scanner && chmod +x /usr/local/bin/osv-scanner
   script:
     - |
       set -euo pipefail
@@ -353,9 +348,8 @@ deps-update:
       fi
 
       # Audit updated dependencies (advisory, does not block)
-      uv sync --group security
-      uv run pip-audit --skip-editable --progress-spinner off -f json -o /tmp/audit.json || true
-      VULN_COUNT=$(jq '[.[] | select(.vulns | length > 0)] | length' /tmp/audit.json 2>/dev/null || echo "0")
+      osv-scanner scan --format json --lockfile uv.lock > /tmp/audit.json 2>/dev/null || true
+      VULN_COUNT=$(jq '.results | map(.packages | length) | add // 0' /tmp/audit.json 2>/dev/null || echo "0")
       if [ "$VULN_COUNT" -gt 0 ]; then
         AUDIT_NOTE="**${VULN_COUNT} package(s)** with known vulnerabilities detected. Review audit report."
       else
