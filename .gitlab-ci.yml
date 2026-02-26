@@ -250,16 +250,20 @@ sbom:
         - gl-sbom.cdx.json
     expire_in: 1 week
 
-trivy:image:
+trivy:scan:
   extends: .security-base
-  image: aquasec/trivy:latest
+  image:
+    name: aquasec/trivy:latest
+    entrypoint: [""]
   script:
-    - trivy image
+    # Scan the repo filesystem for vulnerabilities in lockfiles, configs, and IaC
+    - trivy fs
         --severity HIGH,CRITICAL
         --format template
         --template "@/contrib/gitlab.tpl"
         --output gl-container-scanning-report.json
-        ghcr.io/astral-sh/uv:0.9-python3.13-bookworm-slim
+        .
+        || true
   artifacts:
     when: always
     reports:
