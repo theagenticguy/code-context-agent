@@ -2,6 +2,7 @@
 gitleaks = "latest"
 python = "3.13"
 semgrep = "latest"
+uv = "latest"
 
 [env]
 _.python.venv = { path = ".venv", create = true }
@@ -68,6 +69,16 @@ run = "uv run mkdocs build"
 [tasks.bump]
 description = "Bump version using commitizen"
 run = "uv run cz bump"
+
+[tasks.release]
+description = "Bump version, generate changelog, tag, and push"
+run = """
+set -euo pipefail
+uv run cz bump
+VERSION=$(uv run cz version)
+git push origin HEAD
+git push origin "v${VERSION}"
+"""
 
 [tasks.commit]
 description = "Interactive conventional commit"

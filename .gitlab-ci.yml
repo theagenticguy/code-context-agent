@@ -1,6 +1,7 @@
 stages:
   - lint
   - test
+  - bump
   - build-docs
   - pages
   - build
@@ -57,6 +58,43 @@ test:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "web"
+  cache:
+    key:
+      files:
+        - uv.lock
+    paths:
+      - $UV_CACHE_DIR
+
+# =============================================================================
+# Version Bump (manual trigger → pushes bump commit + tag → triggers release)
+# =============================================================================
+# Prerequisites:
+#   1. Create a project access token with write_repository scope
+#   2. Add it as CI/CD variable RELEASE_TOKEN (masked, protected)
+#   3. The token push creates the version tag, which triggers build + release
+
+bump:
+  stage: bump
+  image: debian:bookworm-slim
+  variables:
+    GIT_DEPTH: 0
+    GIT_STRATEGY: clone
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends git curl ca-certificates
+    - curl https://mise.run | sh
+    - export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"
+    - mise install python uv
+    - uv sync --group dev
+  script:
+    - git config user.name "gitlab-ci[bot]"
+    - git config user.email "ci@${CI_SERVER_HOST}"
+    - git remote set-url origin "https://release-bot:${RELEASE_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+    - git checkout ${CI_COMMIT_BRANCH}
+    - mise run release
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+      allow_failure: true
   cache:
     key:
       files:
@@ -150,15 +188,16 @@ release:
   dependencies:
     - build
   script:
-    - echo "Creating release for ${CI_COMMIT_TAG}"
-  release:
-    tag_name: $CI_COMMIT_TAG
-    name: "Release ${CI_COMMIT_TAG}"
-    description: "Release ${CI_COMMIT_TAG} of code-context-agent"
-    assets:
-      links:
-        - name: "Python wheel"
-          url: "${CI_PROJECT_URL}/-/jobs/${CI_JOB_ID}/artifacts/download"
-          link_type: package
+    - VERSION=$(echo "$CI_COMMIT_TAG" | sed 's/^v//')
+    - sed -n "/^## v${VERSION}/,/^## v/{/^## v/d;p}" CHANGELOG.md > /tmp/notes.md
+    - |
+      if [ ! -s /tmp/notes.md ]; then
+        echo "Release ${CI_COMMIT_TAG}" > /tmp/notes.md
+      fi
+    - release-cli create
+        --name "Release ${CI_COMMIT_TAG}"
+        --tag-name "${CI_COMMIT_TAG}"
+        --description "$(cat /tmp/notes.md)"
+        --assets-link "{\"name\":\"Python wheel\",\"url\":\"${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/download?job=build\",\"link_type\":\"package\"}"
   rules:
     - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
