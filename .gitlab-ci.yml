@@ -330,10 +330,11 @@ deps-update:
         git curl ca-certificates jq
         gcc libc6-dev graphviz libgraphviz-dev pkg-config
   script:
-    - export BRANCH_NAME="deps/auto-update-$(date +%Y-%m-%d)"
-
-    # Skip if an MR from this branch already exists
     - |
+      set -euo pipefail
+      BRANCH_NAME="deps/auto-update-$(date +%Y-%m-%d)"
+
+      # Skip if an MR from this branch already exists
       EXISTING_MR=$(curl --silent --header "PRIVATE-TOKEN: ${RELEASE_TOKEN}" \
         "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/merge_requests?state=opened&source_branch=${BRANCH_NAME}" \
         | jq -r '.[0].iid // empty')
@@ -342,38 +343,35 @@ deps-update:
         exit 0
       fi
 
-    # Upgrade all dependencies
-    - uv lock --upgrade
+      # Upgrade all dependencies
+      uv lock --upgrade
 
-    # Skip if lockfile unchanged
-    - |
+      # Skip if lockfile unchanged
       if git diff --quiet uv.lock; then
         echo "No dependency changes detected. Nothing to do."
         exit 0
       fi
 
-    # Audit updated dependencies (advisory, does not block)
-    - uv sync --group security
-    - |
-      uv run pip-audit --strict --skip-editable --progress-spinner off -f json -o /tmp/audit.json || true
+      # Audit updated dependencies (advisory, does not block)
+      uv sync --group security
+      uv run pip-audit --skip-editable --progress-spinner off -f json -o /tmp/audit.json || true
       VULN_COUNT=$(jq '[.[] | select(.vulns | length > 0)] | length' /tmp/audit.json 2>/dev/null || echo "0")
       if [ "$VULN_COUNT" -gt 0 ]; then
-        AUDIT_NOTE="⚠️ **${VULN_COUNT} package(s)** with known vulnerabilities detected. Review audit report."
+        AUDIT_NOTE="**${VULN_COUNT} package(s)** with known vulnerabilities detected. Review audit report."
       else
         AUDIT_NOTE="All dependencies passed vulnerability audit."
       fi
 
-    # Compute diff summary
-    - SUMMARY=$(git diff uv.lock | grep -E '^\+.*version' | head -20 | sed 's/^+//' || echo "See full diff")
+      # Compute diff summary
+      SUMMARY=$(git diff uv.lock | grep -E '^\+.*version' | head -20 | sed 's/^+//' || echo "See full diff")
 
-    # Create branch, commit, push, and open MR
-    - git config user.name "gitlab-ci[bot]"
-    - git config user.email "ci@${CI_SERVER_HOST}"
-    - git remote set-url origin "https://release-bot:${RELEASE_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
-    - git checkout -b "$BRANCH_NAME"
-    - git add uv.lock
-    - git commit -m "deps: auto-update dependencies $(date +%Y-%m-%d)"
-    - |
+      # Create branch, commit, push, and open MR
+      git config user.name "gitlab-ci[bot]"
+      git config user.email "ci@${CI_SERVER_HOST}"
+      git remote set-url origin "https://release-bot:${RELEASE_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+      git checkout -b "$BRANCH_NAME"
+      git add uv.lock
+      git commit -m "deps: auto-update dependencies $(date +%Y-%m-%d)"
       git push --set-upstream origin "$BRANCH_NAME" \
         -o merge_request.create \
         -o merge_request.target=main \
@@ -381,8 +379,7 @@ deps-update:
         -o merge_request.remove_source_branch \
         -o merge_request.label="dependencies"
 
-    # Enrich MR description with audit results via API
-    - |
+      # Enrich MR description with audit results via API
       sleep 5
       MR_IID=$(curl --silent --header "PRIVATE-TOKEN: ${RELEASE_TOKEN}" \
         "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/merge_requests?state=opened&source_branch=${BRANCH_NAME}" \
