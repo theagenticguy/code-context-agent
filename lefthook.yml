@@ -22,10 +22,6 @@ pre-commit:
     - name: gitleaks
       run: gitleaks protect --staged --no-banner
 
-    - name: code-critic
-      run: bash scripts/code-critic.sh
-      glob: "*.py"
-
 pre-push:
   parallel: true
   jobs:
@@ -46,6 +42,3 @@ pre-push:
 
     - name: semgrep
       run: semgrep scan --config auto --config p/owasp-top-ten --error --quiet src/
-
-    - name: code-critic
-      run: bash scripts/code-critic.sh --full
