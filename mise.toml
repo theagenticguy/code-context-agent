@@ -2,6 +2,8 @@
 gitleaks = "latest"
 python = "3.13"
 semgrep = "latest"
+syft = "latest"
+trivy = "latest"
 uv = "latest"
 
 [env]
@@ -39,8 +41,8 @@ description = "Run tests with verbose output"
 run = "uv run pytest -v"
 
 [tasks.security]
-description = "Run all security scans (gitleaks + semgrep + pip-audit)"
-depends = ["security:secrets", "security:sast", "security:deps"]
+description = "Run all security scans"
+depends = ["security:secrets", "security:sast", "security:bandit", "security:deps", "security:licenses", "security:typosquat"]
 
 [tasks."security:secrets"]
 description = "Scan for secrets with gitleaks"
@@ -50,9 +52,43 @@ run = "gitleaks detect --source . --no-banner"
 description = "SAST scan with semgrep (auto + OWASP top 10)"
 run = "semgrep scan --config auto --config p/owasp-top-ten --error --quiet src/"
 
+[tasks."security:bandit"]
+description = "SAST scan with bandit (fail on HIGH severity)"
+shell = "bash"
+run = """
+set -euo pipefail
+uv run bandit -c pyproject.toml -r src/ -f json -o bandit-report.json --exit-zero
+uv run bandit -c pyproject.toml -r src/ --severity-level=high --confidence-level=high
+"""
+
 [tasks."security:deps"]
 description = "Audit dependencies for known vulnerabilities"
-run = "uv run pip-audit"
+run = "uv run pip-audit --progress-spinner off --skip-editable"
+
+[tasks."security:licenses"]
+description = "Check 3P dependency licenses against allowlist"
+run = "uv run --with pip-licenses pip-licenses"
+
+[tasks."security:typosquat"]
+description = "Check dependencies for typosquatting and malicious patterns"
+shell = "bash"
+run = """
+set -euo pipefail
+uv export --no-hashes --format requirements-txt > /tmp/requirements.txt
+uvx guarddog pypi verify /tmp/requirements.txt
+"""
+
+[tasks."security:sbom"]
+description = "Generate CycloneDX and SPDX SBOMs via syft"
+run = "syft . -o cyclonedx-json=sbom.cdx.json -o spdx-json=sbom.spdx.json"
+
+[tasks."security:report"]
+description = "Run all security scans and produce a unified JSON report"
+run = "uv run python scripts/security_report.py --output security-report.json"
+
+[tasks."test:coverage"]
+description = "Run tests with coverage"
+run = "uv run pytest --cov=src/code_context_agent --cov-report=term-missing:skip-covered --cov-report=xml:coverage.xml --cov-branch"
 
 [tasks.check]
 description = "Run all checks (lint + format + typecheck + test)"

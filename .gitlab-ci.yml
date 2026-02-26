@@ -1,7 +1,9 @@
 stages:
   - lint
   - test
+  - security
   - bump
+  - deps-update
   - build-docs
   - pages
   - build
@@ -20,10 +22,18 @@ lint:
   before_script:
     - apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev graphviz libgraphviz-dev pkg-config
   script:
-    - uv sync --group dev
+    - uv sync --locked --group dev
+    # Generate Code Quality report (always, even if ruff finds issues)
+    - uv run ruff check --output-format=gitlab --output-file=gl-code-quality-report.json src/ || true
+    # Gating checks (fail the pipeline on errors)
     - uv run ruff check src/
     - uv run ruff format --check src/
     - uv run ty check src/
+  artifacts:
+    when: always
+    reports:
+      codequality: gl-code-quality-report.json
+    expire_in: 1 week
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
@@ -47,13 +57,24 @@ test:
   before_script:
     - apt-get update && apt-get install -y --no-install-recommends git gcc libc6-dev graphviz libgraphviz-dev pkg-config
   script:
-    - uv sync --group dev
-    - uv run pytest --junitxml=report.xml
+    - uv sync --locked --group dev
+    - uv run pytest
+        --junitxml=report.xml
+        --cov=src/code_context_agent
+        --cov-report=term-missing:skip-covered
+        --cov-report=xml:coverage.xml
+        --cov-branch
+  coverage: '/TOTAL\s+\d+\s+\d+\s+\d+\s+\d+\s+(\d+(?:\.\d+)?%)\s*$/'
   artifacts:
     when: always
+    paths:
+      - coverage.xml
     reports:
       junit: report.xml
-    expire_in: 1 hour
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+    expire_in: 1 week
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
@@ -64,6 +85,189 @@ test:
         - uv.lock
     paths:
       - $UV_CACHE_DIR
+
+# =============================================================================
+# Security Scans
+# =============================================================================
+# Each job produces a GitLab-compatible report artifact. GitLab auto-merges
+# reports from separate jobs in the Security Dashboard / MR widget.
+#
+# Prerequisites for SARIF conversion:
+#   sarif-converter is downloaded at runtime from ignis-build/sarif-converter
+
+.security-base:
+  stage: security
+  image: ghcr.io/astral-sh/uv:0.9-python3.13-bookworm-slim
+  allow_failure: true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "web"
+  cache:
+    key:
+      files:
+        - uv.lock
+    paths:
+      - $UV_CACHE_DIR
+
+sast:semgrep:
+  extends: .security-base
+  image: semgrep/semgrep:latest
+  script:
+    - semgrep scan
+        --config auto
+        --config p/owasp-top-ten
+        --gitlab-sast
+        --gitlab-sast-output gl-sast-semgrep.json
+        --error
+        src/
+        || true
+  artifacts:
+    when: always
+    reports:
+      sast: gl-sast-semgrep.json
+    expire_in: 1 week
+
+sast:bandit:
+  extends: .security-base
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev graphviz libgraphviz-dev pkg-config wget
+    - wget -qO /usr/local/bin/sarif-converter
+        https://gitlab.com/ignis-build/sarif-converter/-/releases/permalink/latest/downloads/bin/sarif-converter-linux
+    - chmod +x /usr/local/bin/sarif-converter
+  script:
+    - uv sync --locked --group security
+    - uv run bandit -c pyproject.toml -r src/ -f sarif -o bandit.sarif --exit-zero
+    - sarif-converter --type sast bandit.sarif gl-sast-bandit.json
+  artifacts:
+    when: always
+    paths:
+      - bandit.sarif
+    reports:
+      sast: gl-sast-bandit.json
+    expire_in: 1 week
+
+deps:audit:
+  extends: .security-base
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev graphviz libgraphviz-dev pkg-config
+  script:
+    - uv sync --locked --group security
+    - uv run pip-audit
+        --skip-editable
+        --progress-spinner off
+        --desc on
+        -f json
+        -o pip-audit-report.json
+        || true
+    - python3 scripts/convert_pip_audit_to_gitlab.py
+        pip-audit-report.json
+        gl-dependency-scanning-report.json
+  artifacts:
+    when: always
+    paths:
+      - pip-audit-report.json
+    reports:
+      dependency_scanning: gl-dependency-scanning-report.json
+    expire_in: 1 week
+
+secrets:gitleaks:
+  extends: .security-base
+  image: zricethezav/gitleaks:latest
+  variables:
+    GIT_DEPTH: 0
+  script:
+    - gitleaks detect
+        --source .
+        --no-banner
+        --report-format sarif
+        --report-path gitleaks.sarif
+        --exit-code 0
+  after_script:
+    # Convert SARIF to GitLab secret detection format if sarif-converter is available.
+    # The gitleaks image is minimal, so we fall back to uploading raw SARIF as an artifact.
+    - |
+      if command -v wget >/dev/null 2>&1; then
+        wget -qO /tmp/sarif-converter \
+          https://gitlab.com/ignis-build/sarif-converter/-/releases/permalink/latest/downloads/bin/sarif-converter-linux 2>/dev/null \
+          && chmod +x /tmp/sarif-converter \
+          && /tmp/sarif-converter --type sast gitleaks.sarif gl-secret-detection-report.json 2>/dev/null \
+          || true
+      fi
+  artifacts:
+    when: always
+    paths:
+      - gitleaks.sarif
+    reports:
+      sast: gl-secret-detection-report.json
+    expire_in: 1 week
+
+license:check:
+  extends: .security-base
+  allow_failure: false
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev graphviz libgraphviz-dev pkg-config
+  script:
+    - uv sync --locked
+    - uv run --with pip-licenses pip-licenses
+    # Generate JSON and markdown reports for archival
+    - uv run --with pip-licenses pip-licenses
+        --format=json --output-file=license-report.json
+    - uv run --with pip-licenses pip-licenses
+        --format=markdown --output-file=license-report.md
+  artifacts:
+    when: always
+    paths:
+      - license-report.json
+      - license-report.md
+    expire_in: 1 week
+
+deps:guarddog:
+  extends: .security-base
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev graphviz libgraphviz-dev pkg-config
+  script:
+    - uv export --no-hashes --format requirements-txt > /tmp/requirements.txt
+    - uvx guarddog pypi verify /tmp/requirements.txt
+  artifacts:
+    when: always
+    expire_in: 1 week
+
+sbom:
+  extends: .security-base
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends curl
+    - curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh
+        | sh -s -- -b /usr/local/bin
+  script:
+    - syft .
+        -o cyclonedx-json=gl-sbom.cdx.json
+        -o spdx-json=sbom.spdx.json
+  artifacts:
+    when: always
+    paths:
+      - gl-sbom.cdx.json
+      - sbom.spdx.json
+    reports:
+      cyclonedx:
+        - gl-sbom.cdx.json
+    expire_in: 1 week
+
+trivy:image:
+  extends: .security-base
+  image: aquasec/trivy:latest
+  script:
+    - trivy image
+        --severity HIGH,CRITICAL
+        --format template
+        --template "@/contrib/gitlab.tpl"
+        --output gl-container-scanning-report.json
+        ghcr.io/astral-sh/uv:0.9-python3.13-bookworm-slim
+  artifacts:
+    when: always
+    reports:
+      container_scanning: gl-container-scanning-report.json
+    expire_in: 1 week
 
 # =============================================================================
 # Version Bump (manual trigger → pushes bump commit + tag → triggers release)
@@ -85,7 +289,7 @@ bump:
     - export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"
     - mise settings set disable_tools "gitleaks,semgrep"
     - mise install
-    - uv sync --group dev
+    - uv sync --locked --group dev
   script:
     - git config user.name "gitlab-ci[bot]"
     - git config user.email "ci@${CI_SERVER_HOST}"
@@ -104,6 +308,105 @@ bump:
       - $UV_CACHE_DIR
 
 # =============================================================================
+# Automated Dependency Update (scheduled nightly)
+# =============================================================================
+# Prerequisites:
+#   1. RELEASE_TOKEN CI/CD variable (project access token, masked, protected)
+#      - Scopes: write_repository, api
+#      - Role: Developer
+#   2. Pipeline schedule configured in Build > Pipeline schedules:
+#      - Interval: 0 3 * * 1-5 (3 AM UTC, weekdays)
+#      - Target branch: main
+#      - Variable: DEPS_UPDATE = "true"
+
+deps-update:
+  stage: deps-update
+  image: ghcr.io/astral-sh/uv:0.9-python3.13-bookworm-slim
+  variables:
+    GIT_DEPTH: 0
+    GIT_STRATEGY: clone
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends
+        git curl ca-certificates jq
+        gcc libc6-dev graphviz libgraphviz-dev pkg-config
+  script:
+    - export BRANCH_NAME="deps/auto-update-$(date +%Y-%m-%d)"
+
+    # Skip if an MR from this branch already exists
+    - |
+      EXISTING_MR=$(curl --silent --header "PRIVATE-TOKEN: ${RELEASE_TOKEN}" \
+        "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/merge_requests?state=opened&source_branch=${BRANCH_NAME}" \
+        | jq -r '.[0].iid // empty')
+      if [ -n "$EXISTING_MR" ]; then
+        echo "MR !${EXISTING_MR} already open for ${BRANCH_NAME}. Skipping."
+        exit 0
+      fi
+
+    # Upgrade all dependencies
+    - uv lock --upgrade
+
+    # Skip if lockfile unchanged
+    - |
+      if git diff --quiet uv.lock; then
+        echo "No dependency changes detected. Nothing to do."
+        exit 0
+      fi
+
+    # Audit updated dependencies (advisory, does not block)
+    - uv sync --group security
+    - |
+      uv run pip-audit --strict --skip-editable --progress-spinner off -f json -o /tmp/audit.json || true
+      VULN_COUNT=$(jq '[.[] | select(.vulns | length > 0)] | length' /tmp/audit.json 2>/dev/null || echo "0")
+      if [ "$VULN_COUNT" -gt 0 ]; then
+        AUDIT_NOTE="⚠️ **${VULN_COUNT} package(s)** with known vulnerabilities detected. Review audit report."
+      else
+        AUDIT_NOTE="All dependencies passed vulnerability audit."
+      fi
+
+    # Compute diff summary
+    - SUMMARY=$(git diff uv.lock | grep -E '^\+.*version' | head -20 | sed 's/^+//' || echo "See full diff")
+
+    # Create branch, commit, push, and open MR
+    - git config user.name "gitlab-ci[bot]"
+    - git config user.email "ci@${CI_SERVER_HOST}"
+    - git remote set-url origin "https://release-bot:${RELEASE_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+    - git checkout -b "$BRANCH_NAME"
+    - git add uv.lock
+    - git commit -m "deps: auto-update dependencies $(date +%Y-%m-%d)"
+    - |
+      git push --set-upstream origin "$BRANCH_NAME" \
+        -o merge_request.create \
+        -o merge_request.target=main \
+        -o merge_request.title="deps: auto-update dependencies $(date +%Y-%m-%d)" \
+        -o merge_request.remove_source_branch \
+        -o merge_request.label="dependencies"
+
+    # Enrich MR description with audit results via API
+    - |
+      sleep 5
+      MR_IID=$(curl --silent --header "PRIVATE-TOKEN: ${RELEASE_TOKEN}" \
+        "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/merge_requests?state=opened&source_branch=${BRANCH_NAME}" \
+        | jq -r '.[0].iid')
+      if [ -n "$MR_IID" ] && [ "$MR_IID" != "null" ]; then
+        BODY=$(printf '## Automated Dependency Update\n\nPipeline: %s\n\n### Audit Status\n%s\n\n### Changed Packages\n```\n%s\n```\n\n---\n*Created by scheduled pipeline on %s*' \
+          "$CI_PIPELINE_URL" "$AUDIT_NOTE" "$SUMMARY" "$(date +%Y-%m-%d)")
+        curl --silent --request PUT \
+          --header "PRIVATE-TOKEN: ${RELEASE_TOKEN}" \
+          --header "Content-Type: application/json" \
+          --data "$(jq -n --arg desc "$BODY" '{description: $desc}')" \
+          "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/merge_requests/${MR_IID}" > /dev/null
+        echo "Updated MR !${MR_IID} with audit details."
+      fi
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && $DEPS_UPDATE == "true"'
+  cache:
+    key:
+      files:
+        - uv.lock
+    paths:
+      - $UV_CACHE_DIR
+
+# =============================================================================
 # Documentation Build
 # =============================================================================
 
@@ -113,7 +416,7 @@ build-docs:
   before_script:
     - apt-get update && apt-get install -y --no-install-recommends git gcc libc6-dev graphviz libgraphviz-dev pkg-config
   script:
-    - uv sync --group docs
+    - uv sync --locked --group docs
     - uv run mkdocs build
   artifacts:
     paths:
