@@ -80,10 +80,11 @@ bump:
     GIT_DEPTH: 0
     GIT_STRATEGY: clone
   before_script:
-    - apt-get update && apt-get install -y --no-install-recommends git curl ca-certificates
+    - apt-get update && apt-get install -y --no-install-recommends git curl ca-certificates bash
     - curl https://mise.run | sh
     - export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"
-    - mise install python uv
+    - mise settings set disable_tools "gitleaks,semgrep"
+    - mise install
     - uv sync --group dev
   script:
     - git config user.name "gitlab-ci[bot]"

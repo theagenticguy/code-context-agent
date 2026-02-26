@@ -72,6 +72,7 @@ run = "uv run cz bump"
 
 [tasks.release]
 description = "Bump version, generate changelog, tag, and push"
+shell = "bash"
 run = """
 set -euo pipefail
 uv run cz bump
