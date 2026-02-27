@@ -37,7 +37,7 @@ flowchart TD
     H --> L[Graph<br/>NetworkX analysis]
     H --> M[Git<br/>coupling, churn, blame]
     H --> N[Shell<br/>bounded execution]
-    H --> O[Output Files<br/>.agent/ directory]
+    H --> O[Output Files<br/>.code-context/ directory]
 ```
 
 ---
@@ -79,7 +79,7 @@ See the [Installation](getting-started/installation.md) and [Quick Start](gettin
 
 ## Output
 
-All outputs are written to `.agent/` (or custom `--output-dir`):
+All outputs are written to `.code-context/` (or custom `--output-dir`):
 
 | File | Description |
 |------|-------------|

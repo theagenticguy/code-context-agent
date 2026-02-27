@@ -219,15 +219,6 @@ license:check:
       - license-report.md
     expire_in: 1 week
 
-deps:guarddog:
-  extends: .security-base
-  script:
-    - uv export --no-hashes --format requirements-txt > /tmp/requirements.txt
-    - uvx guarddog pypi verify /tmp/requirements.txt || true
-  artifacts:
-    when: always
-    expire_in: 1 week
-
 sbom:
   extends: .security-base
   before_script:

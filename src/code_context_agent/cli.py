@@ -16,7 +16,7 @@ from cyclopts import App, Parameter
 from rich.console import Console
 
 from code_context_agent import __version__
-from code_context_agent.config import Settings, get_settings
+from code_context_agent.config import DEFAULT_OUTPUT_DIR, Settings, get_settings
 from code_context_agent.display import display_welcome
 
 console = Console()
@@ -62,7 +62,7 @@ def analyze(
     *,
     output_dir: Annotated[
         Path | None,
-        Parameter(help="Output directory for context files. Defaults to <repo>/.agent"),
+        Parameter(help="Output directory for context files. Defaults to <repo>/.code-context"),
     ] = None,
     focus: Annotated[
         str,
@@ -89,9 +89,9 @@ def analyze(
     size and complexity.
 
     Outputs:
-        .agent/CONTEXT.md - The narrated context bundle
-        .agent/CONTEXT.orientation.md - Token distribution tree
-        .agent/CONTEXT.bundle.md - Curated source code pack
+        .code-context/CONTEXT.md - The narrated context bundle
+        .code-context/CONTEXT.orientation.md - Token distribution tree
+        .code-context/CONTEXT.bundle.md - Curated source code pack
 
     Example:
         $ code-context-agent analyze /path/to/repo
@@ -175,12 +175,12 @@ def analyze(
 def viz(  # noqa: C901, PLR0915
     path: Annotated[
         Path,
-        Parameter(help="Path to the repository (must contain .agent/ output)."),
+        Parameter(help="Path to the repository (must contain .code-context/ output)."),
     ] = Path(),
     *,
     output_dir: Annotated[
         Path | None,
-        Parameter(help="Output directory containing analysis results. Defaults to <path>/.agent"),
+        Parameter(help="Output directory containing analysis results. Defaults to <path>/.code-context"),
     ] = None,
     port: Annotated[
         int,
@@ -196,7 +196,7 @@ def viz(  # noqa: C901, PLR0915
     Serves a local web UI that displays the code graph, modules,
     hotspots, dependency chains, and the CONTEXT.md narrative.
 
-    Requires a prior `analyze` run to generate .agent/ output files.
+    Requires a prior `analyze` run to generate .code-context/ output files.
 
     Example:
         $ code-context-agent viz /path/to/repo
@@ -208,7 +208,7 @@ def viz(  # noqa: C901, PLR0915
     import webbrowser
 
     repo_path = path.resolve()
-    agent_dir = (output_dir or repo_path / ".agent").resolve()
+    agent_dir = (output_dir or repo_path / DEFAULT_OUTPUT_DIR).resolve()
 
     if not agent_dir.exists():
         console.print(f"[red]Error:[/red] No analysis output found at {agent_dir}")

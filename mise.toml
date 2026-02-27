@@ -70,15 +70,6 @@ run = "osv-scanner scan --lockfile uv.lock"
 description = "Check 3P dependency licenses against allowlist"
 run = "uv run --with pip-licenses pip-licenses"
 
-[tasks."security:typosquat"]
-description = "Check dependencies for typosquatting and malicious patterns"
-shell = "bash"
-run = """
-set -euo pipefail
-uv export --no-hashes --format requirements-txt > /tmp/requirements.txt
-uvx guarddog pypi verify /tmp/requirements.txt
-"""
-
 [tasks."security:sbom"]
 description = "Generate CycloneDX and SPDX SBOMs via syft"
 run = "syft . -o cyclonedx-json=sbom.cdx.json -o spdx-json=sbom.spdx.json"

@@ -35,11 +35,11 @@ The agent automatically determines analysis depth based on repository size and c
     - Graph: NetworkX dependency graph with centrality/PageRank metrics
 4. **Ranking** --- Files are scored across all signal layers
 5. **Bundling** --- Top-ranked files are bundled with Tree-sitter compression
-6. **Output** --- Structured `AnalysisResult` written as narrated markdown to `.agent/`
+6. **Output** --- Structured `AnalysisResult` written as narrated markdown to `.code-context/`
 
 ## Output Files
 
-All outputs land in `.agent/` (or your custom `--output-dir`):
+All outputs land in `.code-context/` (or your custom `--output-dir`):
 
 | File | Description |
 |------|-------------|
@@ -54,11 +54,11 @@ All outputs land in `.agent/` (or your custom `--output-dir`):
 
 ## Using the Output
 
-The `.agent/` directory is designed for consumption by AI coding assistants. Point your assistant at `CONTEXT.md` as the entry point:
+The `.code-context/` directory is designed for consumption by AI coding assistants. Point your assistant at `CONTEXT.md` as the entry point:
 
 ```bash
 # Example: feed context to another agent
-cat .agent/CONTEXT.md | your-ai-assistant
+cat .code-context/CONTEXT.md | your-ai-assistant
 ```
 
 The narrated context includes architecture diagrams, ranked file tables, risk assessments, and business logic summaries --- all formatted for machine parsing (tables over prose, typed schemas, bounded diagrams).

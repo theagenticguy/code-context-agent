@@ -28,6 +28,7 @@ from fastmcp import FastMCP
 from loguru import logger
 from pydantic import Field
 
+from ..config import DEFAULT_OUTPUT_DIR
 from ..tools.graph.analysis import CodeAnalyzer
 from ..tools.graph.disclosure import ProgressiveExplorer
 from ..tools.graph.model import CodeGraph
@@ -57,7 +58,7 @@ WHAT THIS SERVER PROVIDES (that other tools don't):
 - Compressed Tree-sitter signatures, curated source bundles
 
 HOW TO USE:
-1. If .agent/ directory exists in the repo, skip to step 3 (already analyzed)
+1. If .code-context/ directory exists in the repo, skip to step 3 (already analyzed)
 2. Run start_analysis(repo_path) then poll check_analysis(job_id) until done
 3. Use query_code_graph to run algorithms (hotspots, modules, PageRank, etc.)
 4. Use explore_code_graph for progressive drill-down starting with "overview"
@@ -65,7 +66,7 @@ HOW TO USE:
 
 IMPORTANT: The analysis step (1-2) is a one-time batch job (5-20 min). The
 graph query and exploration tools (3-4) are sub-second and are the primary
-interactive surface. Check for .agent/code_graph.json before running analysis.
+interactive surface. Check for .code-context/code_graph.json before running analysis.
 """,
 )
 
@@ -76,12 +77,12 @@ interactive surface. Check for .agent/code_graph.json before running analysis.
 
 
 def _agent_dir(repo_path: str) -> Path:
-    """Resolve the .agent output directory for a repository."""
-    return Path(repo_path).resolve() / ".agent"
+    """Resolve the output directory for a repository."""
+    return Path(repo_path).resolve() / DEFAULT_OUTPUT_DIR
 
 
 def _load_graph(repo_path: str) -> CodeGraph:
-    """Load a persisted code graph from .agent/code_graph.json."""
+    """Load a persisted code graph from .code-context/code_graph.json."""
     graph_path = _agent_dir(repo_path) / "code_graph.json"
     if not graph_path.exists():
         msg = f"No code graph at {graph_path}. Run start_analysis first."
@@ -91,7 +92,7 @@ def _load_graph(repo_path: str) -> CodeGraph:
 
 
 def _read_artifact(repo_path: str, filename: str) -> str:
-    """Read an analysis artifact from the .agent directory."""
+    """Read an analysis artifact from the .code-context directory."""
     path = _agent_dir(repo_path) / filename
     if not path.exists():
         msg = f"Artifact not found: {path}. Run start_analysis first."
@@ -149,17 +150,17 @@ async def start_analysis(
     """Kick off full codebase analysis. Returns immediately with a job_id for polling.
 
     USE THIS WHEN: You need to analyze a codebase that hasn't been analyzed yet
-    (no .agent/ directory exists). This is a one-time batch operation.
+    (no .code-context/ directory exists). This is a one-time batch operation.
 
-    DO NOT USE IF: .agent/code_graph.json already exists — go straight to
+    DO NOT USE IF: .code-context/code_graph.json already exists — go straight to
     query_code_graph or explore_code_graph instead.
 
     The analysis runs in the background (5-20 min) and produces:
-    - .agent/CONTEXT.md — narrated architecture overview
-    - .agent/code_graph.json — structural graph for algorithm queries
-    - .agent/CONTEXT.signatures.md — compressed Tree-sitter signatures
-    - .agent/CONTEXT.bundle.md — curated source code bundle
-    - .agent/analysis_result.json — structured analysis metadata
+    - .code-context/CONTEXT.md — narrated architecture overview
+    - .code-context/code_graph.json — structural graph for algorithm queries
+    - .code-context/CONTEXT.signatures.md — compressed Tree-sitter signatures
+    - .code-context/CONTEXT.bundle.md — curated source code bundle
+    - .code-context/analysis_result.json — structured analysis metadata
 
     NEXT STEP: Poll check_analysis(job_id) every 30 seconds until status
     is "completed", then use query_code_graph or explore_code_graph.
@@ -169,7 +170,7 @@ async def start_analysis(
             "job_id": "a1b2c3d4e5f6",
             "status": "starting",
             "repo_path": "/Users/me/projects/myapp",
-            "output_dir": "/Users/me/projects/myapp/.agent",
+            "output_dir": "/Users/me/projects/myapp/.code-context",
             "message": "Analysis started. Poll check_analysis(job_id) for progress."
         }
     """
@@ -193,7 +194,7 @@ async def start_analysis(
             pass  # proceed without issue context
 
     job_id = uuid.uuid4().hex[:12]
-    output_dir = str(repo / ".agent")
+    output_dir = str(repo / DEFAULT_OUTPUT_DIR)
     _jobs[job_id] = {
         "status": "starting",
         "repo_path": str(repo),
@@ -242,7 +243,7 @@ def check_analysis(
             "job_id": "a1b2c3d4e5f6",
             "status": "completed",
             "repo_path": "/Users/me/projects/myapp",
-            "output_dir": "/Users/me/projects/myapp/.agent",
+            "output_dir": "/Users/me/projects/myapp/.code-context",
             "result": {"status": "completed", "turn_count": 87, "duration_seconds": 542.3, ...},
             "artifacts": {
                 "context": true, "graph": true, "manifest": true,
@@ -348,7 +349,9 @@ def _run_category(analyzer: CodeAnalyzer, category: str) -> dict[str, Any]:
 def query_code_graph(
     repo_path: Annotated[
         str,
-        Field(description="Absolute path to the repository (must have .agent/code_graph.json from prior analysis)"),
+        Field(
+            description="Absolute path to repo (must have .code-context/code_graph.json from prior analysis)",
+        ),
     ],
     algorithm: Annotated[
         str,
@@ -400,7 +403,7 @@ def query_code_graph(
     USE THIS WHEN: You need to understand which code is most important,
     how code is organized, or how components relate to each other.
 
-    PREREQUISITE: .agent/code_graph.json must exist (from start_analysis or
+    PREREQUISITE: .code-context/code_graph.json must exist (from start_analysis or
     'code-context-agent analyze' CLI). Check for the file first.
 
     ALGORITHMS AND WHEN TO USE EACH:
@@ -523,7 +526,9 @@ def _explore_category(explorer: ProgressiveExplorer, category: str) -> dict[str,
 def explore_code_graph(
     repo_path: Annotated[
         str,
-        Field(description="Absolute path to the repository (must have .agent/code_graph.json from prior analysis)"),
+        Field(
+            description="Absolute path to repo (must have .code-context/code_graph.json from prior analysis)",
+        ),
     ],
     action: Annotated[
         str,
@@ -565,7 +570,7 @@ def explore_code_graph(
     USE THIS WHEN: You want to understand a codebase step by step, starting
     with a high-level overview and drilling into specific areas of interest.
 
-    PREREQUISITE: .agent/code_graph.json must exist (from start_analysis or
+    PREREQUISITE: .code-context/code_graph.json must exist (from start_analysis or
     'code-context-agent analyze' CLI). Check for the file first.
 
     RECOMMENDED EXPLORATION FLOW:
@@ -618,7 +623,9 @@ def explore_code_graph(
 def get_graph_stats(
     repo_path: Annotated[
         str,
-        Field(description="Absolute path to the repository (must have .agent/code_graph.json from prior analysis)"),
+        Field(
+            description="Absolute path to repo (must have .code-context/code_graph.json from prior analysis)",
+        ),
     ],
 ) -> dict:
     """Get summary statistics about a repository's code graph.
