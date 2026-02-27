@@ -1,3 +1,27 @@
+## v5.4.0 (2026-02-27)
+
+### Feat
+
+- updates
+- replace lefthook code-critic with Claude Code PreToolUse hook
+- add AI code-critic pre-commit and pre-push hooks
+- **security**: add comprehensive DevSecOps pipeline with bandit, SBOM, license checks, and more
+
+### Fix
+
+- **ci**: move multi-line mise tasks to file-based scripts
+- **ci**: use shebangs instead of shell property in mise tasks
+- resolve ruff lint and format violations
+- **ci**: resolve guarddog DNS failure in CI environment
+- **ci**: fix trivy entrypoint and switch to filesystem scan
+- **ci**: resolve bandit, osv-scanner, and gitleaks CI job failures
+- **ci**: consolidate deps-update script into single block for GitLab YAML validation
+- **ci**: use bash for release task and skip unneeded tools in bump job
+
+### Refactor
+
+- **security**: replace pip-audit with osv-scanner for dependency scanning
+
 ## v5.3.0 (2026-02-25)
 
 ### Feat
