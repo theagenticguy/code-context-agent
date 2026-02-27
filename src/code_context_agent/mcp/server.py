@@ -349,7 +349,9 @@ def _run_category(analyzer: CodeAnalyzer, category: str) -> dict[str, Any]:
 def query_code_graph(
     repo_path: Annotated[
         str,
-        Field(description="Absolute path to the repository (must have .code-context/code_graph.json from prior analysis)"),
+        Field(
+            description="Absolute path to repo (must have .code-context/code_graph.json from prior analysis)",
+        ),
     ],
     algorithm: Annotated[
         str,
@@ -524,7 +526,9 @@ def _explore_category(explorer: ProgressiveExplorer, category: str) -> dict[str,
 def explore_code_graph(
     repo_path: Annotated[
         str,
-        Field(description="Absolute path to the repository (must have .code-context/code_graph.json from prior analysis)"),
+        Field(
+            description="Absolute path to repo (must have .code-context/code_graph.json from prior analysis)",
+        ),
     ],
     action: Annotated[
         str,
@@ -619,7 +623,9 @@ def explore_code_graph(
 def get_graph_stats(
     repo_path: Annotated[
         str,
-        Field(description="Absolute path to the repository (must have .code-context/code_graph.json from prior analysis)"),
+        Field(
+            description="Absolute path to repo (must have .code-context/code_graph.json from prior analysis)",
+        ),
     ],
 ) -> dict:
     """Get summary statistics about a repository's code graph.
