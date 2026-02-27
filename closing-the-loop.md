@@ -20,7 +20,7 @@ Let me be clear about what the standard shift-left toolkit actually covers, beca
 
 **SAST scanners** find security patterns. Semgrep runs OWASP Top 10 rules against your source. Bandit catches Python-specific issues like `subprocess` calls with `shell=True` or Jinja2 templates without autoescape. Gitleaks scans for secrets in staged files and git history.
 
-**Dependency scanners** audit your supply chain. [osv-scanner](https://github.com/google/osv-scanner) (from Google) reads lockfiles natively — `uv.lock`, `package-lock.json`, `Cargo.lock` — and checks the OSV vulnerability database. [Guarddog](https://github.com/DataDog/guarddog) (from Datadog) detects typosquatting and malicious packages in your dependency tree.
+**Dependency scanners** audit your supply chain. [osv-scanner](https://github.com/google/osv-scanner) (from Google) reads lockfiles natively — `uv.lock`, `package-lock.json`, `Cargo.lock` — and checks the OSV vulnerability database.
 
 **IaC scanners** catch infrastructure misconfigurations before deployment. [Checkov](https://www.checkov.io/) scans Terraform plans, CloudFormation templates, Kubernetes manifests, and Dockerfiles against hundreds of policy rules — open S3 buckets, unencrypted databases, overly permissive IAM roles. For AWS CDK specifically, [cdk-nag](https://github.com/cdklabs/cdk-nag) runs rule packs (AWS Solutions, HIPAA, NIST 800-53, PCI DSS) directly against your CDK constructs at synth time, failing the build before a template ever reaches CloudFormation. If you're writing infrastructure as code alongside application code — and if AI is generating that infrastructure — these checks are non-negotiable.
 
@@ -41,7 +41,6 @@ Here's what that looks like in practice for a Python project:
 | CI | bandit | Python-specific SAST |
 | CI | osv-scanner | Known dependency vulnerabilities |
 | CI | pip-licenses | License compliance |
-| CI | guarddog | Typosquatting detection |
 | CI | checkov / cdk-nag | IaC misconfigurations |
 | CI | trivy | Container image vulnerabilities |
 | CI | syft | SBOM generation (CycloneDX + SPDX) |

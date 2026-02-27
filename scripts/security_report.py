@@ -4,7 +4,7 @@
 Usage:
     uv run python scripts/security_report.py [--output report.json]
 
-Runs bandit, osv-scanner, semgrep, gitleaks, pip-licenses, and guarddog,
+Runs bandit, osv-scanner, semgrep, gitleaks, and pip-licenses,
 then merges all findings into a single JSON report with summary statistics.
 """
 
@@ -213,41 +213,6 @@ def run_license_check() -> list[dict]:
     return findings
 
 
-def run_guarddog() -> list[dict]:
-    """Run guarddog and return findings."""
-    # Export deps to requirements.txt for guarddog
-    export_result = _run(["uv", "export", "--no-hashes", "--format", "requirements-txt"])
-    if export_result.returncode != 0:
-        return []
-
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-        f.write(export_result.stdout)
-        tmp = f.name
-
-    try:
-        result = _run(["uvx", "guarddog", "pypi", "verify", tmp])
-    finally:
-        Path(tmp).unlink(missing_ok=True)
-
-    # guarddog exits non-zero if issues found; parse output for findings
-    findings = []
-    if result.returncode != 0 and result.stdout:
-        for raw_line in result.stdout.strip().splitlines():
-            stripped = raw_line.strip()
-            if stripped and not stripped.startswith(("Scanning", "Found", "---")):
-                findings.append(
-                    {
-                        "tool": "guarddog",
-                        "rule": "supply-chain-risk",
-                        "name": "Supply chain risk detected",
-                        "severity": "HIGH",
-                        "confidence": "MEDIUM",
-                        "message": stripped,
-                    },
-                )
-    return findings
-
-
 def main() -> None:
     """Run all security tools and produce a unified report."""
     output_path = "security-report.json"
@@ -257,32 +222,28 @@ def main() -> None:
             output_path = sys.argv[idx + 1]
 
     print("Running security scans...")
-    print("  [1/6] bandit (SAST)...")
+    print("  [1/5] bandit (SAST)...")
     bandit = run_bandit()
     print(f"         {len(bandit)} findings")
 
-    print("  [2/6] osv-scanner (dependency vulnerabilities)...")
+    print("  [2/5] osv-scanner (dependency vulnerabilities)...")
     osv = run_osv_scanner()
     print(f"         {len(osv)} findings")
 
-    print("  [3/6] semgrep (SAST + OWASP)...")
+    print("  [3/5] semgrep (SAST + OWASP)...")
     semgrep = run_semgrep()
     print(f"         {len(semgrep)} findings")
 
-    print("  [4/6] gitleaks (secrets)...")
+    print("  [4/5] gitleaks (secrets)...")
     gitleaks = run_gitleaks()
     print(f"         {len(gitleaks)} findings")
 
-    print("  [5/6] pip-licenses (license compliance)...")
+    print("  [5/5] pip-licenses (license compliance)...")
     licenses = run_license_check()
     print(f"         {len(licenses)} findings")
 
-    print("  [6/6] guarddog (typosquatting / supply chain)...")
-    guarddog = run_guarddog()
-    print(f"         {len(guarddog)} findings")
-
     # Build unified report
-    all_findings = bandit + osv + semgrep + gitleaks + licenses + guarddog
+    all_findings = bandit + osv + semgrep + gitleaks + licenses
     severity_counts: dict[str, int] = {}
     for f in all_findings:
         sev = f.get("severity", "UNKNOWN")
@@ -294,7 +255,6 @@ def main() -> None:
         "semgrep": len(semgrep),
         "gitleaks": len(gitleaks),
         "pip-licenses": len(licenses),
-        "guarddog": len(guarddog),
     }
 
     report = {
