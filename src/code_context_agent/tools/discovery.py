@@ -14,6 +14,7 @@ from pathlib import Path
 from loguru import logger
 from strands import tool
 
+from ..config import DEFAULT_OUTPUT_DIR
 from .shell import run_command
 
 
@@ -26,17 +27,17 @@ def create_file_manifest(repo_path: str) -> str:
 
     DO NOT USE:
     - If you already have a manifest from a previous call in this session
-    - If .agent/files.all.txt exists and is recent
+    - If .code-context/files.all.txt exists and is recent
 
     Generates a list of all files in the repository, respecting .gitignore
-    and skipping hidden/binary files. Output is written to .agent/files.all.txt.
+    and skipping hidden/binary files. Output is written to .code-context/files.all.txt.
 
     Args:
         repo_path: Absolute path to the repository root.
 
     Returns:
         JSON with:
-        - manifest_path: Path to .agent/files.all.txt
+        - manifest_path: Path to .code-context/files.all.txt
         - file_count: Number of files found (typical: 100-5000)
 
     Output Size: ~100 bytes JSON + manifest file (~50 bytes per file path)
@@ -47,10 +48,10 @@ def create_file_manifest(repo_path: str) -> str:
         - Permission denied: Ensure read access to the repository
 
     Example success:
-        {"status": "success", "manifest_path": "/repo/.agent/files.all.txt", "file_count": 847}
+        {"status": "success", "manifest_path": "/repo/.code-context/files.all.txt", "file_count": 847}
     """
     repo = Path(repo_path).resolve()
-    agent_dir = repo / ".agent"
+    agent_dir = repo / DEFAULT_OUTPUT_DIR
     agent_dir.mkdir(exist_ok=True)
     manifest_path = agent_dir / "files.all.txt"
 
@@ -100,7 +101,7 @@ def repomix_orientation(
     DO NOT USE:
     - If repo has >10K files (will auto-skip with recommendation)
     - If you only need to find specific files (use rg_search instead)
-    - If .agent/CONTEXT.orientation.md exists and repo hasn't changed
+    - If .code-context/CONTEXT.orientation.md exists and repo hasn't changed
 
     Uses repomix to create a metadata overview including directory structure
     and token distribution tree. Helps identify where code complexity lies
@@ -126,13 +127,13 @@ def repomix_orientation(
         - Timeout after 180s: Repo too large, reduce scope with glob patterns
 
     Example success:
-        {"status": "success", "output_path": "/repo/.agent/CONTEXT.orientation.md"}
+        {"status": "success", "output_path": "/repo/.code-context/CONTEXT.orientation.md"}
 
     Example skipped:
         {"status": "skipped", "reason": "Repository has 15000 files (max: 10000)"}
     """
     repo = Path(repo_path).resolve()
-    agent_dir = repo / ".agent"
+    agent_dir = repo / DEFAULT_OUTPUT_DIR
     agent_dir.mkdir(exist_ok=True)
     output_path = agent_dir / "CONTEXT.orientation.md"
 
@@ -240,10 +241,10 @@ def repomix_bundle(
         - "repomix not found": Install with npm install -g repomix
 
     Example:
-        >>> result = repomix_bundle(".agent/files.targeted.txt", ".agent/CONTEXT.bundle.md")
+        >>> result = repomix_bundle(".code-context/files.targeted.txt", ".code-context/CONTEXT.bundle.md")
         >>> result = repomix_bundle(
-        ...     ".agent/files.targeted.txt",
-        ...     ".agent/CONTEXT.bundle.md",
+        ...     ".code-context/files.targeted.txt",
+        ...     ".code-context/CONTEXT.bundle.md",
         ...     include_diffs=True,
         ...     include_logs=True,
         ...     include_logs_count=20,
@@ -365,7 +366,7 @@ def repomix_bundle_with_context(
     Example:
         >>> result = repomix_bundle_with_context(
         ...     "/repo",
-        ...     ".agent/CONTEXT.git-aware.md",
+        ...     ".code-context/CONTEXT.git-aware.md",
         ...     include_patterns="src/**/*.py",
         ...     include_logs_count=20,
         ... )
@@ -465,14 +466,14 @@ def repomix_json_export(repo_path: str, include_patterns: str | None = None) -> 
         - JSON parse error: repomix output format may have changed
 
     Example success:
-        {"status": "success", "output_path": "/repo/.agent/structure.json",
+        {"status": "success", "output_path": "/repo/.code-context/structure.json",
          "total_files": 247, "total_tokens": 185420}
 
     Example:
         >>> result = repomix_json_export("/repo", include_patterns="src/**/*.py,tests/**/*.py")
     """
     repo = Path(repo_path).resolve()
-    agent_dir = repo / ".agent"
+    agent_dir = repo / DEFAULT_OUTPUT_DIR
     agent_dir.mkdir(exist_ok=True)
     output_path = agent_dir / "structure.json"
 
@@ -565,7 +566,7 @@ def repomix_compressed_signatures(
     Args:
         repo_path: Absolute path to the repository root.
         include_patterns: Comma-separated glob patterns to include (e.g., "src/**/*.py,lib/**/*.ts").
-        output_path: Output path. Defaults to .agent/CONTEXT.signatures.md
+        output_path: Output path. Defaults to .code-context/CONTEXT.signatures.md
 
     Returns:
         JSON with output path, file size, and status.
@@ -586,7 +587,7 @@ def repomix_compressed_signatures(
         >>> result = repomix_compressed_signatures("/repo")  # All files
     """
     repo = Path(repo_path).resolve()
-    agent_dir = repo / ".agent"
+    agent_dir = repo / DEFAULT_OUTPUT_DIR
     agent_dir.mkdir(exist_ok=True)
 
     if output_path is None:
@@ -687,7 +688,7 @@ def repomix_split_bundle(
         - "repomix not found": Install with npm install -g repomix
 
     Example:
-        >>> result = repomix_split_bundle(".agent/files.all.txt", ".agent/splits/", max_size="1mb")
+        >>> result = repomix_split_bundle(".code-context/files.all.txt", ".code-context/splits/", max_size="1mb")
     """
     file_list = Path(file_list_path).resolve()
     out_dir = Path(output_dir).resolve()
@@ -899,7 +900,7 @@ def write_file_list(file_paths: list[str], output_path: str) -> str:
         JSON with output path and file count.
 
     Example:
-        >>> result = write_file_list(["src/main.ts", "src/utils.ts"], ".agent/files.targeted.txt")
+        >>> result = write_file_list(["src/main.ts", "src/utils.ts"], ".code-context/files.targeted.txt")
     """
     output = Path(output_path).resolve()
     output.parent.mkdir(parents=True, exist_ok=True)

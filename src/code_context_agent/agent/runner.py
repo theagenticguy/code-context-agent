@@ -17,7 +17,7 @@ from ag_ui_strands import StrandsAgent
 from loguru import logger
 from pydantic import BaseModel
 
-from ..config import get_settings
+from ..config import DEFAULT_OUTPUT_DIR, get_settings
 from ..consumer import EventConsumer, QuietConsumer, RichEventConsumer
 from .factory import create_agent
 
@@ -136,7 +136,7 @@ def _setup_analysis_context(
         AnalysisContext with all components initialized
     """
     repo = Path(repo_path).resolve()
-    output = Path(output_dir).resolve() if output_dir else repo / ".agent"
+    output = Path(output_dir).resolve() if output_dir else repo / DEFAULT_OUTPUT_DIR
 
     if not repo.exists():
         raise ValueError(f"Repository path does not exist: {repo}")
@@ -294,7 +294,7 @@ async def run_analysis(
 
     Args:
         repo_path: Path to the repository to analyze.
-        output_dir: Output directory for context files. Defaults to repo/.agent
+        output_dir: Output directory for context files. Defaults to repo/.code-context
         focus: Optional focus area to steer analysis (e.g., "authentication", "API layer").
         consumer: Event consumer for display. Defaults to RichEventConsumer.
         quiet: If True and no consumer, use QuietConsumer.

@@ -85,7 +85,7 @@ def code_graph_create(
         2. lsp_start(...) + lsp_document_symbols(...)  # Discover
         3. code_graph_ingest_lsp(...)          # Populate
         4. code_graph_analyze("main", "hotspots")  # Analyze
-        5. code_graph_save("main", ".agent/graph.json")  # Persist
+        5. code_graph_save("main", ".code-context/graph.json")  # Persist
 
     Example:
         code_graph_create("main", "Full codebase analysis")
@@ -1083,15 +1083,15 @@ def code_graph_save(
     Args:
         graph_id: ID of the graph to save (must exist)
         file_path: Destination file path. Recommended locations:
-            - ".agent/code_graph.json": Standard location for main graph
-            - ".agent/{name}_graph.json": For named/scoped graphs
+            - ".code-context/code_graph.json": Standard location for main graph
+            - ".code-context/{name}_graph.json": For named/scoped graphs
             Parent directories are created automatically.
 
     Returns:
         JSON: {
             "status": "success",
             "graph_id": "main",
-            "path": ".agent/code_graph.json",
+            "path": ".code-context/code_graph.json",
             "nodes": 150,
             "edges": 200
         }
@@ -1110,10 +1110,10 @@ def code_graph_save(
     # ... run analysis ...
 
     # Save for future sessions
-    code_graph_save("main", ".agent/code_graph.json")
+    code_graph_save("main", ".code-context/code_graph.json")
 
     # In future session:
-    code_graph_load("main", ".agent/code_graph.json")
+    code_graph_load("main", ".code-context/code_graph.json")
     # Graph restored with all nodes/edges
     """
     graph = _get_graph(graph_id)
@@ -1147,7 +1147,7 @@ def code_graph_load(
     """Load a previously saved code graph from disk.
 
     USE THIS TOOL:
-    - At the start of a session if .agent/code_graph.json exists
+    - At the start of a session if .code-context/code_graph.json exists
     - To resume analysis from a previous session
     - To skip re-running LSP/AST-grep data collection
 
@@ -1168,13 +1168,13 @@ def code_graph_load(
             - "main": For the primary codebase graph
             - Descriptive names for scoped graphs
         file_path: Path to the saved graph file.
-            Standard location: ".agent/code_graph.json"
+            Standard location: ".code-context/code_graph.json"
 
     Returns:
         JSON: {
             "status": "success",
             "graph_id": "main",
-            "path": ".agent/code_graph.json",
+            "path": ".code-context/code_graph.json",
             "nodes": 150,
             "edges": 200
         }
@@ -1187,8 +1187,8 @@ def code_graph_load(
     Workflow Example:
 
     # Check if saved graph exists
-    # If .agent/code_graph.json exists:
-    code_graph_load("main", ".agent/code_graph.json")
+    # If .code-context/code_graph.json exists:
+    code_graph_load("main", ".code-context/code_graph.json")
 
     # Graph is ready for analysis
     hotspots = code_graph_analyze("main", "hotspots")

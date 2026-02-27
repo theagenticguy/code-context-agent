@@ -18,9 +18,9 @@ Scale the depth of each phase based on the repository's size and complexity. For
 
 ### Phase 1: Foundation (parallel)
 ```
-create_file_manifest(repo_path)              → .agent/files.all.txt
-repomix_orientation(repo_path)               → .agent/CONTEXT.orientation.md
-repomix_compressed_signatures(repo_path)     → .agent/CONTEXT.signatures.md  (optional)
+create_file_manifest(repo_path)              → .code-context/files.all.txt
+repomix_orientation(repo_path)               → .code-context/CONTEXT.orientation.md
+repomix_compressed_signatures(repo_path)     → .code-context/CONTEXT.signatures.md  (optional)
 ```
 
 **Tip:** `repomix_compressed_signatures` extracts function/class/type signatures with bodies stripped via Tree-sitter. Use it for a quick API surface overview of specific directories (`include_patterns="src/**/*.py"`).
@@ -78,7 +78,7 @@ code_graph_analyze("main", "modules")
 
 # Export for diagrams
 code_graph_export("main", "mermaid", max_nodes=15)
-code_graph_save("main", ".agent/code_graph.json")
+code_graph_save("main", ".code-context/code_graph.json")
 ```
 
 ### Phase 7: Business Logic Ranking
@@ -87,7 +87,7 @@ Combine AST-grep categories with graph metrics:
 - High PageRank = core dependency (foundation)
 - `error` severity from AST-grep = write operations
 
-Write ranked list → `.agent/files.business.txt`
+Write ranked list → `.code-context/files.business.txt`
 
 {% include "partials/_business_logic.md.j2" %}
 
@@ -97,8 +97,8 @@ Ingest test-production relationships into the graph.
 Flag untested business logic with high hotspot scores.
 
 ### Phase 9: Bundle
-`write_file_list` + `repomix_bundle` → `.agent/CONTEXT.bundle.md`
-`code_graph_save("main", ".agent/code_graph.json")`
+`write_file_list` + `repomix_bundle` → `.code-context/CONTEXT.bundle.md`
+`code_graph_save("main", ".code-context/code_graph.json")`
 
 **Bundle variants** — choose the right tool for the situation:
 - **`repomix_bundle`**: Standard bundling from a curated file list. Supports `remove_comments`, `include_diffs`, `include_logs`, `truncate_base64`, and `split_size` flags.

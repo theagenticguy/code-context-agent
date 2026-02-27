@@ -34,6 +34,10 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+DEFAULT_OUTPUT_DIR = ".code-context"
+"""Default output directory name for analysis artifacts."""
+
+
 class Settings(BaseSettings):
     """Application settings loaded from environment variables.
 
