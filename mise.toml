@@ -55,12 +55,7 @@ run = "semgrep scan --config auto --config p/owasp-top-ten --error --quiet src/"
 
 [tasks."security:bandit"]
 description = "SAST scan with bandit (fail on HIGH severity)"
-shell = "bash"
-run = """
-set -euo pipefail
-uv run bandit -c pyproject.toml -r src/ -f json -o bandit-report.json --exit-zero
-uv run bandit -c pyproject.toml -r src/ --severity-level=high --confidence-level=high
-"""
+file = "scripts/security-bandit.sh"
 
 [tasks."security:deps"]
 description = "Audit dependencies for known vulnerabilities (osv-scanner)"
@@ -100,14 +95,7 @@ run = "uv run cz bump"
 
 [tasks.release]
 description = "Bump version, generate changelog, tag, and push"
-shell = "bash"
-run = """
-set -euo pipefail
-uv run cz bump
-VERSION=$(uv run cz version)
-git push origin HEAD
-git push origin "v${VERSION}"
-"""
+file = "scripts/release.sh"
 
 [tasks.commit]
 description = "Interactive conventional commit"
