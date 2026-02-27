@@ -55,8 +55,8 @@ run = "semgrep scan --config auto --config p/owasp-top-ten --error --quiet src/"
 
 [tasks."security:bandit"]
 description = "SAST scan with bandit (fail on HIGH severity)"
-shell = "bash"
 run = """
+#!/usr/bin/env bash
 set -euo pipefail
 uv run bandit -c pyproject.toml -r src/ -f json -o bandit-report.json --exit-zero
 uv run bandit -c pyproject.toml -r src/ --severity-level=high --confidence-level=high
@@ -100,8 +100,8 @@ run = "uv run cz bump"
 
 [tasks.release]
 description = "Bump version, generate changelog, tag, and push"
-shell = "bash"
 run = """
+#!/usr/bin/env bash
 set -euo pipefail
 uv run cz bump
 VERSION=$(uv run cz version)
