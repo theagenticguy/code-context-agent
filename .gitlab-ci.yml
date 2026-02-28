@@ -11,7 +11,7 @@ stages:
 
 variables:
   UV_CACHE_DIR: .uv-cache
-  UV_IMAGE: ghcr.io/astral-sh/uv:0.10-python3.13-bookworm-slim
+  UV_IMAGE: ghcr.io/astral-sh/uv:0.9.30-python3.13-bookworm-slim
   # Runtime libs needed by the .venv artifact (pygraphviz links against libcgraph/libgvc).
   # If you change system packages in the install job, update this variable to match.
   RUNTIME_PKGS: graphviz libgraphviz-dev
