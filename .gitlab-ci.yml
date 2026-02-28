@@ -12,6 +12,35 @@ stages:
 variables:
   UV_CACHE_DIR: .uv-cache
   UV_IMAGE: ghcr.io/astral-sh/uv:0.10-python3.13-bookworm-slim
+  # Runtime libs needed by the .venv artifact (pygraphviz links against libcgraph/libgvc).
+  # If you change system packages in the install job, update this variable to match.
+  RUNTIME_PKGS: graphviz libgraphviz-dev
+
+# =============================================================================
+# Shared Install (builds .venv once, passed as artifact to downstream jobs)
+# =============================================================================
+
+install:
+  stage: .pre
+  image: $UV_IMAGE
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev graphviz libgraphviz-dev pkg-config
+  script:
+    - uv sync --locked --all-groups
+  artifacts:
+    paths:
+      - .venv/
+    expire_in: 1 hour
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "web"
+  cache:
+    key:
+      files:
+        - uv.lock
+    paths:
+      - $UV_CACHE_DIR
 
 # =============================================================================
 # Lint & Type Check
@@ -20,10 +49,10 @@ variables:
 lint:
   stage: lint
   image: $UV_IMAGE
+  dependencies: [install]
   before_script:
-    - apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev graphviz libgraphviz-dev pkg-config
+    - apt-get update && apt-get install -y --no-install-recommends $RUNTIME_PKGS
   script:
-    - uv sync --locked --group dev
     # Generate Code Quality report (always, even if ruff finds issues)
     - uv run ruff check --output-format=gitlab --output-file=gl-code-quality-report.json src/ || true
     # Gating checks (fail the pipeline on errors)
@@ -39,12 +68,6 @@ lint:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "web"
-  cache:
-    key:
-      files:
-        - uv.lock
-    paths:
-      - $UV_CACHE_DIR
 
 # =============================================================================
 # Tests
@@ -53,12 +76,12 @@ lint:
 test:
   stage: test
   image: $UV_IMAGE
+  dependencies: [install]
   variables:
     GIT_DEPTH: 0
   before_script:
-    - apt-get update && apt-get install -y --no-install-recommends git gcc libc6-dev graphviz libgraphviz-dev pkg-config
+    - apt-get update && apt-get install -y --no-install-recommends git $RUNTIME_PKGS
   script:
-    - uv sync --locked --group dev
     - uv run pytest
         --junitxml=report.xml
         --cov=src/code_context_agent
@@ -80,12 +103,6 @@ test:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "web"
-  cache:
-    key:
-      files:
-        - uv.lock
-    paths:
-      - $UV_CACHE_DIR
 
 # =============================================================================
 # Security Scans
@@ -104,12 +121,6 @@ test:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE == "web"
-  cache:
-    key:
-      files:
-        - uv.lock
-    paths:
-      - $UV_CACHE_DIR
 
 sast:semgrep:
   extends: .security-base
@@ -131,10 +142,10 @@ sast:semgrep:
 
 sast:bandit:
   extends: .security-base
+  dependencies: [install]
   before_script:
-    - apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev graphviz libgraphviz-dev pkg-config curl
+    - apt-get update && apt-get install -y --no-install-recommends $RUNTIME_PKGS curl
   script:
-    - uv sync --locked --group security
     - uv run bandit -c pyproject.toml -r src/ -f json -o bandit-report.json --exit-zero
     - uv run bandit -c pyproject.toml -r src/ -f sarif -o bandit.sarif --exit-zero
     # Convert SARIF to GitLab SAST format; skip gracefully if converter unavailable
@@ -202,11 +213,11 @@ secrets:gitleaks:
 
 license:check:
   extends: .security-base
+  dependencies: [install]
   allow_failure: false
   before_script:
-    - apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev graphviz libgraphviz-dev pkg-config
+    - apt-get update && apt-get install -y --no-install-recommends $RUNTIME_PKGS
   script:
-    - uv sync --locked
     - uv run --with pip-licenses pip-licenses
     # Generate JSON and markdown reports for archival
     - uv run --with pip-licenses pip-licenses
@@ -402,10 +413,10 @@ deps-update:
 build-docs:
   stage: build-docs
   image: $UV_IMAGE
+  dependencies: [install]
   before_script:
-    - apt-get update && apt-get install -y --no-install-recommends git gcc libc6-dev graphviz libgraphviz-dev pkg-config
+    - apt-get update && apt-get install -y --no-install-recommends git $RUNTIME_PKGS
   script:
-    - uv sync --locked --group docs
     - uv run mkdocs build
   artifacts:
     paths:
@@ -419,12 +430,6 @@ build-docs:
         - docs/**/*
         - mkdocs.yml
         - src/**/*.py
-  cache:
-    key:
-      files:
-        - uv.lock
-    paths:
-      - $UV_CACHE_DIR
 
 # =============================================================================
 # GitLab Pages Deployment
