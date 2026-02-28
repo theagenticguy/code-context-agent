@@ -1,3 +1,16 @@
+## v5.4.1 (2026-02-28)
+
+### Fix
+
+- **ci**: fetch tags in bump job and suppress cz interactive prompt
+- **ci**: use pinned uv 0.9.30 image tag (0.10 not yet published)
+- **ci**: sync uv.lock version and upgrade CI to uv 0.10
+- **ci**: sync uv.lock after cz bump in release script
+
+### Refactor
+
+- **ci**: centralize uv sync into shared install job
+
 ## v5.4.0 (2026-02-27)
 
 ### Feat
