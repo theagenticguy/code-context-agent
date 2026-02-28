@@ -11,6 +11,7 @@ stages:
 
 variables:
   UV_CACHE_DIR: .uv-cache
+  UV_IMAGE: ghcr.io/astral-sh/uv:0.10-python3.13-bookworm-slim
 
 # =============================================================================
 # Lint & Type Check
@@ -18,7 +19,7 @@ variables:
 
 lint:
   stage: lint
-  image: ghcr.io/astral-sh/uv:0.9-python3.13-bookworm-slim
+  image: $UV_IMAGE
   before_script:
     - apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev graphviz libgraphviz-dev pkg-config
   script:
@@ -51,7 +52,7 @@ lint:
 
 test:
   stage: test
-  image: ghcr.io/astral-sh/uv:0.9-python3.13-bookworm-slim
+  image: $UV_IMAGE
   variables:
     GIT_DEPTH: 0
   before_script:
@@ -97,7 +98,7 @@ test:
 
 .security-base:
   stage: security
-  image: ghcr.io/astral-sh/uv:0.9-python3.13-bookworm-slim
+  image: $UV_IMAGE
   allow_failure: true
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -311,7 +312,7 @@ bump:
 
 deps-update:
   stage: deps-update
-  image: ghcr.io/astral-sh/uv:0.9-python3.13-bookworm-slim
+  image: $UV_IMAGE
   variables:
     GIT_DEPTH: 0
     GIT_STRATEGY: clone
@@ -400,7 +401,7 @@ deps-update:
 
 build-docs:
   stage: build-docs
-  image: ghcr.io/astral-sh/uv:0.9-python3.13-bookworm-slim
+  image: $UV_IMAGE
   before_script:
     - apt-get update && apt-get install -y --no-install-recommends git gcc libc6-dev graphviz libgraphviz-dev pkg-config
   script:
@@ -452,7 +453,7 @@ pages:
 
 build:
   stage: build
-  image: ghcr.io/astral-sh/uv:0.9-python3.13-bookworm-slim
+  image: $UV_IMAGE
   script:
     - uv build
   artifacts:
