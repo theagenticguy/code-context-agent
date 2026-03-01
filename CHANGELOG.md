@@ -1,3 +1,12 @@
+## v6.0.0 (2026-03-01)
+
+### Fix
+
+- **ci**: use cz version --project instead of cz version
+- **ci**: add self-healing tag recovery and atomic push to release script
+- **ci**: fetch tags after setting authenticated remote in bump job
+- **ci**: disable unused security tools in bump job
+
 ## v5.4.1 (2026-02-28)
 
 ### Fix
