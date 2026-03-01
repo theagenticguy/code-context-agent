@@ -290,7 +290,7 @@ bump:
     - apt-get update && apt-get install -y --no-install-recommends git curl ca-certificates bash
     - curl https://mise.run | sh
     - export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"
-    - mise settings set disable_tools "gitleaks,semgrep"
+    - mise settings set disable_tools "gitleaks,semgrep,trivy,osv-scanner,syft"
     - mise install
     - uv sync --locked --group dev
   script:
