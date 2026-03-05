@@ -330,12 +330,11 @@ class RichEventConsumer(EventConsumer):
 
 
 class QuietConsumer(EventConsumer):
-    """Minimal consumer that only prints final result."""
+    """Silent consumer that only writes errors to stderr."""
 
-    def __init__(self, console: Console | None = None) -> None:
+    def __init__(self) -> None:
         """Initialize quiet consumer."""
-        self.console = console or Console()
-        self._error: str | None = None
+        self._stderr = Console(stderr=True, no_color=True, highlight=False)
 
     async def on_run_started(self, thread_id: str, run_id: str) -> None:
         """No output."""
@@ -365,12 +364,9 @@ class QuietConsumer(EventConsumer):
         """No output."""
 
     async def on_run_finished(self, thread_id: str, run_id: str) -> None:
-        """Print success."""
-        if not self._error:
-            self.console.print("[green]Analysis complete[/green]")
+        """No output."""
 
     async def on_error(self, message: str, code: str | None = None) -> None:
-        """Print error."""
-        self._error = message
+        """Print error to stderr."""
         error_text = f"[{code}] {message}" if code else message
-        self.console.print(f"[bold red]Error:[/bold red] {error_text}")
+        self._stderr.print(f"Error: {error_text}")
