@@ -19,22 +19,46 @@ def create_sample_graph() -> CodeGraph:
     # Create nodes: main -> helper1, helper2
     #                       helper1 -> util
     #                       helper2 -> util
-    graph.add_node(CodeNode(
-        id="main", name="main", node_type=NodeType.FUNCTION,
-        file_path="/main.py", line_start=1, line_end=10,
-    ))
-    graph.add_node(CodeNode(
-        id="helper1", name="helper1", node_type=NodeType.FUNCTION,
-        file_path="/helpers.py", line_start=1, line_end=10,
-    ))
-    graph.add_node(CodeNode(
-        id="helper2", name="helper2", node_type=NodeType.FUNCTION,
-        file_path="/helpers.py", line_start=15, line_end=25,
-    ))
-    graph.add_node(CodeNode(
-        id="util", name="util", node_type=NodeType.FUNCTION,
-        file_path="/utils.py", line_start=1, line_end=5,
-    ))
+    graph.add_node(
+        CodeNode(
+            id="main",
+            name="main",
+            node_type=NodeType.FUNCTION,
+            file_path="/main.py",
+            line_start=1,
+            line_end=10,
+        )
+    )
+    graph.add_node(
+        CodeNode(
+            id="helper1",
+            name="helper1",
+            node_type=NodeType.FUNCTION,
+            file_path="/helpers.py",
+            line_start=1,
+            line_end=10,
+        )
+    )
+    graph.add_node(
+        CodeNode(
+            id="helper2",
+            name="helper2",
+            node_type=NodeType.FUNCTION,
+            file_path="/helpers.py",
+            line_start=15,
+            line_end=25,
+        )
+    )
+    graph.add_node(
+        CodeNode(
+            id="util",
+            name="util",
+            node_type=NodeType.FUNCTION,
+            file_path="/utils.py",
+            line_start=1,
+            line_end=5,
+        )
+    )
 
     # main calls helpers
     graph.add_edge(CodeEdge(source="main", target="helper1", edge_type=EdgeType.CALLS))
@@ -52,35 +76,71 @@ def create_clustered_graph() -> CodeGraph:
     graph = CodeGraph()
 
     # Cluster 1: auth module
-    graph.add_node(CodeNode(
-        id="auth/login", name="login", node_type=NodeType.FUNCTION,
-        file_path="/auth/login.py", line_start=1, line_end=10,
-    ))
-    graph.add_node(CodeNode(
-        id="auth/logout", name="logout", node_type=NodeType.FUNCTION,
-        file_path="/auth/logout.py", line_start=1, line_end=10,
-    ))
-    graph.add_node(CodeNode(
-        id="auth/session", name="session", node_type=NodeType.FUNCTION,
-        file_path="/auth/session.py", line_start=1, line_end=10,
-    ))
+    graph.add_node(
+        CodeNode(
+            id="auth/login",
+            name="login",
+            node_type=NodeType.FUNCTION,
+            file_path="/auth/login.py",
+            line_start=1,
+            line_end=10,
+        )
+    )
+    graph.add_node(
+        CodeNode(
+            id="auth/logout",
+            name="logout",
+            node_type=NodeType.FUNCTION,
+            file_path="/auth/logout.py",
+            line_start=1,
+            line_end=10,
+        )
+    )
+    graph.add_node(
+        CodeNode(
+            id="auth/session",
+            name="session",
+            node_type=NodeType.FUNCTION,
+            file_path="/auth/session.py",
+            line_start=1,
+            line_end=10,
+        )
+    )
 
     graph.add_edge(CodeEdge(source="auth/login", target="auth/session", edge_type=EdgeType.CALLS))
     graph.add_edge(CodeEdge(source="auth/logout", target="auth/session", edge_type=EdgeType.CALLS))
 
     # Cluster 2: db module
-    graph.add_node(CodeNode(
-        id="db/connect", name="connect", node_type=NodeType.FUNCTION,
-        file_path="/db/connect.py", line_start=1, line_end=10,
-    ))
-    graph.add_node(CodeNode(
-        id="db/query", name="query", node_type=NodeType.FUNCTION,
-        file_path="/db/query.py", line_start=1, line_end=10,
-    ))
-    graph.add_node(CodeNode(
-        id="db/pool", name="pool", node_type=NodeType.FUNCTION,
-        file_path="/db/pool.py", line_start=1, line_end=10,
-    ))
+    graph.add_node(
+        CodeNode(
+            id="db/connect",
+            name="connect",
+            node_type=NodeType.FUNCTION,
+            file_path="/db/connect.py",
+            line_start=1,
+            line_end=10,
+        )
+    )
+    graph.add_node(
+        CodeNode(
+            id="db/query",
+            name="query",
+            node_type=NodeType.FUNCTION,
+            file_path="/db/query.py",
+            line_start=1,
+            line_end=10,
+        )
+    )
+    graph.add_node(
+        CodeNode(
+            id="db/pool",
+            name="pool",
+            node_type=NodeType.FUNCTION,
+            file_path="/db/pool.py",
+            line_start=1,
+            line_end=10,
+        )
+    )
 
     graph.add_edge(CodeEdge(source="db/connect", target="db/pool", edge_type=EdgeType.CALLS))
     graph.add_edge(CodeEdge(source="db/query", target="db/pool", edge_type=EdgeType.CALLS))
@@ -247,16 +307,31 @@ class TestCodeAnalyzer:
 
         # Add nodes with category metadata
         node1 = CodeNode(
-            id="db1", name="query1", node_type=NodeType.PATTERN_MATCH,
-            file_path="/a.py", line_start=1, line_end=5, metadata={"category": "db"},
+            id="db1",
+            name="query1",
+            node_type=NodeType.PATTERN_MATCH,
+            file_path="/a.py",
+            line_start=1,
+            line_end=5,
+            metadata={"category": "db"},
         )
         node2 = CodeNode(
-            id="db2", name="query2", node_type=NodeType.PATTERN_MATCH,
-            file_path="/b.py", line_start=1, line_end=5, metadata={"category": "db"},
+            id="db2",
+            name="query2",
+            node_type=NodeType.PATTERN_MATCH,
+            file_path="/b.py",
+            line_start=1,
+            line_end=5,
+            metadata={"category": "db"},
         )
         node3 = CodeNode(
-            id="auth1", name="login", node_type=NodeType.PATTERN_MATCH,
-            file_path="/c.py", line_start=1, line_end=5, metadata={"category": "auth"},
+            id="auth1",
+            name="login",
+            node_type=NodeType.PATTERN_MATCH,
+            file_path="/c.py",
+            line_start=1,
+            line_end=5,
+            metadata={"category": "auth"},
         )
 
         graph.add_node(node1)
@@ -278,3 +353,335 @@ class TestCodeAnalyzer:
         assert analyzer.find_foundations() == []
         assert analyzer.find_entry_points() == []
         assert analyzer.detect_modules() == []
+
+
+class TestUnusedSymbols:
+    """Tests for unused symbol detection."""
+
+    def test_finds_unreferenced_functions(self) -> None:
+        """Functions with no cross-file incoming edges are detected."""
+        graph = CodeGraph()
+        # referenced: called from another file
+        graph.add_node(
+            CodeNode(
+                id="a.py:used_func",
+                name="used_func",
+                node_type=NodeType.FUNCTION,
+                file_path="a.py",
+                line_start=1,
+                line_end=5,
+            )
+        )
+        graph.add_node(
+            CodeNode(
+                id="b.py:caller",
+                name="caller",
+                node_type=NodeType.FUNCTION,
+                file_path="b.py",
+                line_start=1,
+                line_end=5,
+            )
+        )
+        graph.add_edge(CodeEdge(source="b.py:caller", target="a.py:used_func", edge_type=EdgeType.CALLS))
+
+        # unreferenced: no cross-file callers
+        graph.add_node(
+            CodeNode(
+                id="c.py:orphan_func",
+                name="orphan_func",
+                node_type=NodeType.FUNCTION,
+                file_path="c.py",
+                line_start=1,
+                line_end=5,
+            )
+        )
+
+        analyzer = CodeAnalyzer(graph)
+        unused = analyzer.find_unused_symbols()
+
+        unused_ids = [u["id"] for u in unused]
+        assert "c.py:orphan_func" in unused_ids
+        assert "a.py:used_func" not in unused_ids
+
+    def test_excludes_private_and_test_functions(self) -> None:
+        """Functions starting with _ or test_ are excluded by default."""
+        graph = CodeGraph()
+        graph.add_node(
+            CodeNode(
+                id="a.py:_private",
+                name="_private",
+                node_type=NodeType.FUNCTION,
+                file_path="a.py",
+                line_start=1,
+                line_end=5,
+            )
+        )
+        graph.add_node(
+            CodeNode(
+                id="a.py:test_something",
+                name="test_something",
+                node_type=NodeType.FUNCTION,
+                file_path="a.py",
+                line_start=10,
+                line_end=15,
+            )
+        )
+
+        analyzer = CodeAnalyzer(graph)
+        unused = analyzer.find_unused_symbols()
+
+        assert len(unused) == 0
+
+    def test_custom_exclude_patterns(self) -> None:
+        """Custom exclude patterns override defaults."""
+        graph = CodeGraph()
+        graph.add_node(
+            CodeNode(
+                id="a.py:public_func",
+                name="public_func",
+                node_type=NodeType.FUNCTION,
+                file_path="a.py",
+                line_start=1,
+                line_end=5,
+            )
+        )
+
+        analyzer = CodeAnalyzer(graph)
+        # Exclude nothing — should find the function
+        unused = analyzer.find_unused_symbols(exclude_patterns=[r"^ZZZZZ$"])
+        assert len(unused) == 1
+        assert unused[0]["name"] == "public_func"
+
+    def test_same_file_refs_dont_count(self) -> None:
+        """References from the same file don't prevent unused detection."""
+        graph = CodeGraph()
+        graph.add_node(
+            CodeNode(
+                id="a.py:helper",
+                name="helper",
+                node_type=NodeType.FUNCTION,
+                file_path="a.py",
+                line_start=1,
+                line_end=5,
+            )
+        )
+        graph.add_node(
+            CodeNode(
+                id="a.py:caller",
+                name="caller",
+                node_type=NodeType.FUNCTION,
+                file_path="a.py",
+                line_start=10,
+                line_end=15,
+            )
+        )
+        graph.add_edge(CodeEdge(source="a.py:caller", target="a.py:helper", edge_type=EdgeType.CALLS))
+
+        analyzer = CodeAnalyzer(graph)
+        unused = analyzer.find_unused_symbols(exclude_patterns=[r"^ZZZZZ$"])
+
+        unused_ids = [u["id"] for u in unused]
+        # helper is called only from same file — still counts as unused
+        assert "a.py:helper" in unused_ids
+
+    def test_filters_by_node_type(self) -> None:
+        """Only specified node types are checked."""
+        graph = CodeGraph()
+        graph.add_node(
+            CodeNode(
+                id="a.py:MyClass",
+                name="MyClass",
+                node_type=NodeType.CLASS,
+                file_path="a.py",
+                line_start=1,
+                line_end=50,
+            )
+        )
+        graph.add_node(
+            CodeNode(
+                id="a.py:my_func",
+                name="my_func",
+                node_type=NodeType.FUNCTION,
+                file_path="a.py",
+                line_start=55,
+                line_end=60,
+            )
+        )
+
+        analyzer = CodeAnalyzer(graph)
+        # Only look for unused classes
+        unused = analyzer.find_unused_symbols(
+            node_types=["class"],
+            exclude_patterns=[r"^ZZZZZ$"],
+        )
+
+        assert len(unused) == 1
+        assert unused[0]["node_type"] == "class"
+
+    def test_empty_graph_returns_empty(self) -> None:
+        """Empty graph returns no unused symbols."""
+        analyzer = CodeAnalyzer(CodeGraph())
+        assert analyzer.find_unused_symbols() == []
+
+
+class TestRefactoringCandidates:
+    """Tests for combined refactoring candidate analysis."""
+
+    def test_detects_clone_pairs(self) -> None:
+        """SIMILAR_TO edges produce extract_helper candidates."""
+        graph = CodeGraph()
+        graph.add_node(
+            CodeNode(
+                id="a.py",
+                name="a.py",
+                node_type=NodeType.FILE,
+                file_path="a.py",
+                line_start=0,
+                line_end=100,
+            )
+        )
+        graph.add_node(
+            CodeNode(
+                id="b.py",
+                name="b.py",
+                node_type=NodeType.FILE,
+                file_path="b.py",
+                line_start=0,
+                line_end=100,
+            )
+        )
+        graph.add_edge(
+            CodeEdge(
+                source="a.py",
+                target="b.py",
+                edge_type=EdgeType.SIMILAR_TO,
+                metadata={"duplicated_lines": 15},
+            )
+        )
+
+        analyzer = CodeAnalyzer(graph)
+        candidates = analyzer.find_refactoring_candidates()
+
+        extract_candidates = [c for c in candidates if c["type"] == "extract_helper"]
+        assert len(extract_candidates) == 1
+        assert extract_candidates[0]["duplicated_lines"] == 15  # noqa: PLR2004
+
+    def test_detects_code_smells(self) -> None:
+        """Nodes with code_smell note produce code_smell candidates."""
+        graph = CodeGraph()
+        graph.add_node(
+            CodeNode(
+                id="a.py:10:god",
+                name="big_func",
+                node_type=NodeType.PATTERN_MATCH,
+                file_path="a.py",
+                line_start=10,
+                line_end=200,
+                metadata={"rule_id": "py-god-function", "note": "code_smell"},
+            )
+        )
+        graph.add_node(
+            CodeNode(
+                id="b.py:5:god",
+                name="another_big",
+                node_type=NodeType.PATTERN_MATCH,
+                file_path="b.py",
+                line_start=5,
+                line_end=150,
+                metadata={"rule_id": "py-god-function", "note": "code_smell"},
+            )
+        )
+
+        analyzer = CodeAnalyzer(graph)
+        candidates = analyzer.find_refactoring_candidates()
+
+        smell_candidates = [c for c in candidates if c["type"] == "code_smell"]
+        assert len(smell_candidates) == 1
+        assert smell_candidates[0]["occurrence_count"] == 2  # noqa: PLR2004
+
+    def test_detects_dead_code(self) -> None:
+        """Unreferenced functions produce dead_code candidates."""
+        graph = CodeGraph()
+        graph.add_node(
+            CodeNode(
+                id="a.py:orphan1",
+                name="orphan1",
+                node_type=NodeType.FUNCTION,
+                file_path="a.py",
+                line_start=1,
+                line_end=5,
+            )
+        )
+        graph.add_node(
+            CodeNode(
+                id="a.py:orphan2",
+                name="orphan2",
+                node_type=NodeType.FUNCTION,
+                file_path="a.py",
+                line_start=10,
+                line_end=15,
+            )
+        )
+
+        analyzer = CodeAnalyzer(graph)
+        candidates = analyzer.find_refactoring_candidates()
+
+        dead = [c for c in candidates if c["type"] == "dead_code"]
+        assert len(dead) == 1
+        assert dead[0]["occurrence_count"] == 2  # noqa: PLR2004
+
+    def test_ranking_by_score(self) -> None:
+        """Candidates are ranked by score descending."""
+        graph = CodeGraph()
+        # High-score clone pair (20 lines * 2 = 40)
+        graph.add_node(
+            CodeNode(
+                id="a.py",
+                name="a.py",
+                node_type=NodeType.FILE,
+                file_path="a.py",
+                line_start=0,
+                line_end=100,
+            )
+        )
+        graph.add_node(
+            CodeNode(
+                id="b.py",
+                name="b.py",
+                node_type=NodeType.FILE,
+                file_path="b.py",
+                line_start=0,
+                line_end=100,
+            )
+        )
+        graph.add_edge(
+            CodeEdge(
+                source="a.py",
+                target="b.py",
+                edge_type=EdgeType.SIMILAR_TO,
+                metadata={"duplicated_lines": 20},
+            )
+        )
+
+        # Low-score single orphan (1 * 1.0 = 1)
+        graph.add_node(
+            CodeNode(
+                id="c.py:lonely",
+                name="lonely",
+                node_type=NodeType.FUNCTION,
+                file_path="c.py",
+                line_start=1,
+                line_end=5,
+            )
+        )
+
+        analyzer = CodeAnalyzer(graph)
+        candidates = analyzer.find_refactoring_candidates()
+
+        assert len(candidates) >= 2  # noqa: PLR2004
+        assert candidates[0]["score"] >= candidates[-1]["score"]
+
+    def test_empty_graph_returns_empty(self) -> None:
+        """Empty graph returns no refactoring candidates."""
+        analyzer = CodeAnalyzer(CodeGraph())
+        assert analyzer.find_refactoring_candidates() == []

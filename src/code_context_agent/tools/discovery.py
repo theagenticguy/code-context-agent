@@ -752,6 +752,73 @@ def repomix_split_bundle(
     )
 
 
+def _rg_count(  # noqa: C901
+    pattern: str,
+    repo: Path,
+    *,
+    glob: str | None = None,
+    file_type: str | None = None,
+) -> str:
+    """Run rg --count and return per-file counts with exact totals."""
+    cmd: list[str] = ["rg", "--count"]
+
+    if glob:
+        cmd.extend(["-g", glob])
+    if file_type:
+        cmd.extend(["-t", file_type])
+
+    cmd.append(pattern)
+    cmd.append(str(repo))
+
+    try:
+        proc_result = subprocess.run(
+            cmd,
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except subprocess.TimeoutExpired:
+        return json.dumps({"status": "error", "error": "Command timed out after 60 seconds"})
+    except (subprocess.SubprocessError, OSError) as e:
+        return json.dumps({"status": "error", "error": str(e)})
+
+    if proc_result.returncode not in (0, 1):
+        return json.dumps({"status": "error", "error": proc_result.stderr[:10000]})
+
+    files: dict[str, int] = {}
+    total = 0
+    for line in proc_result.stdout.strip().splitlines():
+        if not line:
+            continue
+        # rg --count outputs "path:count" — split on last colon
+        sep = line.rfind(":")
+        if sep == -1:
+            continue
+        path = line[:sep]
+        try:
+            count = int(line[sep + 1 :])
+        except ValueError:
+            continue
+        # Make path relative to repo if possible
+        try:
+            rel = str(Path(path).relative_to(repo))
+        except ValueError:
+            rel = path
+        files[rel] = count
+        total += count
+
+    return json.dumps(
+        {
+            "status": "success",
+            "pattern": pattern,
+            "total_count": total,
+            "files": files,
+            "file_count": len(files),
+        },
+    )
+
+
 @tool
 def rg_search(  # noqa: C901
     pattern: str,
@@ -760,6 +827,7 @@ def rg_search(  # noqa: C901
     file_type: str | None = None,
     max_count: int = 100,
     context_lines: int = 0,
+    count_only: bool = False,
 ) -> str:
     """Search for pattern in repository using ripgrep.
 
@@ -768,6 +836,7 @@ def rg_search(  # noqa: C901
     - To locate specific functions, classes, or patterns
     - To discover imports and dependencies
     - When you know WHAT to search for but not WHERE
+    - With count_only=True for precise occurrence counts across the entire codebase
 
     DO NOT USE:
     - For listing all files (use create_file_manifest instead)
@@ -781,11 +850,15 @@ def rg_search(  # noqa: C901
         file_type: Optional file type (e.g., "py", "ts", "js").
         max_count: Maximum matches to return per file (default 100).
         context_lines: Lines of context around matches (0-5 recommended).
+        count_only: Return only match counts per file (no match details).
+            Uses rg --count for exact totals without truncation.
 
     Returns:
         JSON with matches array containing path, line_number, and lines.
+        When count_only=True: JSON with total_count and per-file counts.
 
     Output Size: ~200 bytes per match. Results capped at 500 lines.
+        count_only mode: ~50 bytes per file, no cap.
 
     Pattern Tips:
         - Literal strings: "createServer" (no regex escaping needed)
@@ -802,12 +875,19 @@ def rg_search(  # noqa: C901
     Example success:
         {"status": "success", "pattern": "def main", "matches": [...], "match_count": 3}
 
+    Example count_only:
+        {"status": "success", "pattern": "TODO", "total_count": 42,
+         "files": {"src/main.py": 12, "src/utils.py": 30}, "file_count": 2}
+
     Example searches:
         >>> rg_search("def main", "/repo", glob="*.py")  # Python entrypoints
         >>> rg_search("createServer", "/repo", file_type="ts")  # TS server setup
-        >>> rg_search("TODO|FIXME", "/repo", context_lines=2)  # Find todos with context
+        >>> rg_search("TODO|FIXME", "/repo", count_only=True)  # Exact count across repo
     """
     repo = Path(repo_path).resolve()
+
+    if count_only:
+        return _rg_count(pattern, repo, glob=glob, file_type=file_type)
 
     # Build ripgrep command parts for shell execution with proper escaping
     cmd_parts = ["rg", "--json", f"-m {max_count}"]

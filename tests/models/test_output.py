@@ -7,8 +7,10 @@ from code_context_agent.models.output import (
     AnalysisResult,
     ArchitecturalRisk,
     BusinessLogicItem,
+    CodeHealthMetrics,
     GeneratedFile,
     GraphStats,
+    RefactoringCandidate,
 )
 
 
@@ -48,18 +50,30 @@ class TestBusinessLogicItem:
     def test_score_bounds_low(self) -> None:
         with pytest.raises(ValidationError):
             BusinessLogicItem(
-                rank=1, name="x", role="y", location="z:1", score=-0.1,
+                rank=1,
+                name="x",
+                role="y",
+                location="z:1",
+                score=-0.1,
             )
 
     def test_score_bounds_high(self) -> None:
         with pytest.raises(ValidationError):
             BusinessLogicItem(
-                rank=1, name="x", role="y", location="z:1", score=1.1,
+                rank=1,
+                name="x",
+                role="y",
+                location="z:1",
+                score=1.1,
             )
 
     def test_category_optional(self) -> None:
         item = BusinessLogicItem(
-            rank=1, name="x", role="y", location="z:1", score=0.5,
+            rank=1,
+            name="x",
+            role="y",
+            location="z:1",
+            score=0.5,
         )
         assert item.category is None
 
@@ -114,7 +128,11 @@ class TestAnalysisResult:
             total_files_analyzed=500,
             business_logic_items=[
                 BusinessLogicItem(
-                    rank=1, name="login", role="Auth", location="auth.py:10", score=0.9,
+                    rank=1,
+                    name="login",
+                    role="Auth",
+                    location="auth.py:10",
+                    score=0.9,
                 ),
             ],
             risks=[
@@ -137,9 +155,71 @@ class TestAnalysisResult:
             total_files_analyzed=10,
             business_logic_items=[
                 BusinessLogicItem(
-                    rank=1, name="fn", role="role", location="f:1", score=0.5,
+                    rank=1,
+                    name="fn",
+                    role="role",
+                    location="f:1",
+                    score=0.5,
                 ),
             ],
+        )
+        data = result.model_dump()
+        restored = AnalysisResult.model_validate(data)
+        assert restored == result
+
+    def test_backward_compat_new_fields_optional(self) -> None:
+        """New code health fields default gracefully when omitted."""
+        result = AnalysisResult(
+            status="completed",
+            summary="Legacy result without code health data.",
+            total_files_analyzed=50,
+        )
+        assert result.refactoring_candidates == []
+        assert result.code_health is None
+
+    def test_with_code_health_fields(self) -> None:
+        """AnalysisResult accepts code health data."""
+        result = AnalysisResult(
+            status="completed",
+            summary="Result with code health.",
+            total_files_analyzed=100,
+            refactoring_candidates=[
+                RefactoringCandidate(
+                    type="extract_helper",
+                    pattern="_collect_text",
+                    files=["a.py:34", "b.py:81"],
+                    occurrence_count=2,
+                    duplicated_lines=7,
+                    score=14.0,
+                ),
+            ],
+            code_health=CodeHealthMetrics(
+                duplication_percentage=3.2,
+                total_clone_groups=5,
+                unused_symbol_count=3,
+                code_smell_count=8,
+            ),
+        )
+        assert len(result.refactoring_candidates) == 1
+        assert result.code_health.duplication_percentage == 3.2  # noqa: PLR2004
+        assert result.code_health.code_smell_count == 8  # noqa: PLR2004
+
+    def test_code_health_roundtrip(self) -> None:
+        """Code health data survives model_dump / model_validate."""
+        result = AnalysisResult(
+            status="completed",
+            summary="Roundtrip test.",
+            total_files_analyzed=10,
+            refactoring_candidates=[
+                RefactoringCandidate(
+                    type="dead_code",
+                    pattern="orphan_func",
+                    files=["x.py"],
+                    occurrence_count=1,
+                    score=1.0,
+                ),
+            ],
+            code_health=CodeHealthMetrics(unused_symbol_count=1),
         )
         data = result.model_dump()
         restored = AnalysisResult.model_validate(data)

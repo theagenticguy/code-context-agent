@@ -51,6 +51,7 @@ def get_analysis_tools() -> list[Any]:
         rg_search,
         write_file_list,
     )
+    from ..tools.clones import detect_clones
     from ..tools.graph import (
         code_graph_analyze,
         code_graph_create,
@@ -63,7 +64,12 @@ def get_analysis_tools() -> list[Any]:
         code_graph_save,
         code_graph_stats,
     )
-    from ..tools.graph.tools import code_graph_ingest_inheritance, code_graph_ingest_rg, code_graph_ingest_tests
+    from ..tools.graph.tools import (
+        code_graph_ingest_clones,
+        code_graph_ingest_inheritance,
+        code_graph_ingest_rg,
+        code_graph_ingest_tests,
+    )
     from ..tools.lsp import (
         lsp_definition,
         lsp_diagnostics,
@@ -119,6 +125,9 @@ def get_analysis_tools() -> list[Any]:
         code_graph_ingest_inheritance,
         code_graph_ingest_tests,
         code_graph_ingest_git,
+        code_graph_ingest_clones,
+        # Code health tools
+        detect_clones,
         code_graph_analyze,
         code_graph_explore,
         code_graph_export,

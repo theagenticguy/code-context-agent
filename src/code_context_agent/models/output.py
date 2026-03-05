@@ -7,6 +7,8 @@ The structured output captures the analysis summary and metadata.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import Field
 
 from .base import FrozenModel
@@ -49,6 +51,28 @@ class GeneratedFile(FrozenModel):
     description: str = Field(description="What this file contains")
 
 
+class RefactoringCandidate(FrozenModel):
+    """A suggested refactoring opportunity."""
+
+    type: Literal["extract_helper", "inline_wrapper", "dead_code", "code_smell"] = Field(
+        description="Kind of refactoring opportunity",
+    )
+    pattern: str = Field(description="Name or description of the pattern")
+    files: list[str] = Field(description="File:line locations involved")
+    occurrence_count: int = Field(ge=1, description="Number of occurrences")
+    duplicated_lines: int = Field(ge=0, default=0, description="Lines of duplicated code")
+    score: float = Field(ge=0.0, description="Priority score (higher = more impactful)")
+
+
+class CodeHealthMetrics(FrozenModel):
+    """Aggregate code health metrics."""
+
+    duplication_percentage: float = Field(ge=0.0, le=100.0, default=0.0)
+    total_clone_groups: int = Field(ge=0, default=0)
+    unused_symbol_count: int = Field(ge=0, default=0)
+    code_smell_count: int = Field(ge=0, default=0)
+
+
 class AnalysisResult(FrozenModel):
     """Structured output for the complete analysis.
 
@@ -72,3 +96,11 @@ class AnalysisResult(FrozenModel):
         description="Files created during analysis",
     )
     graph_stats: GraphStats | None = Field(default=None, description="Code graph statistics")
+    refactoring_candidates: list[RefactoringCandidate] = Field(
+        default_factory=list,
+        description="Suggested refactoring opportunities from code health analysis",
+    )
+    code_health: CodeHealthMetrics | None = Field(
+        default=None,
+        description="Aggregate code health metrics",
+    )

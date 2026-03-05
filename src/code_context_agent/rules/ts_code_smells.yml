@@ -1,0 +1,62 @@
+# TypeScript/JavaScript Code Smell Detection Rules
+# Structural patterns indicating refactoring opportunities
+# Category: code_smell (queryable via code_graph_analyze)
+
+id: ts-any-type
+language: TypeScript
+severity: warning
+message: "Explicit 'any' type annotation"
+note: "code_smell"
+rule:
+  any:
+    - pattern: "let $NAME: any"
+    - pattern: "const $NAME: any"
+    - pattern: "var $NAME: any"
+    - pattern: "$NAME: any"
+
+---
+id: ts-empty-catch
+language: TypeScript
+severity: warning
+message: "Empty catch block (swallowed error)"
+note: "code_smell"
+rule:
+  pattern: "catch ($E) {}"
+
+---
+id: ts-god-function
+language: TypeScript
+severity: warning
+message: "God function: too many parameters (>8)"
+note: "code_smell"
+rule:
+  any:
+    - pattern: "function $NAME($P1, $P2, $P3, $P4, $P5, $P6, $P7, $P8, $P9, $$$) { $$$ }"
+    - pattern: "($P1, $P2, $P3, $P4, $P5, $P6, $P7, $P8, $P9, $$$) => $$$"
+
+---
+id: ts-non-null-assertion
+language: TypeScript
+severity: hint
+message: "Non-null assertion operator (potential runtime error)"
+note: "code_smell"
+rule:
+  pattern: "$OBJ!"
+
+---
+id: ts-nested-ternary
+language: TypeScript
+severity: warning
+message: "Nested ternary expression"
+note: "code_smell"
+rule:
+  pattern: "$A ? $B : $C ? $D : $E"
+
+---
+id: ts-console-log
+language: TypeScript
+severity: hint
+message: "Console.log left in code"
+note: "code_smell"
+rule:
+  pattern: "console.log($$$)"

@@ -38,6 +38,7 @@ class EdgeType(Enum):
     IMPLEMENTS = "implements"  # Interface implementation
     TESTS = "tests"  # Test → production code coverage
     COCHANGES = "cochanges"  # Files that frequently change together (git history)
+    SIMILAR_TO = "similar_to"  # Cloned/duplicated code blocks
 
 
 # LSP SymbolKind to NodeType mapping

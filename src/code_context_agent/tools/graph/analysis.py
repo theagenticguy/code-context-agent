@@ -6,11 +6,12 @@ This module provides the CodeAnalyzer class with methods for:
 - Proximity/similarity analysis
 """
 
+import re
 from typing import Any
 
 import networkx as nx
 
-from .model import CodeGraph, EdgeType
+from .model import CodeGraph, EdgeType, NodeType
 
 
 class CodeAnalyzer:
@@ -413,6 +414,157 @@ class CodeAnalyzer:
             "nodes": [{"id": n, "distance": d, **(self.graph.get_node_data(n) or {})} for n, d in nodes.items()],
             "edges": [{"source": u, "target": v, **d} for u, v, d in edges],
         }
+
+    def find_unused_symbols(
+        self,
+        node_types: list[str] | None = None,
+        exclude_patterns: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Find symbols with zero incoming cross-file references.
+
+        Identifies functions, classes, and methods that are defined but
+        never referenced from other files — dead code candidates.
+
+        Args:
+            node_types: Filter to specific types (default: function, class, method)
+            exclude_patterns: Regex patterns to exclude from results
+
+        Returns:
+            List of unused symbol dicts with id, name, file_path, node_type
+        """
+        target_types = (
+            set(node_types)
+            if node_types
+            else {
+                NodeType.FUNCTION.value,
+                NodeType.CLASS.value,
+                NodeType.METHOD.value,
+            }
+        )
+        default_excludes = [r"^test_", r"^_", r"__init__", r"__main__"]
+        excludes = [re.compile(p) for p in (exclude_patterns or default_excludes)]
+
+        view = self.graph.get_view([EdgeType.REFERENCES, EdgeType.CALLS, EdgeType.IMPORTS])
+
+        unused = []
+        for node_id, data in self.graph.nodes(data=True):
+            if data.get("node_type") not in target_types:
+                continue
+
+            name = str(data.get("name", ""))
+            if any(pat.search(name) for pat in excludes):
+                continue
+
+            node_file = data.get("file_path", "")
+            if not node_file:
+                continue
+
+            # Count incoming edges from OTHER files
+            cross_file_refs = 0
+            if view.has_node(node_id):
+                for pred in view.predecessors(node_id):
+                    pred_data = self.graph.get_node_data(pred)
+                    pred_file = (pred_data or {}).get("file_path", "")
+                    if pred_file and pred_file != node_file:
+                        cross_file_refs += 1
+                        break  # One is enough to disqualify
+
+            if cross_file_refs == 0:
+                unused.append(
+                    {
+                        "id": node_id,
+                        "name": name,
+                        "file_path": node_file,
+                        "node_type": data.get("node_type"),
+                        "line_start": data.get("line_start", 0),
+                    },
+                )
+
+        unused.sort(key=lambda x: (x["file_path"], x.get("line_start", 0)))
+        return unused
+
+    def find_refactoring_candidates(self, top_k: int = 10) -> list[dict[str, Any]]:  # noqa: C901
+        """Identify refactoring opportunities by combining multiple signals.
+
+        Combines:
+        - Clone pairs (SIMILAR_TO edges) -> "extract shared helper"
+        - Code smell pattern matches (rule_id contains "code_smell") -> structural issues
+        - Unused symbols -> "dead code removal"
+
+        Args:
+            top_k: Maximum number of candidates to return
+
+        Returns:
+            Ranked list of refactoring candidates with type, files, and rationale.
+        """
+        candidates: list[dict[str, Any]] = []
+
+        # 1. Clone groups from SIMILAR_TO edges
+        similar_edges = self.graph.get_edges_by_type(EdgeType.SIMILAR_TO)
+        clone_groups: dict[str, list[str]] = {}
+        for source, target, data in similar_edges:
+            key = f"{source}|{target}" if source < target else f"{target}|{source}"
+            if key not in clone_groups:
+                clone_groups[key] = [source, target]
+                candidates.append(
+                    {
+                        "type": "extract_helper",
+                        "pattern": f"Duplicate code between {source} and {target}",
+                        "files": [source, target],
+                        "occurrence_count": 2,
+                        "duplicated_lines": int(data.get("duplicated_lines", 0)),
+                        "score": int(data.get("duplicated_lines", 5)) * 2.0,
+                    },
+                )
+
+        # 2. Code smell patterns
+        smell_counts: dict[str, list[str]] = {}
+        for node_id, data in self.graph.nodes(data=True):
+            rule_id = data.get("rule_id", "")
+            note = data.get("note", "")
+            if "code_smell" in note or "code_smell" in rule_id:
+                if rule_id not in smell_counts:
+                    smell_counts[rule_id] = []
+                smell_counts[rule_id].append(data.get("file_path", node_id))
+
+        for rule_id, files in smell_counts.items():
+            candidates.append(
+                {
+                    "type": "code_smell",
+                    "pattern": rule_id,
+                    "files": list(set(files)),
+                    "occurrence_count": len(files),
+                    "duplicated_lines": 0,
+                    "score": len(files) * 1.5,
+                },
+            )
+
+        # 3. Unused symbols
+        unused = self.find_unused_symbols()
+        if unused:
+            # Group by file
+            by_file: dict[str, list[str]] = {}
+            for sym in unused:
+                fp = sym["file_path"]
+                if fp not in by_file:
+                    by_file[fp] = []
+                by_file[fp].append(sym["name"])
+
+            for fp, names in by_file.items():
+                candidates.append(
+                    {
+                        "type": "dead_code",
+                        "pattern": f"{len(names)} unused symbol(s) in {fp}",
+                        "files": [fp],
+                        "occurrence_count": len(names),
+                        "duplicated_lines": 0,
+                        "score": len(names) * 1.0,
+                    },
+                )
+
+        # Sort by score descending, return top_k
+        candidates.sort(key=lambda x: x["score"], reverse=True)
+        return candidates[:top_k]
 
     def _format_ranked_results(
         self,

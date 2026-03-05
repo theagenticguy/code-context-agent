@@ -673,3 +673,49 @@ def ingest_git_contributors(
         "authors": [a.get("email", "") for a in authors[:5]],  # Top 5
         "source": "git_contributors" if "contributors" in contributors_result else "git_blame",
     }
+
+
+def ingest_clone_results(
+    clone_result: dict[str, Any],
+) -> list[CodeEdge]:
+    """Convert clone detection results into SIMILAR_TO edges.
+
+    Creates edges between files that share duplicate code blocks.
+
+    Args:
+        clone_result: JSON result from detect_clones tool
+
+    Returns:
+        List of CodeEdge objects with SIMILAR_TO type
+    """
+    if clone_result.get("status") != "success":
+        return []
+
+    edges: list[CodeEdge] = []
+    clones = clone_result.get("clones", [])
+
+    for clone in clones:
+        first_file = clone.get("first_file", "")
+        second_file = clone.get("second_file", "")
+
+        if not first_file or not second_file:
+            continue
+
+        edges.append(
+            CodeEdge(
+                source=first_file,
+                target=second_file,
+                edge_type=EdgeType.SIMILAR_TO,
+                metadata={
+                    "first_start": clone.get("first_start", 0),
+                    "first_end": clone.get("first_end", 0),
+                    "second_start": clone.get("second_start", 0),
+                    "second_end": clone.get("second_end", 0),
+                    "duplicated_lines": clone.get("lines", 0),
+                    "tokens": clone.get("tokens", 0),
+                    "fragment": clone.get("fragment", ""),
+                },
+            ),
+        )
+
+    return edges

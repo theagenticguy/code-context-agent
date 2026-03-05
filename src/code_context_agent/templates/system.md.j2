@@ -96,6 +96,19 @@ Write ranked list → `.code-context/files.business.txt`
 Ingest test-production relationships into the graph.
 Flag untested business logic with high hotspot scores.
 
+### Phase 8.5: Code Health (repos >50 files)
+Run clone detection and code smell analysis:
+```python
+clones = detect_clones(repo_path, min_lines=5)
+code_graph_ingest_clones("main", clones)
+smells = astgrep_scan_rule_pack("py_code_smells", repo_path)  # or ts_code_smells
+code_graph_ingest_astgrep("main", smells, "rule_pack")
+unused = code_graph_analyze("main", "unused_symbols")
+candidates = code_graph_analyze("main", "refactoring", top_k=10)
+```
+Feed results into `refactoring_candidates` and `code_health` in the structured output.
+Include top findings in the "Risks" section of CONTEXT.md.
+
 ### Phase 9: Bundle
 `write_file_list` + `repomix_bundle` → `.code-context/CONTEXT.bundle.md`
 `code_graph_save("main", ".code-context/code_graph.json")`

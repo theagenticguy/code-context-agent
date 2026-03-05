@@ -13,6 +13,7 @@ from strands import tool
 from .adapters import (
     ingest_astgrep_matches,
     ingest_astgrep_rule_pack,
+    ingest_clone_results,
     ingest_git_cochanges,
     ingest_git_contributors,
     ingest_git_hotspots,
@@ -617,6 +618,12 @@ def code_graph_analyze(  # noqa: C901
     - "category": Finds all nodes in a business logic category.
       Use for: focused analysis on db/auth/validation/etc.
 
+    **Code Health:**
+    - "unused_symbols": Finds functions/classes/methods with zero cross-file
+      references. Dead code candidates. Use category param for node type filter.
+    - "refactoring": Combines clone detection, code smells, and unused symbols
+      into ranked refactoring opportunities.
+
     Args:
         graph_id: ID of the graph to analyze (must have data from ingestion)
         analysis_type: Algorithm to run. One of:
@@ -630,6 +637,8 @@ def code_graph_analyze(  # noqa: C901
             - "dependencies": Returns dependency chain (requires node_a)
             - "trust": TrustRank-based foundations (noise-resistant PageRank from entry points)
             - "triangles": Find tightly-coupled code triads
+            - "unused_symbols": Dead code detection (zero cross-file references)
+            - "refactoring": Combined refactoring opportunity ranking
         top_k: Maximum results for ranked analyses (hotspots, foundations,
             similar). Default 10. Use 20-30 for comprehensive analysis.
         node_a: Required for "coupling", "similar", "dependencies".
@@ -734,6 +743,29 @@ def code_graph_analyze(  # noqa: C901
     if analysis_type == "triangles":
         results = analyzer.find_triangles(top_k=top_k)
         return _json_response({"status": "success", "analysis": "triangles", "results": results})
+
+    if analysis_type == "unused_symbols":
+        node_type_filter = category.split(",") if category else None
+        results = analyzer.find_unused_symbols(node_types=node_type_filter)
+        return _json_response(
+            {
+                "status": "success",
+                "analysis": "unused_symbols",
+                "results": results,
+                "count": len(results),
+            },
+        )
+
+    if analysis_type == "refactoring":
+        results = analyzer.find_refactoring_candidates(top_k=top_k)
+        return _json_response(
+            {
+                "status": "success",
+                "analysis": "refactoring",
+                "results": results,
+                "count": len(results),
+            },
+        )
 
     return _json_response({"status": "error", "message": f"Unknown analysis_type: {analysis_type}"})
 
@@ -1430,3 +1462,57 @@ def code_graph_ingest_git(
         )
 
     return _json_response({"status": "error", "message": f"Unknown result_type: {result_type}"})
+
+
+@tool
+def code_graph_ingest_clones(
+    graph_id: str,
+    clone_result: str,
+) -> str:
+    """Add clone detection results to the graph as SIMILAR_TO edges.
+
+    USE THIS TOOL:
+    - After calling detect_clones to find duplicate code blocks
+    - To enable refactoring candidate analysis in code_graph_analyze
+
+    DO NOT USE:
+    - Before code_graph_create (graph must exist first)
+    - With empty clone results
+
+    Creates SIMILAR_TO edges between files sharing duplicate code.
+    These edges are used by:
+    - code_graph_analyze("main", "refactoring") for refactoring candidates
+
+    Args:
+        graph_id: ID of the target graph (must exist from code_graph_create)
+        clone_result: The raw JSON string output from detect_clones tool.
+
+    Returns:
+        JSON: {"status": "success", "edges_added": N, "total_edges": M}
+
+    Output Size: ~150 bytes
+    """
+    graph = _get_graph(graph_id)
+    if graph is None:
+        return _json_response({"status": "error", "message": f"Graph not found: {graph_id}"})
+
+    try:
+        result = json.loads(clone_result)
+    except json.JSONDecodeError as e:
+        return _json_response({"status": "error", "message": f"Invalid JSON: {e}"})
+
+    edges = ingest_clone_results(result)
+    edges_added = 0
+
+    for edge in edges:
+        graph.add_edge(edge)
+        edges_added += 1
+
+    return _json_response(
+        {
+            "status": "success",
+            "graph_id": graph_id,
+            "edges_added": edges_added,
+            "total_edges": graph.edge_count,
+        },
+    )

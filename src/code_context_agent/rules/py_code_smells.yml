@@ -1,0 +1,79 @@
+# Python Code Smell Detection Rules
+# Structural patterns indicating refactoring opportunities
+# Category: code_smell (queryable via code_graph_analyze)
+
+id: py-god-function
+language: Python
+severity: warning
+message: "God function: too many parameters (>8)"
+note: "code_smell"
+rule:
+  pattern: |
+    def $NAME($P1, $P2, $P3, $P4, $P5, $P6, $P7, $P8, $P9, $$$):
+        $$$
+
+---
+id: py-mutable-default-list
+language: Python
+severity: warning
+message: "Mutable default argument (list)"
+note: "code_smell"
+rule:
+  pattern: "def $NAME($$$, $PARAM=[], $$$): $$$"
+
+---
+id: py-mutable-default-dict
+language: Python
+severity: warning
+message: "Mutable default argument (dict)"
+note: "code_smell"
+rule:
+  pattern: "def $NAME($$$, $PARAM={}, $$$): $$$"
+
+---
+id: py-bare-except
+language: Python
+severity: warning
+message: "Bare except clause"
+note: "code_smell"
+rule:
+  any:
+    - pattern: |
+        except:
+            pass
+    - pattern: |
+        except:
+            $$$
+
+---
+id: py-broad-except-pass
+language: Python
+severity: warning
+message: "Broad except with pass (swallowed error)"
+note: "code_smell"
+rule:
+  pattern: |
+    except Exception:
+        pass
+
+---
+id: py-nested-with
+language: Python
+severity: hint
+message: "Deeply nested context managers"
+note: "code_smell"
+rule:
+  pattern: |
+    with $A:
+        with $B:
+            with $C:
+                $$$
+
+---
+id: py-assert-in-production
+language: Python
+severity: hint
+message: "Assert used for validation (stripped with -O)"
+note: "code_smell"
+rule:
+  pattern: "assert $COND, $MSG"
