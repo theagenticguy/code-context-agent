@@ -72,9 +72,20 @@ def analyze(
         str,
         Parameter(help="Issue reference for focused analysis (e.g., 'gh:1694', 'gh:owner/repo#1694')."),
     ] = "",
+    output_format: Annotated[
+        Literal["rich", "json"],
+        Parameter(help="Output format: rich (default TUI), json (AnalysisResult JSON to stdout)."),
+    ] = "rich",
+    since: Annotated[
+        str,
+        Parameter(
+            help="Git ref for incremental analysis (e.g., 'HEAD~5', 'main', 'abc123'). "
+            "Only re-analyzes files changed since this ref.",
+        ),
+    ] = "",
     quiet: Annotated[
         bool,
-        Parameter(help="Suppress live display output."),
+        Parameter(help="Suppress all output except errors on stderr. No TUI, no JSON."),
     ] = False,
     debug: Annotated[
         bool,
@@ -100,6 +111,7 @@ def analyze(
         $ code-context-agent analyze . --issue "gh:1694"
     """
     import asyncio
+    import sys
 
     from loguru import logger
 
@@ -110,7 +122,8 @@ def analyze(
     # enable full logging in debug mode (which uses QuietConsumer instead)
     if debug:
         setup_logger(level="DEBUG")
-        console.print("[dim]Debug logging enabled (live display disabled)[/dim]")
+        if not quiet:
+            console.print("[dim]Debug logging enabled (live display disabled)[/dim]")
     else:
         # Remove default loguru handler to prevent stderr writes that break Rich Live
         logger.remove()
@@ -119,11 +132,11 @@ def analyze(
     repo_path = path.resolve()
 
     if not repo_path.exists():
-        console.print(f"[red]Error:[/red] Path does not exist: {repo_path}")
+        print(f"Error: Path does not exist: {repo_path}", file=sys.stderr)
         raise SystemExit(1)
 
     if not repo_path.is_dir():
-        console.print(f"[red]Error:[/red] Path is not a directory: {repo_path}")
+        print(f"Error: Path is not a directory: {repo_path}", file=sys.stderr)
         raise SystemExit(1)
 
     # Show analysis configuration
@@ -135,27 +148,19 @@ def analyze(
             console.print(f"  Focus: [magenta]{focus}[/magenta]")
         console.print()
 
-    # In debug mode, use quiet consumer (log output replaces Live display)
-    use_quiet = quiet or debug
+    # In debug mode or JSON mode, use quiet consumer (log output replaces Live display)
+    use_quiet = quiet or debug or (output_format == "json")
 
     # Fetch issue context if provided (deterministic, not model-invoked)
-    issue_context = None
-    if issue:
-        from code_context_agent.issues import render_issue_context
-        from code_context_agent.issues.github import GitHubIssueProvider, parse_issue_ref
+    issue_context = _fetch_issue_context(issue, quiet=use_quiet) if issue else None
 
-        try:
-            provider_name, issue_ref = parse_issue_ref(issue)
-            if provider_name == "gh":
-                provider = GitHubIssueProvider()
-                fetched_issue = provider.fetch(issue_ref)
-                issue_context = render_issue_context(fetched_issue)
-                if not use_quiet:
-                    console.print(f"  Issue: [magenta]{fetched_issue.title}[/magenta]")
-            else:
-                console.print(f"[yellow]Warning:[/yellow] Unsupported issue provider: {provider_name}")
-        except RuntimeError as e:
-            console.print(f"[yellow]Warning:[/yellow] Could not fetch issue: {e}")
+    # Build incremental analysis context if --since provided
+    since_context = None
+    if since:
+        effective_output = output_dir or repo_path / DEFAULT_OUTPUT_DIR
+        since_context = _build_since_context(repo_path, since, effective_output)
+    if since_context and not use_quiet:
+        console.print(f"  Incremental: [magenta]since {since}[/magenta]")
 
     # Run the analysis
     result = asyncio.run(
@@ -165,10 +170,14 @@ def analyze(
             focus=focus or None,
             quiet=use_quiet,
             issue_context=issue_context,
+            since_context=since_context,
         ),
     )
 
-    _display_result(result, debug=debug)
+    if output_format == "json":
+        _display_result_json(result)
+    else:
+        _display_result(result, debug=debug, quiet=quiet)
 
 
 @app.command
@@ -324,33 +333,156 @@ def serve(
     mcp_server.run(transport=transport, host=host, port=port)
 
 
-def _display_result(result: dict, *, debug: bool = False) -> None:
+def _fetch_issue_context(issue: str, *, quiet: bool = False) -> str | None:
+    """Fetch and render issue context from a provider reference.
+
+    Args:
+        issue: Issue reference string (e.g., 'gh:1694', 'gh:owner/repo#1694').
+        quiet: Suppress non-error output.
+
+    Returns:
+        Rendered issue context string, or None if fetching failed.
+    """
+    from code_context_agent.issues import render_issue_context
+    from code_context_agent.issues.github import GitHubIssueProvider, parse_issue_ref
+
+    try:
+        provider_name, issue_ref = parse_issue_ref(issue)
+        if provider_name == "gh":
+            provider = GitHubIssueProvider()
+            fetched_issue = provider.fetch(issue_ref)
+            if not quiet:
+                console.print(f"  Issue: [magenta]{fetched_issue.title}[/magenta]")
+            return render_issue_context(fetched_issue)
+        if not quiet:
+            console.print(f"[yellow]Warning:[/yellow] Unsupported issue provider: {provider_name}")
+    except RuntimeError as e:
+        if not quiet:
+            console.print(f"[yellow]Warning:[/yellow] Could not fetch issue: {e}")
+    return None
+
+
+def _display_result(result: dict, *, debug: bool = False, quiet: bool = False) -> None:
     """Display analysis result to the console.
+
+    In quiet mode, only errors are printed to stderr with no formatting.
 
     Args:
         result: Analysis result dictionary.
         debug: Whether debug mode is enabled.
+        quiet: Whether quiet mode is enabled.
     """
+    import sys
+
     if result["status"] == "completed":
-        console.print()
-        console.print("[green]Analysis completed successfully[/green]")
-        console.print(f"  Output directory: [cyan]{result['output_dir']}[/cyan]")
-        if result.get("context_path"):
-            console.print(f"  Context file: [cyan]{result['context_path']}[/cyan]")
+        if not quiet:
+            console.print()
+            console.print("[green]Analysis completed successfully[/green]")
+            console.print(f"  Output directory: [cyan]{result['output_dir']}[/cyan]")
+            if result.get("context_path"):
+                console.print(f"  Context file: [cyan]{result['context_path']}[/cyan]")
     elif result["status"] == "stopped":
-        console.print()
-        console.print(f"[yellow]Analysis stopped:[/yellow] {result.get('exceeded_limit', 'limit exceeded')}")
-        console.print(f"  Turns: {result.get('turn_count', '?')}, Duration: {result.get('duration_seconds', 0):.1f}s")
-        if result.get("context_path"):
-            console.print(f"  Partial output: [cyan]{result['context_path']}[/cyan]")
+        if quiet:
+            print(
+                f"Error: Analysis stopped: {result.get('exceeded_limit', 'limit exceeded')}",
+                file=sys.stderr,
+            )
+        else:
+            console.print()
+            console.print(f"[yellow]Analysis stopped:[/yellow] {result.get('exceeded_limit', 'limit exceeded')}")
+            console.print(
+                f"  Turns: {result.get('turn_count', '?')}, Duration: {result.get('duration_seconds', 0):.1f}s",
+            )
+            if result.get("context_path"):
+                console.print(f"  Partial output: [cyan]{result['context_path']}[/cyan]")
         raise SystemExit(1)
     else:
-        console.print()
         error = result.get("error") or "Unknown error (no error message captured)"
-        console.print(f"[red]Analysis failed:[/red] {error}")
-        if debug:
-            console.print(f"[dim]Status: {result.get('status')}, Turns: {result.get('turn_count', 0)}[/dim]")
+        if quiet:
+            print(f"Error: {error}", file=sys.stderr)
+        else:
+            console.print()
+            console.print(f"[red]Analysis failed:[/red] {error}")
+            if debug:
+                console.print(f"[dim]Status: {result.get('status')}, Turns: {result.get('turn_count', 0)}[/dim]")
         raise SystemExit(1)
+
+
+def _build_since_context(repo_path: Path, since: str, output_dir: Path) -> str | None:
+    """Build incremental analysis context from git diff.
+
+    Args:
+        repo_path: Repository path.
+        since: Git ref to diff against.
+        output_dir: Output directory to check for existing artifacts.
+
+    Returns:
+        XML-wrapped since context string, or None if git diff fails or is empty.
+    """
+    import subprocess
+
+    try:
+        diff_result = subprocess.run(
+            ["git", "diff", "--name-only", f"{since}..HEAD"],
+            cwd=repo_path,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=30,
+        )
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+        return None
+
+    changed_files = [f.strip() for f in diff_result.stdout.strip().splitlines() if f.strip()]
+    if not changed_files:
+        return None
+
+    has_existing_graph = (output_dir / "code_graph.json").exists()
+    has_existing_context = (output_dir / "CONTEXT.md").exists()
+    file_list = "\n".join(f"- {f}" for f in changed_files)
+
+    return (
+        f"<since_context>\n"
+        f"<ref>{since}</ref>\n"
+        f"<changed_file_count>{len(changed_files)}</changed_file_count>\n"
+        f"<changed_files>\n{file_list}\n</changed_files>\n"
+        f"<has_existing_graph>{has_existing_graph}</has_existing_graph>\n"
+        f"<has_existing_context>{has_existing_context}</has_existing_context>\n"
+        f"<output_dir>{output_dir}</output_dir>\n"
+        f"</since_context>"
+    )
+
+
+def _display_result_json(result: dict) -> None:
+    """Write analysis result as JSON to stdout.
+
+    On success, reads the analysis_result.json written by the agent.
+    Falls back to the run metadata dict if the file doesn't exist.
+    On error/stopped, writes JSON to stderr and exits with code 1.
+
+    Args:
+        result: Analysis run result dictionary.
+    """
+    import json
+    import sys
+
+    if result["status"] == "completed":
+        analysis_result_path = Path(result["output_dir"]) / "analysis_result.json"
+        if analysis_result_path.exists():
+            sys.stdout.write(analysis_result_path.read_text())
+            sys.stdout.write("\n")
+        else:
+            print(json.dumps(result, indent=2))
+        return
+
+    # Error or stopped
+    error_payload = {
+        "status": result["status"],
+        "error": result.get("error"),
+        "exceeded_limit": result.get("exceeded_limit"),
+    }
+    print(json.dumps(error_payload, indent=2), file=sys.stderr)
+    raise SystemExit(1)
 
 
 if __name__ == "__main__":
