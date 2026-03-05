@@ -13,6 +13,9 @@ from strands import tool
 from .adapters import (
     ingest_astgrep_matches,
     ingest_astgrep_rule_pack,
+    ingest_git_cochanges,
+    ingest_git_contributors,
+    ingest_git_hotspots,
     ingest_inheritance,
     ingest_lsp_definition,
     ingest_lsp_references,
@@ -1308,3 +1311,122 @@ def code_graph_stats(
             "edges_by_type": edge_types,
         },
     )
+
+
+@tool
+def code_graph_ingest_git(
+    graph_id: str,
+    git_result: str,
+    result_type: str,
+    source_file: str = "",
+    min_percentage: float = 20.0,
+) -> str:
+    """Add git history data to the code graph as nodes, edges, or metadata.
+
+    USE THIS TOOL:
+    - After calling git_hotspots to add churn metadata to FILE nodes
+    - After calling git_files_changed_together to add COCHANGES edges
+    - After calling git_contributors or git_blame_summary to add ownership metadata
+
+    DO NOT USE:
+    - Before code_graph_create (graph must exist first)
+    - With error-status git results
+
+    Args:
+        graph_id: ID of the target graph (must exist from code_graph_create)
+        git_result: The raw JSON string output from a git tool.
+            Pass the exact return value from git_hotspots,
+            git_files_changed_together, git_contributors, or git_blame_summary.
+        result_type: Type of git result being ingested:
+            - "hotspots": From git_hotspots. Creates/updates FILE nodes with churn metadata.
+            - "cochanges": From git_files_changed_together. Creates COCHANGES edges.
+              Uses min_percentage to filter low-coupling pairs.
+            - "contributors": From git_contributors or git_blame_summary.
+              Returns ownership metadata dict.
+        source_file: For "contributors" type. If provided and the node exists,
+            attaches contributor metadata to the FILE node at this path.
+        min_percentage: For "cochanges" type. Minimum co-change percentage
+            to create an edge (default 20.0). Lower = more edges.
+
+    Returns:
+        JSON with ingestion results varying by type.
+
+    Output Size: ~200 bytes
+
+    Workflow Examples:
+
+    Ingesting hotspots (creates/updates FILE nodes):
+        hotspots = git_hotspots(repo_path, limit=30)
+        code_graph_ingest_git("main", hotspots, "hotspots")
+
+    Ingesting co-changes (creates COCHANGES edges):
+        coupling = git_files_changed_together(repo_path, "src/auth.py")
+        code_graph_ingest_git("main", coupling, "cochanges", min_percentage=15.0)
+
+    Ingesting contributors (returns metadata):
+        blame = git_blame_summary(repo_path, "src/auth.py")
+        code_graph_ingest_git("main", blame, "contributors", source_file="src/auth.py")
+    """
+    graph = _get_graph(graph_id)
+    if graph is None:
+        return _json_response({"status": "error", "message": f"Graph not found: {graph_id}"})
+
+    try:
+        result = json.loads(git_result)
+    except json.JSONDecodeError as e:
+        return _json_response({"status": "error", "message": f"Invalid JSON: {e}"})
+
+    if result_type == "hotspots":
+        nodes = ingest_git_hotspots(result)
+        nodes_added = 0
+        nodes_updated = 0
+        for node in nodes:
+            if graph.has_node(node.id):
+                # Merge churn metadata into existing node
+                existing = graph._graph.nodes[node.id]
+                existing.setdefault("metadata", {}).update(node.metadata)
+                nodes_updated += 1
+            else:
+                graph.add_node(node)
+                nodes_added += 1
+        return _json_response(
+            {
+                "status": "success",
+                "graph_id": graph_id,
+                "result_type": "hotspots",
+                "nodes_added": nodes_added,
+                "nodes_updated": nodes_updated,
+                "total_nodes": graph.node_count,
+            },
+        )
+
+    if result_type == "cochanges":
+        edges = ingest_git_cochanges(result, min_percentage=min_percentage)
+        edges_added = 0
+        for edge in edges:
+            graph.add_edge(edge)
+            edges_added += 1
+        return _json_response(
+            {
+                "status": "success",
+                "graph_id": graph_id,
+                "result_type": "cochanges",
+                "edges_added": edges_added,
+                "total_edges": graph.edge_count,
+            },
+        )
+
+    if result_type == "contributors":
+        metadata = ingest_git_contributors(result)
+        if source_file and graph.has_node(source_file):
+            graph._graph.nodes[source_file].setdefault("metadata", {}).update(metadata)
+        return _json_response(
+            {
+                "status": "success",
+                "graph_id": graph_id,
+                "result_type": "contributors",
+                "contributor_count": metadata.get("contributor_count", 0),
+            },
+        )
+
+    return _json_response({"status": "error", "message": f"Unknown result_type: {result_type}"})
