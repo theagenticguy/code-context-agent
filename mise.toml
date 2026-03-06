@@ -1,4 +1,5 @@
 [tools]
+gh = "latest"
 gitleaks = "latest"
 osv-scanner = "latest"
 python = "3.13"
