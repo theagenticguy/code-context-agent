@@ -1,0 +1,77 @@
+name: Dependency Update
+
+on:
+  schedule:
+    - cron: "0 3 * * 1-5"  # 3 AM UTC, weekdays
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  RUNTIME_PKGS: graphviz libgraphviz-dev
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/astral-sh/uv:0.9-python3.13-bookworm-slim
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install system dependencies
+        run: apt-get update && apt-get install -y --no-install-recommends git gcc libc6-dev ${{ env.RUNTIME_PKGS }} pkg-config curl
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Upgrade dependencies
+        run: uv lock --upgrade
+      - name: Check for changes
+        id: diff
+        run: |
+          if git diff --quiet uv.lock; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Create PR
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="deps/auto-update-$(date +%Y-%m-%d)"
+          SUMMARY=$(git diff uv.lock | grep -E '^\+.*version' | head -20 | sed 's/^+//' || echo "See full diff")
+
+          git checkout -b "$BRANCH"
+          git add uv.lock
+          git commit -m "deps: auto-update dependencies $(date +%Y-%m-%d)"
+          git push --set-upstream origin "$BRANCH"
+
+          # Install gh CLI for PR creation
+          apt-get install -y --no-install-recommends gh 2>/dev/null || (
+            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+              | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+              | tee /etc/apt/sources.list.d/github-cli.list
+            apt-get update && apt-get install -y gh
+          )
+
+          gh pr create \
+            --title "deps: auto-update dependencies $(date +%Y-%m-%d)" \
+            --body "$(cat <<EOF
+          ## Automated Dependency Update
+
+          ### Changed Packages
+          \`\`\`
+          ${SUMMARY}
+          \`\`\`
+
+          ---
+          *Created by scheduled workflow on $(date +%Y-%m-%d)*
+          EOF
+          )" \
+            --label "dependencies" || echo "PR already exists or creation failed"

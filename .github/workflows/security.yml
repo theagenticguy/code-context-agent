@@ -1,0 +1,150 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  UV_CACHE_DIR: .uv-cache
+  RUNTIME_PKGS: graphviz libgraphviz-dev
+
+permissions:
+  security-events: write
+  contents: read
+
+jobs:
+  semgrep:
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep:latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Semgrep scan
+        run: |
+          semgrep scan \
+            --config auto \
+            --config p/owasp-top-ten \
+            --sarif \
+            --output semgrep.sarif \
+            --error \
+            src/ || true
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+
+  bandit:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/astral-sh/uv:0.9-python3.13-bookworm-slim
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system dependencies
+        run: apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev ${{ env.RUNTIME_PKGS }} pkg-config
+      - name: Install dependencies
+        run: uv sync --locked --all-groups
+      - name: Bandit scan
+        run: uv run bandit -c pyproject.toml -r src/ -f sarif -o bandit.sarif --exit-zero
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: bandit.sarif
+          category: bandit
+
+  gitleaks:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  osv-scanner:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: OSV Scanner
+        uses: google/osv-scanner-action/osv-scanner-action@v2
+        with:
+          scan-args: --lockfile uv.lock
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif
+          category: osv-scanner
+        continue-on-error: true
+
+  trivy:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          severity: HIGH,CRITICAL
+          format: sarif
+          output: trivy.sarif
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy.sarif
+          category: trivy
+
+  licenses:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/astral-sh/uv:0.9-python3.13-bookworm-slim
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system dependencies
+        run: apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev ${{ env.RUNTIME_PKGS }} pkg-config
+      - name: Install dependencies
+        run: uv sync --locked --all-groups
+      - name: License check
+        run: uv run --with pip-licenses pip-licenses
+      - name: Generate reports
+        run: |
+          uv run --with pip-licenses pip-licenses --format=json --output-file=license-report.json
+          uv run --with pip-licenses pip-licenses --format=markdown --output-file=license-report.md
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: license-reports
+          path: |
+            license-report.json
+            license-report.md
+          retention-days: 7
+
+  sbom:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: anchore/sbom-action@v0
+        with:
+          format: cyclonedx-json
+          output-file: sbom.cdx.json
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.cdx.json
+          retention-days: 7

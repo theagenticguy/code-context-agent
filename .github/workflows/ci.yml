@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  UV_CACHE_DIR: .uv-cache
+  RUNTIME_PKGS: graphviz libgraphviz-dev
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/astral-sh/uv:0.9-python3.13-bookworm-slim
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system dependencies
+        run: apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev graphviz libgraphviz-dev pkg-config
+      - name: Restore uv cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.UV_CACHE_DIR }}
+          key: uv-${{ hashFiles('uv.lock') }}
+          restore-keys: uv-
+      - name: Install Python dependencies
+        run: uv sync --locked --all-groups
+      - name: Upload venv
+        uses: actions/upload-artifact@v4
+        with:
+          name: venv
+          path: .venv/
+          retention-days: 1
+
+  lint:
+    needs: install
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/astral-sh/uv:0.9-python3.13-bookworm-slim
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install runtime libs
+        run: apt-get update && apt-get install -y --no-install-recommends ${{ env.RUNTIME_PKGS }}
+      - name: Download venv
+        uses: actions/download-artifact@v4
+        with:
+          name: venv
+          path: .venv/
+      - name: Fix venv permissions
+        run: chmod -R +x .venv/bin/
+      - name: Ruff check
+        run: uv run ruff check src/
+      - name: Ruff format check
+        run: uv run ruff format --check src/
+      - name: Type check
+        run: uv run ty check src/
+
+  test:
+    needs: install
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/astral-sh/uv:0.9-python3.13-bookworm-slim
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install runtime libs
+        run: apt-get update && apt-get install -y --no-install-recommends git ${{ env.RUNTIME_PKGS }}
+      - name: Download venv
+        uses: actions/download-artifact@v4
+        with:
+          name: venv
+          path: .venv/
+      - name: Fix venv permissions
+        run: chmod -R +x .venv/bin/
+      - name: Run tests
+        run: |
+          uv run pytest \
+            --junitxml=report.xml \
+            --cov=src/code_context_agent \
+            --cov-report=term-missing:skip-covered \
+            --cov-report=xml:coverage.xml \
+            --cov-branch
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: |
+            coverage.xml
+            report.xml
+          retention-days: 7
