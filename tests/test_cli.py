@@ -65,9 +65,7 @@ class TestDisplayResultJson:
 class TestBuildSinceContext:
     def test_returns_xml_with_changed_files(self, tmp_path):
         """Produces XML context with file list when git diff succeeds."""
-        mock_result = subprocess.CompletedProcess(
-            args=[], returncode=0, stdout="src/auth.py\nsrc/db.py\n", stderr=""
-        )
+        mock_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="src/auth.py\nsrc/db.py\n", stderr="")
         with patch("subprocess.run", return_value=mock_result):
             result = _build_since_context(tmp_path, "HEAD~5", tmp_path)
 
@@ -95,9 +93,7 @@ class TestBuildSinceContext:
     def test_detects_existing_graph(self, tmp_path):
         """Sets has_existing_graph flag when code_graph.json exists."""
         (tmp_path / "code_graph.json").write_text("{}")
-        mock_result = subprocess.CompletedProcess(
-            args=[], returncode=0, stdout="src/main.py\n", stderr=""
-        )
+        mock_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="src/main.py\n", stderr="")
         with patch("subprocess.run", return_value=mock_result):
             result = _build_since_context(Path("/repo"), "HEAD~1", tmp_path)
 
@@ -107,9 +103,7 @@ class TestBuildSinceContext:
     def test_detects_existing_context(self, tmp_path):
         """Sets has_existing_context flag when CONTEXT.md exists."""
         (tmp_path / "CONTEXT.md").write_text("# Context")
-        mock_result = subprocess.CompletedProcess(
-            args=[], returncode=0, stdout="src/main.py\n", stderr=""
-        )
+        mock_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="src/main.py\n", stderr="")
         with patch("subprocess.run", return_value=mock_result):
             result = _build_since_context(Path("/repo"), "HEAD~1", tmp_path)
 

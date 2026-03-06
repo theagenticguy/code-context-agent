@@ -9,6 +9,8 @@ uv = "latest"
 
 [env]
 _.python.venv = { path = ".venv", create = true }
+CFLAGS = "-I{{env.HOMEBREW_PREFIX}}/opt/graphviz/include"
+LDFLAGS = "-L{{env.HOMEBREW_PREFIX}}/opt/graphviz/lib"
 
 [tasks]
 install = "uv sync --all-groups"

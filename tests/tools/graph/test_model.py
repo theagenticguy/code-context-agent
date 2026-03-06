@@ -184,18 +184,36 @@ class TestCodeGraph:
     def test_get_nodes_by_type(self) -> None:
         """Test filtering nodes by type."""
         graph = CodeGraph()
-        graph.add_node(CodeNode(
-            id="f1", name="f1", node_type=NodeType.FUNCTION,
-            file_path="/a.py", line_start=1, line_end=5,
-        ))
-        graph.add_node(CodeNode(
-            id="f2", name="f2", node_type=NodeType.FUNCTION,
-            file_path="/b.py", line_start=1, line_end=5,
-        ))
-        graph.add_node(CodeNode(
-            id="c1", name="c1", node_type=NodeType.CLASS,
-            file_path="/c.py", line_start=1, line_end=10,
-        ))
+        graph.add_node(
+            CodeNode(
+                id="f1",
+                name="f1",
+                node_type=NodeType.FUNCTION,
+                file_path="/a.py",
+                line_start=1,
+                line_end=5,
+            )
+        )
+        graph.add_node(
+            CodeNode(
+                id="f2",
+                name="f2",
+                node_type=NodeType.FUNCTION,
+                file_path="/b.py",
+                line_start=1,
+                line_end=5,
+            )
+        )
+        graph.add_node(
+            CodeNode(
+                id="c1",
+                name="c1",
+                node_type=NodeType.CLASS,
+                file_path="/c.py",
+                line_start=1,
+                line_end=10,
+            )
+        )
 
         functions = graph.get_nodes_by_type(NodeType.FUNCTION)
         assert len(functions) == 2  # noqa: PLR2004
@@ -205,18 +223,36 @@ class TestCodeGraph:
     def test_get_view_filters_edges(self) -> None:
         """Test that get_view filters by edge type."""
         graph = CodeGraph()
-        graph.add_node(CodeNode(
-            id="a", name="a", node_type=NodeType.FUNCTION,
-            file_path="/a.py", line_start=1, line_end=5,
-        ))
-        graph.add_node(CodeNode(
-            id="b", name="b", node_type=NodeType.FUNCTION,
-            file_path="/b.py", line_start=1, line_end=5,
-        ))
-        graph.add_node(CodeNode(
-            id="c", name="c", node_type=NodeType.FUNCTION,
-            file_path="/c.py", line_start=1, line_end=5,
-        ))
+        graph.add_node(
+            CodeNode(
+                id="a",
+                name="a",
+                node_type=NodeType.FUNCTION,
+                file_path="/a.py",
+                line_start=1,
+                line_end=5,
+            )
+        )
+        graph.add_node(
+            CodeNode(
+                id="b",
+                name="b",
+                node_type=NodeType.FUNCTION,
+                file_path="/b.py",
+                line_start=1,
+                line_end=5,
+            )
+        )
+        graph.add_node(
+            CodeNode(
+                id="c",
+                name="c",
+                node_type=NodeType.FUNCTION,
+                file_path="/c.py",
+                line_start=1,
+                line_end=5,
+            )
+        )
 
         graph.add_edge(CodeEdge(source="a", target="b", edge_type=EdgeType.CALLS))
         graph.add_edge(CodeEdge(source="a", target="c", edge_type=EdgeType.IMPORTS))
@@ -229,14 +265,26 @@ class TestCodeGraph:
     def test_node_link_roundtrip(self) -> None:
         """Test exporting and importing graph as node-link data."""
         graph = CodeGraph()
-        graph.add_node(CodeNode(
-            id="a", name="a", node_type=NodeType.FUNCTION,
-            file_path="/a.py", line_start=1, line_end=5,
-        ))
-        graph.add_node(CodeNode(
-            id="b", name="b", node_type=NodeType.FUNCTION,
-            file_path="/b.py", line_start=1, line_end=5,
-        ))
+        graph.add_node(
+            CodeNode(
+                id="a",
+                name="a",
+                node_type=NodeType.FUNCTION,
+                file_path="/a.py",
+                line_start=1,
+                line_end=5,
+            )
+        )
+        graph.add_node(
+            CodeNode(
+                id="b",
+                name="b",
+                node_type=NodeType.FUNCTION,
+                file_path="/b.py",
+                line_start=1,
+                line_end=5,
+            )
+        )
         graph.add_edge(CodeEdge(source="a", target="b", edge_type=EdgeType.CALLS))
 
         # Export
@@ -251,18 +299,29 @@ class TestCodeGraph:
         assert restored.edge_count == 1
         assert restored.has_edge("a", "b")
 
-
     def test_describe(self) -> None:
         """Test the describe method returns a summary dict."""
         graph = CodeGraph()
-        graph.add_node(CodeNode(
-            id="a", name="a", node_type=NodeType.FUNCTION,
-            file_path="/a.py", line_start=1, line_end=5,
-        ))
-        graph.add_node(CodeNode(
-            id="b", name="b", node_type=NodeType.CLASS,
-            file_path="/b.py", line_start=1, line_end=10,
-        ))
+        graph.add_node(
+            CodeNode(
+                id="a",
+                name="a",
+                node_type=NodeType.FUNCTION,
+                file_path="/a.py",
+                line_start=1,
+                line_end=5,
+            )
+        )
+        graph.add_node(
+            CodeNode(
+                id="b",
+                name="b",
+                node_type=NodeType.CLASS,
+                file_path="/b.py",
+                line_start=1,
+                line_end=10,
+            )
+        )
         graph.add_edge(CodeEdge(source="a", target="b", edge_type=EdgeType.CALLS))
 
         desc = graph.describe()
@@ -285,14 +344,26 @@ class TestCodeGraph:
     def test_from_node_link_data_legacy_links_format(self) -> None:
         """Test that from_node_link_data handles the old 'links' format."""
         graph = CodeGraph()
-        graph.add_node(CodeNode(
-            id="x", name="x", node_type=NodeType.FUNCTION,
-            file_path="/x.py", line_start=1, line_end=5,
-        ))
-        graph.add_node(CodeNode(
-            id="y", name="y", node_type=NodeType.FUNCTION,
-            file_path="/y.py", line_start=1, line_end=5,
-        ))
+        graph.add_node(
+            CodeNode(
+                id="x",
+                name="x",
+                node_type=NodeType.FUNCTION,
+                file_path="/x.py",
+                line_start=1,
+                line_end=5,
+            )
+        )
+        graph.add_node(
+            CodeNode(
+                id="y",
+                name="y",
+                node_type=NodeType.FUNCTION,
+                file_path="/y.py",
+                line_start=1,
+                line_end=5,
+            )
+        )
         graph.add_edge(CodeEdge(source="x", target="y", edge_type=EdgeType.CALLS))
 
         # Export and manually convert "edges" to "links" to simulate old format
