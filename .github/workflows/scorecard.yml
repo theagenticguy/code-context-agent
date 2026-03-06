@@ -19,7 +19,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Run Scorecard
-        uses: ossf/scorecard-action@v2
+        uses: ossf/scorecard-action@v2.4.1
         with:
           results_file: scorecard.sarif
           results_format: sarif

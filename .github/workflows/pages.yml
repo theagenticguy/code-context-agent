@@ -14,20 +14,18 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
-env:
-  RUNTIME_PKGS: graphviz libgraphviz-dev
-
 jobs:
   build-docs:
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/astral-sh/uv:0.9-python3.13-bookworm-slim
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
       - name: Install system dependencies
-        run: apt-get update && apt-get install -y --no-install-recommends git ${{ env.RUNTIME_PKGS }} gcc libc6-dev pkg-config
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends graphviz libgraphviz-dev pkg-config
       - name: Install dependencies
         run: uv sync --locked --all-groups
       - name: Build docs

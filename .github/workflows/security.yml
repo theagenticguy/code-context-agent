@@ -7,20 +7,16 @@ on:
     branches: [main]
   workflow_dispatch:
 
-env:
-  UV_CACHE_DIR: .uv-cache
-  RUNTIME_PKGS: graphviz libgraphviz-dev
-
 permissions:
   security-events: write
   contents: read
+  actions: read
 
 jobs:
   semgrep:
     runs-on: ubuntu-latest
     container:
       image: semgrep/semgrep:latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - name: Semgrep scan
@@ -41,13 +37,13 @@ jobs:
 
   bandit:
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/astral-sh/uv:0.9-python3.13-bookworm-slim
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
       - name: Install system dependencies
-        run: apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev ${{ env.RUNTIME_PKGS }} pkg-config
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends graphviz libgraphviz-dev pkg-config
       - name: Install dependencies
         run: uv sync --locked --all-groups
       - name: Bandit scan
@@ -61,7 +57,6 @@ jobs:
 
   gitleaks:
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -72,7 +67,6 @@ jobs:
 
   osv-scanner:
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - name: OSV Scanner
@@ -89,7 +83,6 @@ jobs:
 
   trivy:
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - name: Trivy scan
@@ -108,13 +101,13 @@ jobs:
 
   licenses:
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/astral-sh/uv:0.9-python3.13-bookworm-slim
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
       - name: Install system dependencies
-        run: apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev ${{ env.RUNTIME_PKGS }} pkg-config
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends graphviz libgraphviz-dev pkg-config
       - name: Install dependencies
         run: uv sync --locked --all-groups
       - name: License check
