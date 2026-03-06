@@ -104,6 +104,26 @@ def validate_glob_pattern(pattern: str) -> str:
     return pattern
 
 
+def validate_path_within_repo(path: str, repo_root: str) -> Path:
+    """Validate that a path is contained within the repository root.
+
+    Args:
+        path: Path to validate.
+        repo_root: Repository root path.
+
+    Returns:
+        Resolved Path object.
+
+    Raises:
+        ValidationError: If path escapes the repository root.
+    """
+    resolved = Path(path).resolve()
+    root = Path(repo_root).resolve()
+    if resolved != root and not str(resolved).startswith(str(root) + "/"):
+        raise ValidationError(f"Path {resolved} is outside repository root {root}")
+    return resolved
+
+
 def validate_search_pattern(pattern: str, max_length: int = 1000) -> str:
     """Validate search pattern (regex) is safe.
 

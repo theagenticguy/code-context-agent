@@ -2,12 +2,42 @@
 
 import json
 import subprocess
+from pathlib import Path
 from unittest.mock import patch
 
 from code_context_agent.tools.discovery import rg_search
 
+# Patch validation to allow /repo in tests
+_REPO_VALIDATION_PATCHES = [
+    patch(
+        "code_context_agent.tools.discovery.validate_repo_path",
+        return_value=Path("/repo"),
+    ),
+    patch(
+        "code_context_agent.tools.discovery.validate_search_pattern",
+        side_effect=lambda p: p,
+    ),
+]
+
+
+def _apply_patches():
+    """Apply all validation patches and return a list of started mocks."""
+    return [p.start() for p in _REPO_VALIDATION_PATCHES]
+
+
+def _stop_patches():
+    """Stop all validation patches."""
+    for p in _REPO_VALIDATION_PATCHES:
+        p.stop()
+
 
 class TestRgSearchCountOnly:
+    def setup_method(self):
+        _apply_patches()
+
+    def teardown_method(self):
+        _stop_patches()
+
     def test_returns_per_file_counts(self):
         """count_only=True returns per-file counts and total."""
         mock_result = subprocess.CompletedProcess(

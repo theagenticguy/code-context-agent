@@ -12,6 +12,8 @@ from pathlib import Path
 
 from strands import tool
 
+from .validation import ValidationError, validate_glob_pattern, validate_repo_path
+
 # Path to rule files relative to this module
 RULES_DIR = Path(__file__).parent.parent / "rules"
 
@@ -45,33 +47,45 @@ def astgrep_scan(  # noqa: C901
         >>> result = astgrep_scan("ts", "$DB.query($$ARGS)", "/path/to/repo")
         >>> result = astgrep_scan("py", "$OBJ.execute($$SQL)", "/path/to/repo", include_globs=["src/**"])
     """
-    repo = Path(repo_path).resolve()
+    try:
+        repo = validate_repo_path(repo_path)
+    except ValidationError as e:
+        return json.dumps({"status": "error", "error": str(e)})
 
-    # Build command
-    cmd_parts = [
+    # Build command as list (no shell)
+    cmd_list = [
         "ast-grep",
         "run",
-        f"-l {language}",
-        f"-p '{pattern}'",
+        "-l",
+        language,
+        "-p",
+        pattern,
         "--json=stream",
     ]
 
     # Add globs
     if include_globs:
         for glob in include_globs:
-            cmd_parts.append(f"--globs '{glob}'")
+            try:
+                validate_glob_pattern(glob)
+            except ValidationError as e:
+                return json.dumps({"status": "error", "error": str(e)})
+            cmd_list.extend(["--globs", glob])
 
     if exclude_globs:
         for glob in exclude_globs:
-            cmd_parts.append(f"--globs '!{glob}'")
+            try:
+                validate_glob_pattern(glob)
+            except ValidationError as e:
+                return json.dumps({"status": "error", "error": str(e)})
+            cmd_list.extend(["--globs", f"!{glob}"])
 
-    cmd_parts.append(str(repo))
+    cmd_list.append(str(repo))
 
-    # Run directly without shell pipe to avoid SIGPIPE/broken pipe errors
-    cmd = " ".join(cmd_parts)
+    # Run directly without shell
     try:
         proc_result = subprocess.run(
-            ["sh", "-c", cmd],
+            cmd_list,
             cwd=str(repo),
             capture_output=True,
             text=True,
@@ -162,7 +176,10 @@ def astgrep_scan_rule_pack(  # noqa: C901
     Example:
         >>> result = astgrep_scan_rule_pack("ts_business_logic", "/path/to/repo")
     """
-    repo = Path(repo_path).resolve()
+    try:
+        repo = validate_repo_path(repo_path)
+    except ValidationError as e:
+        return json.dumps({"status": "error", "error": str(e)})
 
     # Find rule file
     rule_file = RULES_DIR / f"{rule_pack}.yml"
@@ -175,30 +192,38 @@ def astgrep_scan_rule_pack(  # noqa: C901
             },
         )
 
-    # Build command with config
-    cmd_parts = [
+    # Build command as list (no shell)
+    cmd_list = [
         "ast-grep",
         "scan",
-        f"--config '{rule_file}'",
+        "--config",
+        str(rule_file),
         "--json=stream",
     ]
 
     # Add globs
     if include_globs:
         for glob in include_globs:
-            cmd_parts.append(f"--globs '{glob}'")
+            try:
+                validate_glob_pattern(glob)
+            except ValidationError as e:
+                return json.dumps({"status": "error", "error": str(e)})
+            cmd_list.extend(["--globs", glob])
 
     if exclude_globs:
         for glob in exclude_globs:
-            cmd_parts.append(f"--globs '!{glob}'")
+            try:
+                validate_glob_pattern(glob)
+            except ValidationError as e:
+                return json.dumps({"status": "error", "error": str(e)})
+            cmd_list.extend(["--globs", f"!{glob}"])
 
-    cmd_parts.append(str(repo))
+    cmd_list.append(str(repo))
 
-    # Run directly without shell pipe to avoid SIGPIPE/broken pipe errors
-    cmd = " ".join(cmd_parts)
+    # Run directly without shell
     try:
         proc_result = subprocess.run(
-            ["sh", "-c", cmd],
+            cmd_list,
             cwd=str(repo),
             capture_output=True,
             text=True,
@@ -265,7 +290,7 @@ def astgrep_scan_rule_pack(  # noqa: C901
 
 
 @tool
-def astgrep_inline_rule(
+def astgrep_inline_rule(  # noqa: C901
     language: str,
     rule_yaml: str,
     repo_path: str,
@@ -296,30 +321,34 @@ def astgrep_inline_rule(
         ... '''
         >>> result = astgrep_inline_rule("ts", rule, "/path/to/repo")
     """
-    repo = Path(repo_path).resolve()
+    try:
+        repo = validate_repo_path(repo_path)
+    except ValidationError as e:
+        return json.dumps({"status": "error", "error": str(e)})
 
-    # Build command with inline rules
-    # Note: Need to properly escape the YAML for shell
-    escaped_yaml = rule_yaml.replace("'", "'\"'\"'")
-
-    cmd_parts = [
+    # Build command as list (no shell)
+    cmd_list = [
         "ast-grep",
         "scan",
-        f"--inline-rules '{escaped_yaml}'",
+        "--inline-rules",
+        rule_yaml,
         "--json=stream",
     ]
 
     if include_globs:
         for glob in include_globs:
-            cmd_parts.append(f"--globs '{glob}'")
+            try:
+                validate_glob_pattern(glob)
+            except ValidationError as e:
+                return json.dumps({"status": "error", "error": str(e)})
+            cmd_list.extend(["--globs", glob])
 
-    cmd_parts.append(str(repo))
+    cmd_list.append(str(repo))
 
-    # Run directly without shell pipe to avoid SIGPIPE/broken pipe errors
-    cmd = " ".join(cmd_parts)
+    # Run directly without shell
     try:
         proc_result = subprocess.run(
-            ["sh", "-c", cmd],
+            cmd_list,
             cwd=str(repo),
             capture_output=True,
             text=True,

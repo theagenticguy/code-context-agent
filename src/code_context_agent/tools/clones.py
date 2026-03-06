@@ -12,6 +12,8 @@ from pathlib import Path
 from loguru import logger
 from strands import tool
 
+from .validation import ValidationError, validate_glob_pattern, validate_repo_path
+
 
 @tool
 def detect_clones(  # noqa: C901
@@ -48,15 +50,15 @@ def detect_clones(  # noqa: C901
 
     Output Size: ~200 bytes per clone pair. Capped at 50 clones.
     """
-    repo = Path(repo_path).resolve()
-
-    if not repo.is_dir():
-        return json.dumps({"status": "error", "error": f"Repository not found: {repo}"})
+    try:
+        repo = validate_repo_path(repo_path)
+    except ValidationError as e:
+        return json.dumps({"status": "error", "error": str(e)})
 
     cmd = [
         "npx",
         "-y",
-        "jscpd",
+        "jscpd@4",
         "--reporters",
         "json",
         "--output",
@@ -74,6 +76,10 @@ def detect_clones(  # noqa: C901
         for raw_glob in include_globs.split(","):
             stripped = raw_glob.strip()
             if stripped:
+                try:
+                    validate_glob_pattern(stripped)
+                except ValidationError as e:
+                    return json.dumps({"status": "error", "error": str(e)})
                 cmd.extend(["--pattern", stripped])
 
     if threshold > 0:

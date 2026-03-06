@@ -31,7 +31,7 @@ jobs:
             --sarif \
             --output semgrep.sarif \
             --error \
-            src/ || true
+            src/
       - name: Upload SARIF
         if: always()
         uses: github/codeql-action/upload-sarif@v3
@@ -135,7 +135,6 @@ jobs:
 
   sbom:
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: anchore/sbom-action@v0

@@ -1,12 +1,13 @@
-"""Shell tool with proper STDIO capture for agent tool responses.
+"""Shell tool with STDIO capture and security hardening.
 
-This module provides a shell tool that properly captures stdout/stderr
-and returns them to the agent as tool responses, rather than leaking
-output to the terminal.
+Commands are validated against an allowlist of read-only programs.
+Shell operators, path traversal, and write operations are blocked.
 """
 
 from __future__ import annotations
 
+import re
+import shlex
 import subprocess
 import time
 from pathlib import Path
@@ -16,11 +17,48 @@ from loguru import logger
 from pydantic import BaseModel, computed_field
 from strands import tool
 
-# Default timeout for shell commands (15 minutes)
 DEFAULT_TIMEOUT = 900
-
-# Maximum output size to capture (100KB)
 MAX_OUTPUT_SIZE = 100_000
+
+# fmt: off
+ALLOWED_PROGRAMS: frozenset[str] = frozenset({
+    # File inspection
+    "ls", "find", "stat", "file", "du", "wc", "head", "tail", "cat", "less",
+    "sort", "uniq", "diff", "comm", "tr", "cut", "paste", "column",
+    # Text search & processing
+    "grep", "egrep", "rg", "ag", "awk", "sed", "xargs", "jq", "yq",
+    # Version control (read-only — subcommands validated separately)
+    "git",
+    # Language tooling & build inspection
+    "python", "python3", "node", "npx", "uv", "cargo", "go", "java", "javac",
+    "npm", "pip", "pip3", "make",
+    # Encoding & system info
+    "base64", "xxd", "hexdump",
+    "echo", "printf", "date", "env", "printenv", "which", "type",
+    "uname", "id", "whoami", "pwd", "realpath", "dirname", "basename",
+    # Analysis tools
+    "ast-grep", "repomix", "tree", "tokei", "cloc", "scc",
+})
+
+GIT_READ_ONLY: frozenset[str] = frozenset({
+    "log", "diff", "show", "blame", "status", "branch", "tag", "remote",
+    "rev-parse", "rev-list", "shortlog", "describe", "ls-files", "ls-tree",
+    "cat-file", "name-rev", "reflog", "stash", "config",
+})
+# fmt: on
+
+_DANGEROUS_RE = re.compile(
+    r"[;&|]"  # command chaining
+    r"|`"  # backtick substitution
+    r"|\$[({]"  # $( or ${ expansion
+    r"|\beval\b"
+    r"|\bexec\b"
+    r"|\bsource\b"
+    r"|^\s*\.[\s/]"  # dot-sourcing
+    r"|\s>>?\s",  # output redirection
+)
+
+_SENSITIVE_DIRS = ("/etc", "/root", "/boot", "/usr/sbin", "/proc", "/sys")
 
 
 class CommandResult(BaseModel):
@@ -45,41 +83,78 @@ class CommandResult(BaseModel):
         return "success" if self.success else "error"
 
 
-def _truncate_output(text: str, max_size: int) -> tuple[str, bool]:
-    """Truncate output if needed.
+def _check_git_readonly(tokens: list[str], start: int) -> str | None:
+    """Return error if git subcommand is not read-only."""
+    git_flags_with_arg = {"-C", "-c", "--git-dir", "--work-tree"}
+    i = start
+    subcommand = None
+    while i < len(tokens):
+        if tokens[i].startswith("-"):
+            i += 2 if tokens[i] in git_flags_with_arg else 1
+        else:
+            subcommand = tokens[i]
+            break
 
-    Args:
-        text: Output text to truncate
-        max_size: Maximum size in characters
+    if subcommand and subcommand not in GIT_READ_ONLY:
+        return f"Blocked: git {subcommand!r} is not a read-only operation"
 
-    Returns:
-        Tuple of (truncated_text, was_truncated)
-    """
-    if not text or len(text) <= max_size:
-        return text, False
+    # git config without --get/--list is a write — block it
+    if subcommand == "config":
+        rest = tokens[i + 1 :] if i + 1 < len(tokens) else []
+        read_flags = {"--get", "--get-all", "--get-regexp", "--list", "-l", "--show-origin", "--show-scope"}
+        if rest and not any(f in read_flags for f in rest):
+            return "Blocked: git config writes are not allowed (use --get or --list)"
 
-    truncated = text[:max_size]
-    truncated += f"\n... (truncated, {len(text)} total chars)"
-    return truncated, True
+    return None
 
 
-def _execute_single_command(
-    cmd: str,
-    work_dir: str,
-    timeout: int,
-) -> CommandResult:
-    """Execute one command and return structured result.
+def _check_sensitive_paths(tokens: list[str]) -> str | None:
+    """Return error if any token targets a sensitive system directory."""
+    for token in tokens:
+        if token.startswith("/"):
+            resolved = str(Path(token).resolve())
+            for d in _SENSITIVE_DIRS:
+                if resolved.startswith(d):
+                    return f"Blocked: access to {d} is not allowed"
+    return None
 
-    Args:
-        cmd: Command string to execute
-        work_dir: Working directory
-        timeout: Timeout in seconds
 
-    Returns:
-        CommandResult with execution details
-    """
-    start_time = time.time()
+def _validate_command(cmd: str) -> str | None:
+    """Return None if *cmd* is safe, or an error message if blocked."""
+    stripped = cmd.strip()
+    if not stripped:
+        return "Empty command"
 
+    if _DANGEROUS_RE.search(stripped):
+        return f"Blocked: shell operator not allowed: {stripped!r}"
+
+    try:
+        tokens = shlex.split(stripped)
+    except ValueError:
+        return f"Blocked: malformed command: {stripped!r}"
+
+    # Skip env-var assignments (FOO=bar cmd ...)
+    idx = 0
+    while idx < len(tokens) and "=" in tokens[idx]:
+        idx += 1
+    if idx >= len(tokens):
+        return "Empty command after variable assignments"
+
+    program = Path(tokens[idx]).name.lower()
+
+    if program not in ALLOWED_PROGRAMS:
+        return f"Blocked: {program!r} is not in the allowed programs list"
+
+    if program == "git":
+        if violation := _check_git_readonly(tokens, idx + 1):
+            return violation
+
+    return _check_sensitive_paths(tokens)
+
+
+def _execute(cmd: str, work_dir: str, timeout: int) -> CommandResult:
+    """Execute one shell command and return structured result."""
+    start = time.time()
     try:
         proc = subprocess.run(
             ["sh", "-c", cmd],
@@ -88,90 +163,36 @@ def _execute_single_command(
             text=True,
             timeout=timeout,
         )
-
-        # Truncate outputs if needed
-        stdout, _ = _truncate_output(
-            proc.stdout or "",
-            MAX_OUTPUT_SIZE,
-        )
-        stderr, _ = _truncate_output(
-            proc.stderr or "",
-            MAX_OUTPUT_SIZE,
-        )
-
-        execution_time = time.time() - start_time
-
+        stdout = proc.stdout or ""
+        stderr = proc.stderr or ""
+        if len(stdout) > MAX_OUTPUT_SIZE:
+            stdout = stdout[:MAX_OUTPUT_SIZE] + f"\n... (truncated, {len(proc.stdout)} total chars)"
+        if len(stderr) > MAX_OUTPUT_SIZE:
+            stderr = stderr[:MAX_OUTPUT_SIZE] + f"\n... (truncated, {len(proc.stderr)} total chars)"
         return CommandResult(
             command=cmd,
             exit_code=proc.returncode,
             stdout=stdout,
             stderr=stderr,
-            execution_time=execution_time,
+            execution_time=time.time() - start,
         )
-
     except subprocess.TimeoutExpired:
-        execution_time = time.time() - start_time
         return CommandResult(
             command=cmd,
             exit_code=-1,
             stdout="",
             stderr=f"Command timed out after {timeout} seconds",
-            execution_time=execution_time,
+            execution_time=time.time() - start,
         )
-
     except (subprocess.SubprocessError, OSError) as e:
-        execution_time = time.time() - start_time
         logger.exception(f"Command execution failed: {cmd}")
         return CommandResult(
             command=cmd,
             exit_code=-1,
             stdout="",
             stderr=str(e),
-            execution_time=execution_time,
+            execution_time=time.time() - start,
         )
-
-
-def _format_results(results: list[CommandResult]) -> dict[str, Any]:
-    """Build the final response structure.
-
-    Args:
-        results: List of command results
-
-    Returns:
-        Dict with status and content blocks
-    """
-    content = []
-
-    # Summary block
-    success_count = sum(1 for r in results if r.success)
-    error_count = len(results) - success_count
-
-    content.append(
-        {
-            "text": f"Execution Summary:\n"
-            f"Total commands: {len(results)}\n"
-            f"Successful: {success_count}\n"
-            f"Failed: {error_count}",
-        },
-    )
-
-    # Individual result blocks
-    for result in results:
-        text_parts = [
-            f"Command: {result.command}",
-            f"Status: {result.status}",
-            f"Exit Code: {result.exit_code}",
-        ]
-
-        if result.stdout:
-            text_parts.append(f"Output:\n{result.stdout}")
-
-        if result.stderr:
-            text_parts.append(f"Error:\n{result.stderr}")
-
-        content.append({"text": "\n".join(text_parts)})
-
-    return {"content": content}
 
 
 @tool
@@ -184,17 +205,17 @@ def shell(
     """Execute shell commands with proper STDIO capture.
 
     USE THIS TOOL:
-    - For running shell commands (ls, git, npm, etc.)
+    - For running read-only shell commands (ls, git log, wc, etc.)
     - When you need command output for analysis
-    - For build and test commands
 
     DO NOT USE:
     - For reading file contents (use read_file_bounded instead)
     - For searching code (use rg_search instead)
+    - For modifying files, network access, or running arbitrary scripts
 
-    All stdout and stderr are captured and returned in the tool response.
-    If stderr contains content or the exit code is non-zero, the tool
-    returns an error status with a descriptive message.
+    Security: Commands are validated against an allowlist of read-only programs.
+    Shell operators (pipes, redirects, chaining) are blocked. Git commands are
+    restricted to read-only subcommands.
 
     Args:
         command: Shell command string or list of commands to execute sequentially.
@@ -203,43 +224,46 @@ def shell(
         ignore_errors: If True, continue on errors and return success (default: False).
 
     Returns:
-        Dict containing:
-        - status: "success" or "error"
-        - content: List of text blocks with command results
+        Dict with status and content blocks.
 
     Example:
         >>> shell("ls -la")
         >>> shell(["git status", "git diff"], work_dir="/repo")
-        >>> shell("npm test", timeout=300, ignore_errors=True)
     """
-    # Set defaults
-    if timeout is None:
-        timeout = DEFAULT_TIMEOUT
-
-    if work_dir is None:
-        work_dir = str(Path.cwd())
-
-    # Normalize command to list
+    timeout = timeout or DEFAULT_TIMEOUT
+    work_dir = work_dir or str(Path.cwd())
     commands = [command] if isinstance(command, str) else command
 
-    # Execute commands
-    results = []
+    results: list[CommandResult] = []
     for cmd in commands:
-        result = _execute_single_command(cmd, work_dir, timeout)
-        results.append(result)
+        violation = _validate_command(cmd)
+        if violation:
+            logger.warning(f"Shell command blocked: {violation}")
+            results.append(CommandResult(command=cmd, exit_code=-1, stdout="", stderr=violation))
+            if not ignore_errors:
+                break
+            continue
 
-        # Stop on error unless ignore_errors is set
+        result = _execute(cmd, work_dir, timeout)
+        results.append(result)
         if not result.success and not ignore_errors:
             break
 
-    # Format response
-    response = _format_results(results)
+    # Build response
+    success_count = sum(1 for r in results if r.success)
+    content = [
+        {
+            "text": f"Execution Summary:\nTotal commands: {len(results)}\n"
+            f"Successful: {success_count}\nFailed: {len(results) - success_count}",
+        },
+    ]
+    for r in results:
+        parts = [f"Command: {r.command}", f"Status: {r.status}", f"Exit Code: {r.exit_code}"]
+        if r.stdout:
+            parts.append(f"Output:\n{r.stdout}")
+        if r.stderr:
+            parts.append(f"Error:\n{r.stderr}")
+        content.append({"text": "\n".join(parts)})
 
-    # Determine overall status
     has_errors = any(not r.success for r in results)
-    if has_errors and not ignore_errors:
-        response["status"] = "error"
-    else:
-        response["status"] = "success"
-
-    return response
+    return {"status": "error" if has_errors and not ignore_errors else "success", "content": content}

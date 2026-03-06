@@ -68,6 +68,7 @@ def run_command(
     cwd: str | None = None,
     timeout: int = 120,
     max_output: int = 100_000,
+    input_data: str | None = None,
 ) -> CommandResult:
     """Run shell command with bounds.
 
@@ -79,6 +80,7 @@ def run_command(
         cwd: Working directory.
         timeout: Maximum execution time in seconds.
         max_output: Maximum characters to capture.
+        input_data: Optional string to send to stdin.
 
     Returns:
         Dict with status, stdout, stderr, return_code, and truncated flag.
@@ -93,6 +95,7 @@ def run_command(
             capture_output=True,
             text=True,
             timeout=timeout,
+            input=input_data,
         )
 
         stdout = result.stdout[:max_output]

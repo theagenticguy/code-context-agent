@@ -171,7 +171,7 @@ def _create_context7_provider() -> Any | None:
             lambda: stdio_client(
                 StdioServerParameters(
                     command="npx",
-                    args=["-y", "@upstash/context7-mcp@latest"],
+                    args=["-y", "@upstash/context7-mcp@1"],
                 ),
             ),
             prefix="context7",

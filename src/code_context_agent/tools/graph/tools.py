@@ -5,7 +5,6 @@ that can be used by AI agents for codebase understanding.
 """
 
 import json
-from pathlib import Path
 from typing import Any
 
 from strands import tool
@@ -1156,8 +1155,13 @@ def code_graph_save(
         return _json_response({"status": "error", "message": f"Graph not found: {graph_id}"})
 
     try:
+        from ..validation import ValidationError, validate_file_path
+
+        try:
+            path = validate_file_path(file_path, must_exist=False)
+        except ValidationError as e:
+            return _json_response({"status": "error", "message": str(e)})
         data = graph.to_node_link_data()
-        path = Path(file_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(data, indent=2, default=str))
     except (OSError, ValueError, TypeError) as e:
@@ -1232,7 +1236,12 @@ def code_graph_load(
     # No need to re-run lsp_* or astgrep_* tools!
     """
     try:
-        path = Path(file_path)
+        from ..validation import ValidationError, validate_file_path
+
+        try:
+            path = validate_file_path(file_path)
+        except ValidationError as e:
+            return _json_response({"status": "error", "message": str(e)})
         data = json.loads(path.read_text())
         graph = CodeGraph.from_node_link_data(data)
         _graphs[graph_id] = graph

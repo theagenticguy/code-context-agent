@@ -16,6 +16,7 @@ from strands import tool
 
 from ..config import DEFAULT_OUTPUT_DIR
 from .shell import run_command
+from .validation import ValidationError, validate_file_path, validate_repo_path, validate_search_pattern
 
 
 @tool
@@ -50,7 +51,10 @@ def create_file_manifest(repo_path: str) -> str:
     Example success:
         {"status": "success", "manifest_path": "/repo/.code-context/files.all.txt", "file_count": 847}
     """
-    repo = Path(repo_path).resolve()
+    try:
+        repo = validate_repo_path(repo_path)
+    except ValidationError as e:
+        return json.dumps({"status": "error", "error": str(e)})
     agent_dir = repo / DEFAULT_OUTPUT_DIR
     agent_dir.mkdir(exist_ok=True)
     manifest_path = agent_dir / "files.all.txt"
@@ -132,7 +136,10 @@ def repomix_orientation(
     Example skipped:
         {"status": "skipped", "reason": "Repository has 15000 files (max: 10000)"}
     """
-    repo = Path(repo_path).resolve()
+    try:
+        repo = validate_repo_path(repo_path)
+    except ValidationError as e:
+        return json.dumps({"status": "error", "error": str(e)})
     agent_dir = repo / DEFAULT_OUTPUT_DIR
     agent_dir.mkdir(exist_ok=True)
     output_path = agent_dir / "CONTEXT.orientation.md"
@@ -194,7 +201,7 @@ def repomix_orientation(
 
 
 @tool
-def repomix_bundle(
+def repomix_bundle(  # noqa: C901
     file_list_path: str,
     output_path: str,
     compress: bool = True,
@@ -250,8 +257,14 @@ def repomix_bundle(
         ...     include_logs_count=20,
         ... )
     """
-    file_list = Path(file_list_path).resolve()
-    output = Path(output_path).resolve()
+    try:
+        file_list = validate_file_path(file_list_path)
+    except ValidationError as e:
+        return json.dumps({"status": "error", "error": str(e)})
+    try:
+        output = validate_file_path(output_path, must_exist=False)
+    except ValidationError as e:
+        return json.dumps({"status": "error", "error": str(e)})
 
     if not file_list.exists():
         return json.dumps(
@@ -278,13 +291,11 @@ def repomix_bundle(
     if remove_comments:
         repomix_parts.append("--remove-comments")
 
-    repomix_args = " ".join(repomix_parts)
+    # Read file list content and pipe via stdin (no shell)
+    file_list_content = file_list.read_text()
+    cmd = ["repomix", *repomix_parts, "-o", str(output)]
 
-    # Use sh -c for shell pipe - build command with shlex.quote for safety
-    shell_cmd = f"cat {shlex.quote(str(file_list))} | repomix {repomix_args} -o {shlex.quote(str(output))}"
-    cmd = ["sh", "-c", shell_cmd]
-
-    result = run_command(cmd, timeout=300)
+    result = run_command(cmd, timeout=300, input_data=file_list_content)
 
     if result["status"] != "success":
         return json.dumps(
@@ -371,16 +382,14 @@ def repomix_bundle_with_context(
         ...     include_logs_count=20,
         ... )
     """
-    repo = Path(repo_path).resolve()
-    output = Path(output_path).resolve()
-
-    if not repo.is_dir():
-        return json.dumps(
-            {
-                "status": "error",
-                "error": f"Repository path not found: {repo}",
-            },
-        )
+    try:
+        repo = validate_repo_path(repo_path)
+    except ValidationError as e:
+        return json.dumps({"status": "error", "error": str(e)})
+    try:
+        output = validate_file_path(output_path, must_exist=False)
+    except ValidationError as e:
+        return json.dumps({"status": "error", "error": str(e)})
 
     # Build repomix command
     cmd_parts = [
@@ -472,18 +481,13 @@ def repomix_json_export(repo_path: str, include_patterns: str | None = None) -> 
     Example:
         >>> result = repomix_json_export("/repo", include_patterns="src/**/*.py,tests/**/*.py")
     """
-    repo = Path(repo_path).resolve()
+    try:
+        repo = validate_repo_path(repo_path)
+    except ValidationError as e:
+        return json.dumps({"status": "error", "error": str(e)})
     agent_dir = repo / DEFAULT_OUTPUT_DIR
     agent_dir.mkdir(exist_ok=True)
     output_path = agent_dir / "structure.json"
-
-    if not repo.is_dir():
-        return json.dumps(
-            {
-                "status": "error",
-                "error": f"Repository path not found: {repo}",
-            },
-        )
 
     # Build repomix command for JSON export
     cmd_parts = [
@@ -586,7 +590,10 @@ def repomix_compressed_signatures(
         >>> result = repomix_compressed_signatures("/repo", include_patterns="src/**/*.py")
         >>> result = repomix_compressed_signatures("/repo")  # All files
     """
-    repo = Path(repo_path).resolve()
+    try:
+        repo = validate_repo_path(repo_path)
+    except ValidationError as e:
+        return json.dumps({"status": "error", "error": str(e)})
     agent_dir = repo / DEFAULT_OUTPUT_DIR
     agent_dir.mkdir(exist_ok=True)
 
@@ -594,14 +601,6 @@ def repomix_compressed_signatures(
         output = agent_dir / "CONTEXT.signatures.md"
     else:
         output = Path(output_path).resolve()
-
-    if not repo.is_dir():
-        return json.dumps(
-            {
-                "status": "error",
-                "error": f"Repository path not found: {repo}",
-            },
-        )
 
     # Build repomix command for compressed signatures
     cmd_parts = [
@@ -690,7 +689,14 @@ def repomix_split_bundle(
     Example:
         >>> result = repomix_split_bundle(".code-context/files.all.txt", ".code-context/splits/", max_size="1mb")
     """
-    file_list = Path(file_list_path).resolve()
+    try:
+        file_list = validate_file_path(file_list_path)
+    except ValidationError as e:
+        return json.dumps({"status": "error", "error": str(e)})
+    try:
+        validate_file_path(output_dir, must_exist=False)
+    except ValidationError:
+        pass  # output_dir is a directory, not a file — just validate traversal
     out_dir = Path(output_dir).resolve()
 
     if not file_list.exists():
@@ -720,13 +726,11 @@ def repomix_split_bundle(
     if compress:
         repomix_parts.append("--compress")
 
-    repomix_args = " ".join(repomix_parts)
+    # Read file list content and pipe via stdin (no shell)
+    file_list_content = file_list.read_text()
+    cmd = ["repomix", *repomix_parts, "-o", str(base_output)]
 
-    # Use sh -c for shell pipe
-    shell_cmd = f"cat {shlex.quote(str(file_list))} | repomix {repomix_args} -o {shlex.quote(str(base_output))}"
-    cmd = ["sh", "-c", shell_cmd]
-
-    result = run_command(cmd, timeout=300)
+    result = run_command(cmd, timeout=300, input_data=file_list_content)
 
     if result["status"] != "success":
         return json.dumps(
@@ -884,7 +888,14 @@ def rg_search(  # noqa: C901
         >>> rg_search("createServer", "/repo", file_type="ts")  # TS server setup
         >>> rg_search("TODO|FIXME", "/repo", count_only=True)  # Exact count across repo
     """
-    repo = Path(repo_path).resolve()
+    try:
+        repo = validate_repo_path(repo_path)
+    except ValidationError as e:
+        return json.dumps({"status": "error", "error": str(e)})
+    try:
+        validate_search_pattern(pattern)
+    except ValidationError as e:
+        return json.dumps({"status": "error", "error": str(e)})
 
     if count_only:
         return _rg_count(pattern, repo, glob=glob, file_type=file_type)
@@ -982,7 +993,10 @@ def write_file_list(file_paths: list[str], output_path: str) -> str:
     Example:
         >>> result = write_file_list(["src/main.ts", "src/utils.ts"], ".code-context/files.targeted.txt")
     """
-    output = Path(output_path).resolve()
+    try:
+        output = validate_file_path(output_path, must_exist=False)
+    except ValidationError as e:
+        return json.dumps({"status": "error", "error": str(e)})
     output.parent.mkdir(parents=True, exist_ok=True)
 
     # Deduplicate and sort
@@ -1043,7 +1057,10 @@ def read_file_bounded(file_path: str, max_lines: int = 500, start_line: int = 1)
     Example pagination (reading lines 500-1000):
         >>> read_file_bounded("/repo/large_file.py", max_lines=500, start_line=500)
     """
-    path = Path(file_path).resolve()
+    try:
+        path = validate_file_path(file_path)
+    except ValidationError as e:
+        return json.dumps({"status": "error", "error": str(e)})
 
     if not path.exists():
         return json.dumps(

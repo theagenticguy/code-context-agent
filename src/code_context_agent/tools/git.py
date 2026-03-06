@@ -24,6 +24,7 @@ from loguru import logger
 from strands import tool
 
 from .shell import ToolResult, run_command
+from .validation import ValidationError, validate_repo_path
 
 
 @tool
@@ -69,7 +70,10 @@ def git_files_changed_together(
         - Medium coupling (20-50%): Normal feature-level coupling
         - Low coupling (<20%): Incidental changes, less significant
     """
-    repo = Path(repo_path).resolve()
+    try:
+        repo = validate_repo_path(repo_path)
+    except ValidationError as e:
+        return ToolResult.error(str(e)).to_json()
 
     # Normalize file path to be relative to repo
     if Path(file_path).is_absolute():
@@ -179,7 +183,10 @@ def git_file_history(
          "commits": [{"hash": "abc123", "author": "dev@example.com",
                       "date": "2024-01-15", "message": "Fix auth bug"}]}
     """
-    repo = Path(repo_path).resolve()
+    try:
+        repo = validate_repo_path(repo_path)
+    except ValidationError as e:
+        return ToolResult.error(str(e)).to_json()
 
     # Normalize file path
     if Path(file_path).is_absolute():
@@ -261,7 +268,10 @@ def git_recent_commits(
                       "date": "2024-01-15", "message": "Add feature X",
                       "files_changed": 5}]}
     """
-    repo = Path(repo_path).resolve()
+    try:
+        repo = validate_repo_path(repo_path)
+    except ValidationError as e:
+        return ToolResult.error(str(e)).to_json()
 
     cmd = [
         "git",
@@ -355,7 +365,10 @@ def git_diff_file(
         {"status": "success", "file_path": "src/main.py",
          "commit": "abc123", "diff": "@@ -10,5 +10,7 @@..."}
     """
-    repo = Path(repo_path).resolve()
+    try:
+        repo = validate_repo_path(repo_path)
+    except ValidationError as e:
+        return ToolResult.error(str(e)).to_json()
 
     # Normalize file path
     if Path(file_path).is_absolute():
@@ -477,7 +490,10 @@ def git_blame_summary(
          "authors": [{"email": "dev@example.com", "lines": 100, "percentage": 66.7,
                       "last_commit_date": "2024-01-15"}]}
     """
-    repo = Path(repo_path).resolve()
+    try:
+        repo = validate_repo_path(repo_path)
+    except ValidationError as e:
+        return ToolResult.error(str(e)).to_json()
 
     # Normalize file path
     if Path(file_path).is_absolute():
@@ -572,7 +588,10 @@ def git_hotspots(
         - High commit files may need: better tests, refactoring, or documentation
         - Stable files (few commits) are often mature/well-designed
     """
-    repo = Path(repo_path).resolve()
+    try:
+        repo = validate_repo_path(repo_path)
+    except ValidationError as e:
+        return ToolResult.error(str(e)).to_json()
 
     cmd = ["git", "log", f"-n{limit}", "--pretty=format:", "--name-only"]
     if since:
@@ -652,7 +671,10 @@ def git_contributors(
              "first_commit": "2023-06-01", "last_commit": "2024-01-15"}
         ], "total_commits": 100}
     """
-    repo = Path(repo_path).resolve()
+    try:
+        repo = validate_repo_path(repo_path)
+    except ValidationError as e:
+        return ToolResult.error(str(e)).to_json()
 
     cmd = [
         "git",

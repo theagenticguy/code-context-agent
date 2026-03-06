@@ -56,6 +56,7 @@ from .validation import (
     ValidationError,
     validate_file_path,
     validate_glob_pattern,
+    validate_path_within_repo,
     validate_repo_path,
     validate_search_pattern,
 )
@@ -113,5 +114,6 @@ __all__ = [
     "validate_repo_path",
     "validate_file_path",
     "validate_glob_pattern",
+    "validate_path_within_repo",
     "validate_search_pattern",
 ]

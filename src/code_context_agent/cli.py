@@ -267,7 +267,11 @@ def viz(  # noqa: C901, PLR0915
             """Route /data/ requests to the agent output directory."""
             if path.startswith("/data/"):
                 relative = path[6:]  # strip /data/
-                return str(agent_dir / relative)
+                resolved = (agent_dir / relative).resolve()
+                # Prevent path traversal outside agent_dir
+                if not str(resolved).startswith(str(agent_dir)):
+                    return str(agent_dir / "404")
+                return str(resolved)
             return super().translate_path(path)
 
         def log_message(self, format, *args):
@@ -284,7 +288,7 @@ def viz(  # noqa: C901, PLR0915
     if not no_open:
         threading.Timer(0.5, lambda: webbrowser.open(url)).start()
 
-    with socketserver.TCPServer(("", port), VizHandler) as httpd:
+    with socketserver.TCPServer(("127.0.0.1", port), VizHandler) as httpd:
         httpd.allow_reuse_address = True
         try:
             httpd.serve_forever()
@@ -419,6 +423,7 @@ def _build_since_context(repo_path: Path, since: str, output_dir: Path) -> str |
     Returns:
         XML-wrapped since context string, or None if git diff fails or is empty.
     """
+    import html as _html
     import subprocess
 
     try:
@@ -439,11 +444,12 @@ def _build_since_context(repo_path: Path, since: str, output_dir: Path) -> str |
 
     has_existing_graph = (output_dir / "code_graph.json").exists()
     has_existing_context = (output_dir / "CONTEXT.md").exists()
+    safe_since = _html.escape(since)
     file_list = "\n".join(f"- {f}" for f in changed_files)
 
     return (
         f"<since_context>\n"
-        f"<ref>{since}</ref>\n"
+        f"<ref>{safe_since}</ref>\n"
         f"<changed_file_count>{len(changed_files)}</changed_file_count>\n"
         f"<changed_files>\n{file_list}\n</changed_files>\n"
         f"<has_existing_graph>{has_existing_graph}</has_existing_graph>\n"

@@ -332,6 +332,15 @@ class LspClient:
                         buffer = buffer[header_end + 4 :]
                         continue
 
+                    # Cap at 50MB to prevent memory exhaustion from malicious servers
+                    max_content_length = 50 * 1024 * 1024
+                    if content_length > max_content_length:
+                        logger.error(
+                            f"LSP Content-Length {content_length} exceeds 50MB cap, dropping message",
+                        )
+                        buffer = buffer[header_end + 4 :]
+                        continue
+
                     # Check if we have the full body
                     body_start = header_end + 4
                     body_end = body_start + content_length
