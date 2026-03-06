@@ -18,7 +18,7 @@ jobs:
     container:
       image: ghcr.io/astral-sh/uv:0.9-python3.13-bookworm-slim
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
