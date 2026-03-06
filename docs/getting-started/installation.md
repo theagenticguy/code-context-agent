@@ -36,19 +36,29 @@ Default model: `global.anthropic.claude-opus-4-6-v1` (configurable via `CODE_CON
 
 ---
 
-## Install from Package
+## Install
+
+=== "uv tool (recommended)"
+
+    ```bash
+    uv tool install code-context-agent
+    ```
+
+    This installs the CLI globally and makes the `code-context-agent` command available.
+
+=== "Development setup"
+
+    ```bash
+    git clone https://github.com/theagenticguy/code-context-agent.git
+    cd code-context-agent
+    uv sync --all-groups
+    uv run code-context-agent
+    ```
+
+    This installs all dependency groups including dev tools (ruff, pytest, commitizen) and security tools (bandit, semgrep).
+
+## Verify Installation
 
 ```bash
-uv tool install code-context-agent
+code-context-agent --help
 ```
-
-## Development Setup
-
-```bash
-git clone <repository-url>
-cd code-context-agent
-uv sync --all-groups
-uv run code-context-agent
-```
-
-This installs all dependency groups including dev tools (ruff, pytest, commitizen) and security tools (bandit, pip-audit).

@@ -1,7 +1,9 @@
 site_name: code-context-agent
-site_url: https://lalsaado.gitlab.aws.dev/code-context-agent
+site_url: https://theagenticguy.github.io/code-context-agent
 site_description: AI-powered CLI tool for automated codebase analysis and context generation
-copyright: Copyright 2026 AGS Tech AI Engineering
+copyright: Copyright 2025 Laith Al-Saadoon. Apache 2.0 License.
+repo_url: https://github.com/theagenticguy/code-context-agent
+repo_name: theagenticguy/code-context-agent
 docs_dir: docs
 site_dir: site
 use_directory_urls: true
@@ -10,20 +12,23 @@ theme:
   name: material
   language: en
   font:
-    text: Roboto
-    code: Roboto Mono
+    text: Inter
+    code: JetBrains Mono
+  icon:
+    logo: material/brain
+    repo: fontawesome/brands/github
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: indigo
-      accent: indigo
+      primary: blue grey
+      accent: teal
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: indigo
-      accent: indigo
+      primary: blue grey
+      accent: teal
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
@@ -31,7 +36,10 @@ theme:
     - announce.dismiss
     - content.code.annotate
     - content.code.copy
+    - content.code.select
     - content.tabs.link
+    - content.tooltips
+    - header.autohide
     - navigation.instant
     - navigation.instant.prefetch
     - navigation.tabs
@@ -40,9 +48,18 @@ theme:
     - navigation.tracking
     - navigation.footer
     - navigation.indexes
+    - navigation.path
     - search.highlight
     - search.suggest
     - toc.follow
+
+extra_css:
+  - stylesheets/extra.css
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/theagenticguy/code-context-agent
 
 plugins:
   - search:
@@ -80,6 +97,32 @@ plugins:
       minify_html: true
       minify_js: true
       minify_css: true
+  - llmstxt:
+      full_output: llms-full.txt
+      sections:
+        Getting Started:
+          - getting-started/installation.md
+          - getting-started/configuration.md
+          - getting-started/quickstart.md
+        Architecture:
+          - architecture/overview.md
+          - architecture/tenets.md
+        Tools:
+          - tools/overview.md
+          - tools/discovery.md
+          - tools/lsp.md
+          - tools/ast.md
+          - tools/graph.md
+          - tools/git.md
+          - tools/shell.md
+          - tools/clones.md
+          - tools/mcp.md
+        Security:
+          - security/overview.md
+        Development:
+          - development/guide.md
+          - development/testing.md
+          - development/code-style.md
 
 markdown_extensions:
   - abbr
@@ -138,8 +181,13 @@ nav:
       - AST Patterns: tools/ast.md
       - Graph Analysis: tools/graph.md
       - Git History: tools/git.md
+      - Shell: tools/shell.md
+      - Clone Detection: tools/clones.md
+      - MCP Server: tools/mcp.md
+  - Security:
+      - Overview: security/overview.md
   - Code Reference: reference/
   - Development:
-      - Developer Guide: development/guide.md
+      - Contributing: development/guide.md
       - Testing: development/testing.md
       - Code Style: development/code-style.md

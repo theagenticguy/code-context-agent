@@ -15,6 +15,12 @@ code-context-agent analyze . --focus "authentication system"
 # Custom output directory
 code-context-agent analyze . --output-dir ./analysis
 
+# Only analyze changes since a date or ref
+code-context-agent analyze . --since "2025-01-01"
+
+# JSON output format (for programmatic consumption)
+code-context-agent analyze . --output-format json
+
 # Quiet mode (suppress Rich TUI)
 code-context-agent analyze . --quiet
 
@@ -26,16 +32,16 @@ The agent automatically determines analysis depth based on repository size and c
 
 ## What Happens During Analysis
 
-1. **File manifest** --- The agent creates a complete inventory of the repository using ripgrep
-2. **Orientation** --- repomix generates a token distribution tree showing project structure
-3. **Signal gathering** --- Multiple tools run in parallel:
+1. **File manifest** -- The agent creates a complete inventory of the repository using ripgrep
+2. **Orientation** -- repomix generates a token distribution tree showing project structure
+3. **Signal gathering** -- Multiple tools run in parallel:
     - LSP: semantic analysis (definitions, references, symbols)
     - ast-grep: structural pattern matching against rule packs
     - Git: hotspots, coupling, churn, blame analysis
     - Graph: NetworkX dependency graph with centrality/PageRank metrics
-4. **Ranking** --- Files are scored across all signal layers
-5. **Bundling** --- Top-ranked files are bundled with Tree-sitter compression
-6. **Output** --- Structured `AnalysisResult` written as narrated markdown to `.code-context/`
+4. **Ranking** -- Files are scored across all signal layers
+5. **Bundling** -- Top-ranked files are bundled with Tree-sitter compression
+6. **Output** -- Structured `AnalysisResult` written as narrated markdown to `.code-context/`
 
 ## Output Files
 
@@ -61,18 +67,24 @@ The `.code-context/` directory is designed for consumption by AI coding assistan
 cat .code-context/CONTEXT.md | your-ai-assistant
 ```
 
-The narrated context includes architecture diagrams, ranked file tables, risk assessments, and business logic summaries --- all formatted for machine parsing (tables over prose, typed schemas, bounded diagrams).
+The narrated context includes architecture diagrams, ranked file tables, risk assessments, and business logic summaries -- all formatted for machine parsing (tables over prose, typed schemas, bounded diagrams).
 
 ## MCP Server
 
 After analysis, you can expose the results to coding agents via MCP:
 
-```bash
-# Start MCP server (stdio for Claude Desktop/Code)
-code-context-agent serve
+=== "stdio (Claude Code / Claude Desktop)"
 
-# Start MCP server (HTTP for networked access)
-code-context-agent serve --transport http --port 8000
-```
+    ```bash
+    code-context-agent serve
+    ```
 
-The MCP server provides tools for querying the code graph (`query_code_graph`), progressive exploration (`explore_code_graph`), and kicking off new analyses (`start_analysis`). It also exposes the analysis artifacts as MCP resources.
+=== "HTTP (networked access)"
+
+    ```bash
+    code-context-agent serve --transport http --port 8000
+    ```
+
+The MCP server provides tools for querying the code graph (`query_code_graph`), progressive exploration (`explore_code_graph`), graph statistics (`get_graph_stats`), and kicking off new analyses (`start_analysis`). It also exposes the analysis artifacts as MCP resources.
+
+See the [MCP Server documentation](../tools/mcp.md) for full details and client configuration.

@@ -1,0 +1,39 @@
+/* Subtle header refinement */
+.md-header {
+  backdrop-filter: blur(8px);
+}
+
+/* Code block refinement */
+.highlight code {
+  font-size: 0.82rem;
+  letter-spacing: -0.01em;
+}
+
+/* Admonition refinement — tighter spacing */
+.md-typeset .admonition {
+  font-size: 0.82rem;
+}
+
+/* Table styling — subtle borders */
+.md-typeset table:not([class]) th {
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+}
+
+/* Mermaid diagram container */
+.mermaid {
+  margin: 1.5rem 0;
+}
+
+/* Status badges in content */
+.md-typeset .status-badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 2rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}

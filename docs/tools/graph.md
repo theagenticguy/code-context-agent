@@ -30,7 +30,7 @@ Detects community structure using Louvain or Leiden community detection algorith
 
 #### Triangles
 
-Finds tightly coupled triads --- sets of three files where each depends on the other two. Triangles indicate strong coupling that may represent either cohesive modules or problematic circular dependencies.
+Finds tightly coupled triads -- sets of three files where each depends on the other two. Triangles indicate strong coupling that may represent either cohesive modules or problematic circular dependencies.
 
 #### Coupling
 
@@ -43,6 +43,26 @@ Interactive exploration of the graph. Allows querying neighbors, paths, and subg
 ### `code_graph_export`
 
 Exports the graph to `code_graph.json` for persistence and downstream consumption. The exported format includes node metrics, edges, and community assignments.
+
+### `code_graph_save`
+
+Persists the complete code graph to disk for reuse in future sessions. Saves all nodes with metadata (file paths, line numbers, categories) and all edges with types (calls, references, imports, inherits). Saved graphs can be reloaded with `code_graph_load`, avoiding the need to re-run LSP and ast-grep tools.
+
+### `code_graph_load`
+
+Loads a previously saved code graph from disk. Restores all nodes, edges, and metadata, making the graph immediately available for analysis and exploration. Loading replaces any existing graph with the same ID.
+
+### `code_graph_stats`
+
+Returns summary statistics about a code graph: total node and edge counts broken down by type. Useful for verifying that graph ingestion worked correctly (e.g., checking that LSP produced function/class nodes, ast-grep produced pattern_match nodes).
+
+### `code_graph_ingest_git`
+
+Adds git history data to the code graph. Supports three result types:
+
+- **`hotspots`** -- from `git_hotspots`. Creates or updates FILE nodes with churn metadata.
+- **`cochanges`** -- from `git_files_changed_together`. Creates COCHANGES edges between co-changing files, filtered by a configurable `min_percentage` threshold.
+- **`contributors`** -- from `git_contributors` or `git_blame_summary`. Attaches ownership metadata to FILE nodes.
 
 ## How Graph Metrics Drive Ranking
 

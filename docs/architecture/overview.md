@@ -46,9 +46,12 @@ src/code_context_agent/
 │   └── server.py       # MCP tools, resources, and server definition
 ├── consumer/           # Event display (Rich TUI)
 ├── tools/              # Analysis tools (40+)
-│   ├── discovery.py    # ripgrep, repomix (6 tools)
+│   ├── discovery.py    # ripgrep, repomix (9 tools)
 │   ├── astgrep.py      # ast-grep (3 tools)
 │   ├── git.py          # git history (7 tools)
+│   ├── shell_tool.py   # Shell with security hardening
+│   ├── clones.py       # Clone detection via jscpd
+│   ├── validation.py   # Input validation (path traversal, injection prevention)
 │   ├── lsp/            # LSP integration (8 tools)
 │   └── graph/          # NetworkX analysis (12 tools)
 └── rules/              # ast-grep rule packs
@@ -69,9 +72,9 @@ The agent uses [Strands Agents SDK](https://github.com/strands-agents/sdk-python
 
 The system prompt is composed from modular Jinja2 templates:
 
-- **`system.md.j2`** --- Unified entry point that includes all partials
-- **`partials/`** --- Composable sections (rules, business logic, output format, tool-specific guidance)
-- **`steering/`** --- Quality fragments (size limits, conciseness, anti-patterns, tool efficiency)
+- **`system.md.j2`** -- Unified entry point that includes all partials
+- **`partials/`** -- Composable sections (rules, business logic, output format, tool-specific guidance)
+- **`steering/`** -- Quality fragments (size limits, conciseness, anti-patterns, tool efficiency)
 
 This allows the prompt to adapt based on detected codebase characteristics without maintaining multiple monolithic prompts.
 
@@ -79,20 +82,20 @@ This allows the prompt to adapt based on detected codebase characteristics witho
 
 The analysis combines five distinct signal sources, following [Tenet 2: Layer signals, read less](tenets.md#2-layer-signals-read-less):
 
-1. **Static structure** (AST/types) --- ast-grep patterns, LSP symbols
-2. **Dynamic relationships** (call graphs) --- LSP references, definitions
-3. **Temporal evolution** (git history) --- churn, coupling, blame
-4. **Compressed abstractions** (signatures) --- Tree-sitter compression via repomix
-5. **Human intent** (naming, commits) --- commit messages, file naming patterns
+1. **Static structure** (AST/types) -- ast-grep patterns, LSP symbols
+2. **Dynamic relationships** (call graphs) -- LSP references, definitions
+3. **Temporal evolution** (git history) -- churn, coupling, blame
+4. **Compressed abstractions** (signatures) -- Tree-sitter compression via repomix
+5. **Human intent** (naming, commits) -- commit messages, file naming patterns
 
 ### Graph-First Ranking
 
 Files are ranked by graph metrics rather than heuristics, following [Tenet 1: Measure, don't guess](tenets.md#1-measure-dont-guess):
 
-- **Betweenness centrality** --- identifies bridge/bottleneck files
-- **PageRank/TrustRank** --- identifies foundational modules
-- **Louvain/Leiden communities** --- detects module boundaries
-- **Triangle detection** --- finds tightly coupled triads
+- **Betweenness centrality** -- identifies bridge/bottleneck files
+- **PageRank/TrustRank** -- identifies foundational modules
+- **Louvain/Leiden communities** -- detects module boundaries
+- **Triangle detection** -- finds tightly coupled triads
 
 ### Structured Output
 
@@ -106,8 +109,21 @@ The `mcp/` package exposes the core differentiators via the [Model Context Proto
 - **Resources**: Read-only access to analysis artifacts via `analysis://` URI templates
 - **Transport**: stdio (default, for local MCP clients) or HTTP (for networked access)
 
-Commodity tools (ripgrep, LSP, git, ast-grep) are intentionally not exposed — they're already available in every coding agent's MCP marketplace.
+Commodity tools (ripgrep, LSP, git, ast-grep) are intentionally not exposed -- they are already available in every coding agent's MCP marketplace.
 
 ### context7 MCP Integration
 
 The analysis agent loads [context7](https://context7.com) documentation tools via `strands.tools.mcp.MCPClient`, enabling library documentation lookup during analysis. This is controlled by `CODE_CONTEXT_CONTEXT7_ENABLED` (default: true) and requires `npx`.
+
+---
+
+## Security Model
+
+The agent operates within a defense-in-depth security boundary:
+
+- **Shell allowlist** -- Only a curated set of read-only programs can execute via the `shell` tool. Write operations, network commands, and shell operators are blocked.
+- **Input validation** -- All tool inputs (paths, patterns, globs) pass through validation functions that prevent path traversal and command injection.
+- **Path containment** -- File operations are validated to stay within the repository root.
+- **Git read-only** -- Git subcommands are restricted to read-only operations (log, diff, blame, status, etc.).
+
+See the [Security documentation](../security/overview.md) for full details on the security model and CI pipeline.

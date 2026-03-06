@@ -1,9 +1,9 @@
-# Developer Guide
+# Contributing
 
 ## Setup
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/theagenticguy/code-context-agent.git
 cd code-context-agent
 uv sync --all-groups
 ```
@@ -18,18 +18,18 @@ uv sync --all-groups
 | Format | `uvx ruff format src/` |
 | Type check | `uvx ty check src/` |
 | Test | `uv run pytest` |
+| All checks | `mise run check` |
 | Commit (conventional) | `uv run cz commit` |
 | Bump version | `uv run cz bump` |
 | Security scan | `uv run bandit -r src/` |
-| Audit deps | `uv run pip-audit` |
 
 ## Dependency Groups
 
 | Group | Purpose | Install |
 |-------|---------|---------|
 | (default) | Runtime dependencies | `uv sync` |
-| `dev` | Dev tools (ruff, pytest, commitizen) | `uv sync --group dev` |
-| `security` | Security tools (bandit, pip-audit) | `uv sync --group security` |
+| `dev` | Dev tools (ruff, pytest, commitizen, lefthook) | `uv sync --group dev` |
+| `security` | Security tools (bandit, semgrep) | `uv sync --group security` |
 | `docs` | Documentation (mkdocs-material) | `uv sync --group docs` |
 | All groups | Everything | `uv sync --all-groups` |
 
@@ -73,6 +73,12 @@ Commitizen updates version in two locations:
 ## Pre-commit Checks
 
 Run all checks before committing:
+
+```bash
+mise run check
+```
+
+Or individually:
 
 ```bash
 uvx ruff check src/ && \

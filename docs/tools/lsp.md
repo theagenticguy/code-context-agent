@@ -4,23 +4,37 @@ The Language Server Protocol (LSP) integration provides semantic analysis capabi
 
 ## Supported Languages
 
-| Language | Server | Installation |
-|----------|--------|--------------|
-| Python | ty | `uv tool install ty` |
-| TypeScript/JavaScript | typescript-language-server | `npm install -g typescript-language-server` |
-| Rust | rust-analyzer | `rustup component add rust-analyzer` |
-| Go | gopls | `go install golang.org/x/tools/gopls@latest` |
-| Java | jdtls | Eclipse JDT Language Server |
+| Language | Server(s) | Installation |
+|----------|-----------|--------------|
+| Python | `ty server`, `pyright-langserver --stdio` | `uv tool install ty` |
+| TypeScript/JavaScript | `typescript-language-server --stdio` | `npm install -g typescript-language-server` |
+| Rust | `rust-analyzer` | `rustup component add rust-analyzer` |
+| Go | `gopls serve` | `go install golang.org/x/tools/gopls@latest` |
+| Java | `jdtls` | Eclipse JDT Language Server |
 
 Server configuration is managed via the `CODE_CONTEXT_LSP_SERVERS` environment variable. See [Configuration](../getting-started/configuration.md#lsp-server-registry).
 
 ## LSP Fallback Chain
 
-When the primary LSP server for a language fails to start, the agent attempts a fallback chain before giving up:
+Each language maps to an **ordered list** of server commands. When the primary server fails to start, the agent automatically tries the next server in the chain:
 
-1. **Primary server** --- The configured server for the language
-2. **Alternative server** --- A secondary option if available
-3. **Graceful degradation** --- Reports the failure and compensates with AST and search tools
+```json
+{
+  "py": ["ty server", "pyright-langserver --stdio"],
+  "ts": ["typescript-language-server --stdio"],
+  "rust": ["rust-analyzer"],
+  "go": ["gopls serve"],
+  "java": ["jdtls"]
+}
+```
+
+For Python, the chain is:
+
+1. `ty server` (primary -- fast Rust-based type checker)
+2. `pyright-langserver --stdio` (fallback -- Microsoft's Python LSP)
+3. Graceful degradation -- reports the failure and compensates with AST and search tools
+
+This fallback mechanism is implemented in `_try_fallback_session()` in `tools/lsp/tools.py`.
 
 ## Tools
 
@@ -51,3 +65,7 @@ Searches for symbols across the entire workspace by name pattern. Useful for fin
 ### `lsp_diagnostics`
 
 Retrieves diagnostic information (errors, warnings) for a file. Surfaces type errors, unresolved references, and other issues.
+
+### `lsp_shutdown`
+
+Shuts down an LSP server session to free resources. Sessions are automatically cleaned up when the agent finishes, but explicit shutdown is more efficient during long analysis runs.

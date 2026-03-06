@@ -18,6 +18,15 @@ Generates a token distribution tree showing project structure with token counts 
 
 Bundles selected files into a single markdown document using repomix with Tree-sitter compression. The output preserves file boundaries and includes metadata.
 
+### `repomix_bundle_with_context`
+
+Bundles repository files with git context (diffs and commit logs) in a single call. Unlike `repomix_bundle` which reads from a file list, this tool operates directly on a repo path with optional glob patterns.
+
+- Always includes git context (working tree diffs and/or recent commit history)
+- Supports `include_patterns` for scoping (e.g., `"src/**/*.py,tests/**/*.py"`)
+- Configurable `include_logs_count` for number of recent commits
+- Optional Tree-sitter compression and base64 truncation
+
 ### `repomix_compressed_signatures`
 
 Extracts signatures and type information only, stripping function bodies via Tree-sitter. This provides the API surface of a codebase at a fraction of the token cost ([Tenet 3](../architecture/tenets.md#3-compress-aggressively-expand-selectively)).
@@ -30,14 +39,24 @@ Splits large bundles into multiple chunks that fit within token budgets. Used fo
 
 Exports bundle data as structured JSON for programmatic consumption by downstream tools.
 
+### `write_file_list`
+
+Writes a list of file paths to a file for subsequent `repomix_bundle` calls. Used to create the curated file list (e.g., `files.business.txt`) before bundling.
+
+- Deduplicates and sorts paths
+- Creates parent directories automatically
+- Returns the output path and file count
+
 ---
 
 ## Search Tools
 
 ### `rg_search`
 
-Text search using ripgrep with support for regex patterns, file type filtering, and context lines. Used for finding specific patterns, imports, configuration values, and string literals across the codebase.
+Text search using ripgrep with support for regex patterns, file type filtering, glob filtering, and context lines. Supports a `count_only` mode that returns per-file match counts without the actual content.
+
+Used for finding specific patterns, imports, configuration values, and string literals across the codebase.
 
 ### `read_file_bounded`
 
-Reads a specific file with line range bounds. Used sparingly --- only for files that have earned deep reading through high scores across multiple signals.
+Reads a specific file with line range bounds. Used sparingly -- only for files that have earned deep reading through high scores across multiple signals.

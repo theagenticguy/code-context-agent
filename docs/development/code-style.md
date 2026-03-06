@@ -105,16 +105,21 @@ Avoid deprecated `typing` module generics (`List`, `Dict`, `Optional`, `Union`).
 
 ### Bandit
 
-Static security analyzer:
+Static security analyzer for Python:
 
 ```bash
 uv run bandit -r src/
 ```
 
-### pip-audit
+### OSV-Scanner
 
-Dependency vulnerability scanner:
+Dependency vulnerability scanner (replaces pip-audit):
 
 ```bash
-uv run pip-audit
+# Run via CI (osv-scanner-action) or locally:
+osv-scanner --lockfile uv.lock
 ```
+
+### Security CI
+
+The full security pipeline (CodeQL, Semgrep, Bandit, Gitleaks, OSV-Scanner, Trivy, Dependency Review, OpenSSF Scorecard) runs automatically in GitHub Actions on every push and PR. See [Security](../security/overview.md) for details.
