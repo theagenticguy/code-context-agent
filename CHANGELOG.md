@@ -1,3 +1,20 @@
+## v6.1.0 (2026-03-10)
+
+### Feat
+
+- add security hardening, Apache 2.0 license, and comprehensive README
+- add code health analysis tools (clone detection, unused symbols, refactoring candidates)
+- add --output-format json, --since, and fix quiet mode hang
+- add code_graph_ingest_git tool for git-to-graph pipeline
+
+### Fix
+
+- ignore extra env vars from .env files in foreign directories
+- mise
+- **ci**: pin osv-scanner-action to v2.3.3 (no major version tag exists)
+- **ci**: pin osv-scanner to v1, fix scorecard permissions scope
+- **ci**: use setup-uv action instead of container images, pin scorecard version, fix CodeQL permissions
+
 ## v6.0.0 (2026-03-01)
 
 ### Fix
