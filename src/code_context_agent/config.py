@@ -54,6 +54,7 @@ class Settings(BaseSettings):
         env_prefix="CODE_CONTEXT_",
         env_file=".env",
         env_file_encoding="utf-8",
+        extra="ignore",
     )
 
     app_name: str = Field(
