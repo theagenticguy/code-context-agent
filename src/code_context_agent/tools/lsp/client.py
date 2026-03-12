@@ -195,7 +195,7 @@ class LspClient:
             try:
                 await self._reader_task
             except asyncio.CancelledError:
-                pass
+                pass  # expected during cleanup — task was intentionally cancelled
             self._reader_task = None
 
         # Terminate process if running
@@ -651,7 +651,7 @@ class LspClient:
                 try:
                     await self._reader_task
                 except asyncio.CancelledError:
-                    pass
+                    pass  # expected during shutdown — task was intentionally cancelled
 
             # Terminate process
             if self._process:

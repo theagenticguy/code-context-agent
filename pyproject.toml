@@ -151,6 +151,7 @@ include = ["src"]
 exclude_dirs = ["tests", "docs", ".venv", "build", "dist"]
 skips = [
     "B101",  # assert_used — tests use assert, ruff S101 handles per-file
+    "B404",  # import_subprocess — CLI tool that shells out by design
     "B602",  # subprocess shell=True — needed for shell tool execution
     "B603",  # subprocess calls — needed for shell tool execution
     "B607",  # partial executable paths — sh -c pattern is safe

@@ -23,10 +23,12 @@ if os.environ.get("CODE_CONTEXT_OTEL_DISABLED", "true").lower() != "false":
                     return original_detach(self, token)
                 except ValueError:
                     # Suppress "Token was created in a different Context" errors
-                    pass
+                    # that occur in async generators during GeneratorExit
+                    return None
 
             contextvars_context.ContextVarsRuntimeContext.detach = patched_detach  # type: ignore[assignment]
         except ImportError:
+            # opentelemetry not installed — nothing to patch
             pass
 
     _patch_otel_context()

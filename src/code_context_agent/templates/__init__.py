@@ -11,16 +11,17 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from jinja2 import Environment, FileSystemLoader, StrictUndefined
+from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoescape
 
 
 @lru_cache(maxsize=1)
 def _get_environment() -> Environment:
     """Get the configured Jinja2 environment (cached singleton)."""
     template_dir = Path(__file__).parent
-    return Environment(  # nosemgrep  # noqa: S701 -- prompt templates, not web HTML
+    return Environment(
         loader=FileSystemLoader(str(template_dir)),
         undefined=StrictUndefined,
+        autoescape=select_autoescape(enabled_extensions=()),  # no escaping — LLM prompt templates
         trim_blocks=True,
         lstrip_blocks=True,
         keep_trailing_newline=True,
@@ -39,7 +40,7 @@ def render_prompt(template_name: str, **context: Any) -> str:
     """
     env = _get_environment()
     template = env.get_template(template_name)
-    return template.render(**context)  # nosemgrep -- prompt templates, not web HTML
+    return template.render(**context)
 
 
 def render_steering(name: str, **context: Any) -> str:

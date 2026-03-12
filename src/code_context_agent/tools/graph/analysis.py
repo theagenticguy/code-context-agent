@@ -299,7 +299,7 @@ class CodeAnalyzer:
                     if len(triangles) >= top_k:
                         break
         except nx.NetworkXError:
-            pass
+            pass  # graph structure doesn't support triangle detection (e.g. directed)
 
         return triangles
 

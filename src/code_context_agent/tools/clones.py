@@ -153,11 +153,11 @@ def detect_clones(  # noqa: C901
         try:
             first_file = str(Path(first_file).relative_to(repo))
         except ValueError:
-            pass
+            pass  # path is already relative or outside repo — keep as-is
         try:
             second_file = str(Path(second_file).relative_to(repo))
         except ValueError:
-            pass
+            pass  # path is already relative or outside repo — keep as-is
 
         clones.append(
             {

@@ -7,18 +7,19 @@ on:
     branches: [main]
   workflow_dispatch:
 
-permissions:
-  security-events: write
-  contents: read
-  actions: read
+permissions: read-all
 
 jobs:
   semgrep:
     runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+      actions: read
     container:
       image: semgrep/semgrep:latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - name: Semgrep scan
         run: |
           semgrep scan \
@@ -30,16 +31,19 @@ jobs:
             src/
       - name: Upload SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
         with:
           sarif_file: semgrep.sarif
           category: semgrep
 
   bandit:
     runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
     steps:
-      - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: astral-sh/setup-uv@6ee6290f1cbc4156c0bdd66691b2c144ef8df19a # v7
         with:
           enable-cache: true
       - name: Install system dependencies
@@ -50,32 +54,37 @@ jobs:
         run: uv run bandit -c pyproject.toml -r src/ -f sarif -o bandit.sarif --exit-zero
       - name: Upload SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
         with:
           sarif_file: bandit.sarif
           category: bandit
 
   gitleaks:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v2
+      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   osv-scanner:
     runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - name: OSV Scanner
-        uses: google/osv-scanner-action/osv-scanner-action@v2.3.3
+        uses: google/osv-scanner-action/osv-scanner-action@c5996e0193a3df57d695c1b8a1dec2a4c62e8730 # v2.3.3
         with:
           scan-args: --lockfile uv.lock
       - name: Upload SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
         with:
           sarif_file: results.sarif
           category: osv-scanner
@@ -83,10 +92,13 @@ jobs:
 
   trivy:
     runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - name: Trivy scan
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
           scan-type: fs
           severity: HIGH,CRITICAL
@@ -94,16 +106,18 @@ jobs:
           output: trivy.sarif
       - name: Upload SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98 # v4
         with:
           sarif_file: trivy.sarif
           category: trivy
 
   licenses:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: astral-sh/setup-uv@6ee6290f1cbc4156c0bdd66691b2c144ef8df19a # v7
         with:
           enable-cache: true
       - name: Install system dependencies
@@ -118,7 +132,7 @@ jobs:
           uv run --with pip-licenses pip-licenses --format=markdown --output-file=license-report.md
       - name: Upload reports
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
         with:
           name: license-reports
           path: |
@@ -128,14 +142,16 @@ jobs:
 
   sbom:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v6
-      - uses: anchore/sbom-action@v0
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: anchore/sbom-action@57aae528053a48a3f6235f2d9461b05fbcb7366d # v0
         with:
           format: cyclonedx-json
           output-file: sbom.cdx.json
       - name: Upload SBOM
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
         with:
           name: sbom
           path: sbom.cdx.json
