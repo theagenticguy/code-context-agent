@@ -1,0 +1,55 @@
+name: Feature Request
+description: Suggest a new feature or improvement
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem does this solve? What's the current limitation?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How should this work? Be specific about inputs, outputs, and behavior.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the tool would this affect?
+      options:
+        - New tool (Discovery / LSP / Graph / Git / AST)
+        - Agent behavior (prompts, calibration, orchestration)
+        - Output quality (CONTEXT.md, structured output schema)
+        - MCP server (new tools, resources, protocols)
+        - CLI / TUI (commands, flags, display)
+        - Performance / scaling
+        - New language support
+        - Other
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: tenets
+    attributes:
+      label: Tenet alignment
+      description: Which tenets does this feature support?
+      options:
+        - label: "**Measure, don't guess** — uses graph metrics or git signals over heuristics"
+        - label: "**Layer signals, read less** — adds or combines signal sources"
+        - label: "**Compress aggressively** — improves token efficiency of output"
+        - label: "**The model picks the depth** — auto-calibrates without user knobs"
+        - label: "**Machines read it first** — output is structured for AI consumption"
+        - label: "**Fail loud, fill gaps** — surfaces failures and compensates"
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What other approaches did you consider?

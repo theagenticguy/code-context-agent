@@ -1,0 +1,66 @@
+name: Bug Report
+description: Report a bug in code-context-agent
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened? What did you expect instead?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the tool is affected?
+      options:
+        - CLI / TUI output
+        - Analysis quality (missing files, wrong rankings)
+        - Discovery tools (ripgrep, repomix, file manifest)
+        - LSP tools (language server, symbols, references)
+        - Graph tools (code graph, analysis, explorer)
+        - Git tools (hotspots, blame, coupling)
+        - AST tools (ast-grep scanning)
+        - MCP server
+        - Configuration / environment
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps to trigger the bug.
+      placeholder: |
+        1. `code-context-agent analyze /path/to/repo`
+        2. Observe error in ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error output / logs
+      description: Paste relevant terminal output or tracebacks.
+      render: shell
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `code-context-agent --version`
+      placeholder: "6.1.0"
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Python version, relevant tool versions.
+      placeholder: |
+        - OS: Ubuntu 24.04
+        - Python: 3.13.1
+        - rg: 14.1.1
+        - ast-grep: 0.38.0

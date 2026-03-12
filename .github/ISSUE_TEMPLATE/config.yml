@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://theagenticguy.github.io/code-context-agent/
+    about: Check the docs before filing an issue
