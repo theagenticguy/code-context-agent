@@ -108,13 +108,18 @@ def _check_git_readonly(tokens: list[str], start: int) -> str | None:
     return None
 
 
+def _path_under(path: str, directory: str) -> bool:
+    """True if *path* equals or is a child of *directory*."""
+    return Path(path).is_relative_to(directory)
+
+
 def _check_sensitive_paths(tokens: list[str]) -> str | None:
     """Return error if any token targets a sensitive system directory."""
     for token in tokens:
         if token.startswith("/"):
             resolved = str(Path(token).resolve())
             for d in _SENSITIVE_DIRS:
-                if resolved.startswith(d):
+                if _path_under(token, d) or _path_under(resolved, d):
                     return f"Blocked: access to {d} is not allowed"
     return None
 
