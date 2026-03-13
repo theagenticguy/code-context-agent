@@ -40,7 +40,9 @@ def render_prompt(template_name: str, **context: Any) -> str:
     """
     env = _get_environment()
     template = env.get_template(template_name)
+    # fmt: off
     return template.render(**context)  # nosemgrep: python.flask.security.xss.audit.direct-use-of-jinja2.direct-use-of-jinja2  # noqa: E501
+    # fmt: on
 
 
 def render_steering(name: str, **context: Any) -> str:
