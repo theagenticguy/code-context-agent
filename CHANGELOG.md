@@ -1,3 +1,9 @@
+## v6.1.1 (2026-03-13)
+
+### Fix
+
+- **security**: pin actions by SHA, scope workflow permissions, resolve code scanning findings
+
 ## v6.1.0 (2026-03-10)
 
 ### Feat
