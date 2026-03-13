@@ -18,6 +18,7 @@ from .discovery import (
     repomix_orientation,
     repomix_split_bundle,
     rg_search,
+    write_file,
     write_file_list,
 )
 from .git import (
@@ -71,6 +72,7 @@ __all__ = [
     "repomix_json_export",
     "repomix_split_bundle",
     "rg_search",
+    "write_file",
     "write_file_list",
     "read_file_bounded",
     # Git history tools

@@ -1018,6 +1018,65 @@ def write_file_list(file_paths: list[str], output_path: str) -> str:
 
 
 @tool
+def write_file(file_path: str, content: str) -> str:
+    """Write content to a file in the output directory.
+
+    USE THIS TOOL:
+    - To write CONTEXT.md and other analysis output files
+    - To save narrated context, summaries, or generated documentation
+    - For any file that needs to be created or overwritten in .code-context/
+
+    DO NOT USE:
+    - For writing file lists (use write_file_list instead)
+    - For writing to paths outside the analysis output directory
+
+    Security: Only allows writing to paths within the .code-context/ output
+    directory to prevent unintended modifications to the analyzed repository.
+
+    Args:
+        file_path: Absolute path to the file to write. Must be within a .code-context/ directory.
+        content: String content to write to the file.
+
+    Returns:
+        JSON with status, path, and bytes written.
+
+    Example:
+        >>> write_file("/repo/.code-context/CONTEXT.md", "# Project Context\\n\\n## Summary\\n...")
+    """
+    try:
+        path = validate_file_path(file_path, must_exist=False)
+    except ValidationError as e:
+        return json.dumps({"status": "error", "error": str(e)})
+
+    # Security: only allow writes within a .code-context/ directory
+    parts = path.parts
+    if ".code-context" not in parts:
+        return json.dumps(
+            {
+                "status": "error",
+                "error": f"Write denied: {path} is not within a .code-context/ directory",
+            }
+        )
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        path.write_text(content, encoding="utf-8")
+    except OSError as e:
+        return json.dumps({"status": "error", "error": str(e)})
+
+    logger.info(f"Wrote {len(content)} bytes to {path}")
+
+    return json.dumps(
+        {
+            "status": "success",
+            "path": str(path),
+            "bytes_written": len(content),
+        }
+    )
+
+
+@tool
 def read_file_bounded(file_path: str, max_lines: int = 500, start_line: int = 1) -> str:
     """Read a file with bounded output for safe analysis.
 
