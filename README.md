@@ -1,8 +1,24 @@
+<p align="center">
+  <img src="assets/social-preview.png" alt="code-context-agent" width="100%">
+</p>
+
+<p align="center">
+  <a href="https://github.com/theagenticguy/code-context-agent/releases"><img src="https://img.shields.io/github/v/release/theagenticguy/code-context-agent?style=flat-square&color=blue" alt="Release"></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.13%2B-blue?style=flat-square&logo=python&logoColor=white" alt="Python 3.13+"></a>
+  <a href="https://github.com/theagenticguy/code-context-agent/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-green?style=flat-square" alt="License"></a>
+  <a href="https://github.com/theagenticguy/code-context-agent/actions"><img src="https://img.shields.io/github/actions/workflow/status/theagenticguy/code-context-agent/ci.yml?style=flat-square&label=CI" alt="CI"></a>
+  <a href="https://github.com/theagenticguy/code-context-agent"><img src="https://img.shields.io/github/stars/theagenticguy/code-context-agent?style=flat-square&color=yellow" alt="Stars"></a>
+  <a href="https://github.com/astral-sh/ruff"><img src="https://img.shields.io/badge/linter-ruff-purple?style=flat-square" alt="Ruff"></a>
+  <a href="https://github.com/astral-sh/ty"><img src="https://img.shields.io/badge/types-ty-blue?style=flat-square" alt="ty"></a>
+</p>
+
+<p align="center"><strong>AI-powered codebase analysis with 48 tools, graph algorithms, and structured output for AI coding assistants.</strong></p>
+
+---
+
 # code-context-agent
 
-**An AI-powered CLI tool for automated codebase analysis and context generation.**
-
-`code-context-agent` uses Claude Opus 4.6 (via Amazon Bedrock) with 40+ tools to analyze unfamiliar codebases and produce structured context documentation for AI coding assistants. It combines semantic analysis (LSP), structural pattern matching (ast-grep), graph algorithms (NetworkX), git history analysis, and intelligent code bundling (repomix) to generate narrated markdown that helps developers and AI assistants quickly understand a codebase's architecture and business logic.
+`code-context-agent` uses Claude Opus 4.6 (via Amazon Bedrock) with 48 tools to analyze unfamiliar codebases and produce structured context documentation for AI coding assistants. It combines semantic analysis (LSP), structural pattern matching (ast-grep), graph algorithms (NetworkX), git history analysis, and intelligent code bundling (repomix) to generate narrated markdown that helps developers and AI assistants quickly understand a codebase's architecture and business logic.
 
 > [!CAUTION]
 > This CLI runs a **fully autonomous AI agent loop**. The agent decides which tools to invoke, what files to read, and what shell commands to run. While shell commands are restricted to a read-only allowlist and all inputs are validated, the agent makes its own decisions within those bounds. **Review all generated output before using it in production.**
@@ -37,12 +53,14 @@ These principles guide every design decision. See [tenets.md](tenets.md) for ful
 ## Features
 
 - **Claude Opus 4.6** with adaptive thinking and 1M context window
-- **40+ analysis tools**: LSP, ast-grep, ripgrep, repomix, git history, NetworkX graph
+- **48 analysis tools**: LSP, ast-grep, ripgrep, repomix, git history, NetworkX graph
 - **Multi-language LSP**: Python (ty), TypeScript, Rust, Go, Java (configurable fallback chains)
 - **Graph-based insights**: Hotspots (betweenness centrality), foundations (PageRank/TrustRank), modules (Louvain/Leiden), triangle detection
 - **Git-aware bundling**: Embeds diffs, commit history, and coupling data directly in context bundles
 - **Tree-sitter compression**: Extract signatures/types only, stripping function bodies for token efficiency
 - **Structured output**: Pydantic-typed `AnalysisResult` with ranked business logic, risks, and graph stats
+- **`--full` mode**: Exhaustive analysis with no size limits, fail-fast error handling, and per-module output
+- **Phase-aware TUI**: 10-phase progress tracking with discovery feed and mode badge
 - **Rich terminal UI**: Real-time progress display with Rich library
 - **MCP server**: Expose graph algorithms and analysis as MCP tools for Claude Code, Cursor, and other agents
 - **context7 integration**: Library documentation lookup during analysis via MCP
@@ -58,7 +76,7 @@ flowchart TD
     B --> C[create_agent]
     C --> D[Strands Agent<br/>Opus 4.6 + adaptive thinking]
     D --> E[Jinja2 System Prompt]
-    D --> F[HookProviders<br/>quality + efficiency]
+    D --> F[HookProviders<br/>quality + efficiency + fail-fast]
     D --> G[AnalysisResult<br/>structured output]
     D --> H[Tool Execution]
     H --> I[Discovery<br/>ripgrep, repomix]
@@ -176,7 +194,20 @@ code-context-agent analyze . --quiet
 code-context-agent analyze . --debug
 ```
 
-The agent automatically determines analysis depth based on repository size and complexity. No mode flags needed.
+The agent automatically determines analysis depth based on repository size and complexity. Use `--full` for exhaustive analysis.
+
+### Full Mode
+
+```bash
+# Exhaustive analysis (no size limits, all graph algorithms, fail-fast)
+code-context-agent analyze . --full
+
+# Full + focused on specific area
+code-context-agent analyze . --full --focus "authentication"
+
+# Verify external tool dependencies
+code-context-agent check
+```
 
 ### MCP Server
 
@@ -213,7 +244,7 @@ All outputs are written to `.code-context/` (or custom `--output-dir`):
 
 | File | Description |
 |------|-------------|
-| `CONTEXT.md` | **Main narrated context** (≤300 lines) |
+| `CONTEXT.md` | **Main narrated context** (≤300 lines in standard mode) |
 | `CONTEXT.orientation.md` | Token distribution tree |
 | `CONTEXT.bundle.md` | Bundled source code (compressed) |
 | `CONTEXT.signatures.md` | Signatures-only structural view |
@@ -221,6 +252,8 @@ All outputs are written to `.code-context/` (or custom `--output-dir`):
 | `files.business.txt` | Curated business logic files |
 | `code_graph.json` | Persisted graph data |
 | `FILE_INDEX.md` | File index with graph metrics (complex repos) |
+| `analysis_result.json` | Structured analysis result (Pydantic JSON) |
+| `CONTEXT.modules/` | Per-module context files (`--full` mode) |
 
 ---
 
@@ -263,7 +296,7 @@ src/code_context_agent/
 │   ├── factory.py      # Agent creation with tools + MCP providers
 │   ├── runner.py       # Analysis runner with event streaming
 │   ├── prompts.py      # Jinja2 template rendering
-│   └── hooks.py        # HookProvider for quality/efficiency
+│   └── hooks.py        # HookProviders: quality, efficiency, fail-fast
 ├── mcp/                # FastMCP v3 server
 │   ├── __init__.py     # Package init
 │   └── server.py       # MCP tools, resources, and server definition
@@ -274,13 +307,16 @@ src/code_context_agent/
 ├── models/             # Pydantic models
 │   ├── base.py         # StrictModel, FrozenModel
 │   └── output.py       # AnalysisResult, BusinessLogicItem, etc.
-├── consumer/           # Event display (Rich TUI)
-├── tools/              # Analysis tools (40+)
-│   ├── discovery.py    # ripgrep, repomix (6 tools)
+├── consumer/           # Phase-aware TUI (10 phases + discovery feed)
+│   ├── phases.py       # Phase detection, discovery events
+│   ├── rich_consumer.py # Dashboard with phase indicator
+│   └── state.py        # Mutable display state
+├── tools/              # Analysis tools (48)
+│   ├── discovery.py    # ripgrep, repomix, write_file (11 tools)
 │   ├── astgrep.py      # ast-grep (3 tools)
 │   ├── git.py          # git history (7 tools)
 │   ├── lsp/            # LSP integration (8 tools)
-│   └── graph/          # NetworkX analysis (12 tools)
+│   └── graph/          # NetworkX analysis (14 tools)
 └── rules/              # ast-grep rule packs
 ```
 
