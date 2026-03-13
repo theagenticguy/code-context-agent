@@ -9,13 +9,16 @@ from __future__ import annotations
 from ..templates import render_prompt, render_steering
 
 
-def get_prompt() -> str:
+def get_prompt(mode: str = "standard") -> str:
     """Render the unified system prompt.
+
+    Args:
+        mode: Analysis mode ("standard" or "full").
 
     Returns:
         Rendered system prompt string from system.md.j2
     """
-    return render_prompt("system.md.j2")
+    return render_prompt("system.md.j2", mode=mode)
 
 
 def get_steering_content(name: str) -> str:

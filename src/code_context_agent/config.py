@@ -27,7 +27,10 @@ Environment Variables:
     CODE_CONTEXT_OTEL_DISABLED: Disable OpenTelemetry tracing (default: True)
 """
 
+from __future__ import annotations
+
 import functools
+from enum import StrEnum
 from typing import Literal
 
 from pydantic import Field
@@ -35,6 +38,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_OUTPUT_DIR = ".code-context"
 """Default output directory name for analysis artifacts."""
+
+
+class AnalysisMode(StrEnum):
+    """Analysis mode selection."""
+
+    STANDARD = "standard"
+    FULL = "full"
 
 
 class Settings(BaseSettings):
@@ -132,6 +142,20 @@ class Settings(BaseSettings):
         ge=60,
         le=7200,
         description="Maximum agent duration in seconds (default: 20 min)",
+    )
+
+    # Full mode execution bounds (overrides agent_max_* when --full is used)
+    full_max_duration: int = Field(
+        default=3600,
+        ge=300,
+        le=14400,
+        description="Maximum duration in seconds for --full mode (default: 60 min)",
+    )
+    full_max_turns: int = Field(
+        default=3000,
+        ge=100,
+        le=10000,
+        description="Maximum turns for --full mode",
     )
 
     # MCP tool sources for the analysis agent

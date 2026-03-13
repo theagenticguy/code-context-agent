@@ -54,6 +54,7 @@ class AnalysisContext(BaseModel):
     consumer: EventConsumer
     max_turns: int
     max_duration: int
+    mode: str = "standard"
 
 
 class StreamResult(BaseModel):
@@ -159,6 +160,8 @@ def _setup_analysis_context(
     output_dir: str | Path | None,
     consumer: EventConsumer | None,
     quiet: bool,
+    *,
+    mode: str = "standard",
 ) -> AnalysisContext:
     """Initialize all analysis components.
 
@@ -167,6 +170,7 @@ def _setup_analysis_context(
         output_dir: Optional output directory
         consumer: Optional event consumer
         quiet: Quiet mode flag
+        mode: Analysis mode string
 
     Returns:
         AnalysisContext with all components initialized
@@ -181,12 +185,27 @@ def _setup_analysis_context(
 
     logger.info(f"Starting analysis: {repo}")
 
+    settings = get_settings()
+
+    # Override execution bounds for full mode
+    if mode in ("full", "full+focus"):
+        settings = settings.model_copy(
+            update={
+                "agent_max_duration": settings.full_max_duration,
+                "agent_max_turns": settings.full_max_turns,
+                "lsp_max_files": 50_000,
+            },
+        )
+
+    max_turns = settings.agent_max_turns
+    max_duration = settings.agent_max_duration
+
     # Create consumer if not provided
     if consumer is None:
-        consumer = QuietConsumer() if quiet else RichEventConsumer()
+        consumer = QuietConsumer() if quiet else RichEventConsumer(mode=mode)
 
     # Create the strands agent
-    strands_agent = create_agent()
+    strands_agent = create_agent(mode=mode)
 
     # Wrap with ag-ui-strands for typed event streaming
     agui_agent = StrandsAgent(
@@ -195,11 +214,6 @@ def _setup_analysis_context(
         description="Code context analysis agent",
     )
 
-    # Get execution bounds
-    settings = get_settings()
-    max_turns = settings.agent_max_turns
-    max_duration = settings.agent_max_duration
-
     return AnalysisContext(
         repo=repo,
         output=output,
@@ -207,6 +221,7 @@ def _setup_analysis_context(
         consumer=consumer,
         max_turns=max_turns,
         max_duration=max_duration,
+        mode=mode,
     )
 
 
@@ -325,6 +340,7 @@ async def run_analysis(
     quiet: bool = False,
     issue_context: str | None = None,
     since_context: str | None = None,
+    mode: str = "standard",
 ) -> dict[str, Any]:
     """Run code context analysis on a repository.
 
@@ -342,12 +358,13 @@ async def run_analysis(
         quiet: If True and no consumer, use QuietConsumer.
         issue_context: Optional XML-wrapped issue context for issue-focused analysis.
         since_context: Optional XML-wrapped incremental analysis context from --since.
+        mode: Analysis mode ("standard", "full", "full+focus", "focus", "incremental").
 
     Returns:
         Dict with analysis status and output paths.
     """
     # Setup phase
-    context = _setup_analysis_context(repo_path, output_dir, consumer, quiet)
+    context = _setup_analysis_context(repo_path, output_dir, consumer, quiet, mode=mode)
 
     # Build prompt
     prompt = _build_analysis_prompt(context.repo, context.output, focus, issue_context, since_context)

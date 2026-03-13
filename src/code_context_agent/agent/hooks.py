@@ -21,6 +21,14 @@ from strands.hooks import (
 _MAX_OUTPUT_SIZE = 100_000
 
 
+class FullModeToolError(RuntimeError):
+    """Raised by FailFastHook when a critical tool returns an error in full mode."""
+
+    def __init__(self, tool_name: str, error_message: str) -> None:  # noqa: D107
+        self.tool_name = tool_name
+        super().__init__(f"Tool '{tool_name}' failed: {error_message}")
+
+
 class OutputQualityHook(HookProvider):
     """Hook for output quality enforcement.
 
@@ -73,13 +81,71 @@ class ToolEfficiencyHook(HookProvider):
                         break
 
 
-def create_all_hooks() -> list[HookProvider]:
+class FailFastHook(HookProvider):
+    """Hook that raises on tool errors in --full mode.
+
+    In full mode, most tool failures should halt analysis immediately
+    rather than silently degrading. Exempt tools (search, shutdown, MCP)
+    are allowed to fail without halting.
+    """
+
+    EXEMPT_TOOLS: ClassVar[frozenset[str]] = frozenset(
+        {
+            # Search tools may legitimately return no results
+            "rg_search",
+            "lsp_workspace_symbols",
+            # Shutdown is best-effort
+            "lsp_shutdown",
+            # Graph load may fail if no prior graph exists
+            "code_graph_load",
+            # MCP tools are external and may be unavailable
+            "context7_resolve-library-id",
+            "context7_query-docs",
+            # Shell is user-controlled
+            "shell",
+        },
+    )
+
+    def register_hooks(self, registry: HookRegistry, **kwargs: Any) -> None:
+        """Register fail-fast callback."""
+        registry.add_callback(AfterToolCallEvent, self._check_for_error)
+
+    def _check_for_error(self, event: AfterToolCallEvent, **kwargs: Any) -> None:
+        """Raise FullModeToolError if a non-exempt tool returned an error."""
+        import json as _json
+
+        tool_name = event.tool_use.get("name", "")
+
+        if tool_name in self.EXEMPT_TOOLS:
+            return
+
+        result_str = str(event.result) if event.result else ""
+        if not result_str:
+            return
+
+        try:
+            data = _json.loads(result_str)
+        except (_json.JSONDecodeError, TypeError):
+            return
+
+        if isinstance(data, dict) and data.get("status") == "error":
+            error_msg = data.get("error", data.get("message", "unknown error"))
+            raise FullModeToolError(tool_name, str(error_msg))
+
+
+def create_all_hooks(*, full_mode: bool = False) -> list[HookProvider]:
     """Create all hook providers for agent guidance.
+
+    Args:
+        full_mode: If True, include FailFastHook for strict error handling.
 
     Returns:
         List of HookProvider instances.
     """
-    return [
+    hooks: list[HookProvider] = [
         OutputQualityHook(),
         ToolEfficiencyHook(),
     ]
+    if full_mode:
+        hooks.append(FailFastHook())
+    return hooks
