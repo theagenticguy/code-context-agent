@@ -104,9 +104,12 @@ plugins:
           - getting-started/installation.md
           - getting-started/configuration.md
           - getting-started/quickstart.md
+          - getting-started/check-command.md
+          - getting-started/full-mode.md
         Architecture:
           - architecture/overview.md
           - architecture/tenets.md
+          - architecture/tui-phases.md
         Tools:
           - tools/overview.md
           - tools/discovery.md
@@ -171,9 +174,12 @@ nav:
       - Installation: getting-started/installation.md
       - Configuration: getting-started/configuration.md
       - Quick Start: getting-started/quickstart.md
+      - Check Command: getting-started/check-command.md
+      - Full Mode: getting-started/full-mode.md
   - Architecture:
       - Overview: architecture/overview.md
       - Tenets: architecture/tenets.md
+      - TUI & Phases: architecture/tui-phases.md
   - Tools:
       - Overview: tools/overview.md
       - Discovery & Search: tools/discovery.md

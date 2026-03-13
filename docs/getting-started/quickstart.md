@@ -26,9 +26,15 @@ code-context-agent analyze . --quiet
 
 # Debug mode (verbose logging)
 code-context-agent analyze . --debug
+
+# Exhaustive analysis (no size limits, all algorithms)
+code-context-agent analyze . --full
+
+# Verify external tool dependencies
+code-context-agent check
 ```
 
-The agent automatically determines analysis depth based on repository size and complexity. No mode flags needed.
+The agent automatically determines analysis depth based on repository size and complexity. Use `--full` for exhaustive analysis with no size limits.
 
 ## What Happens During Analysis
 
@@ -49,7 +55,7 @@ All outputs land in `.code-context/` (or your custom `--output-dir`):
 
 | File | Description |
 |------|-------------|
-| `CONTEXT.md` | Main narrated context (<=300 lines) |
+| `CONTEXT.md` | Main narrated context (<=300 lines in standard mode) |
 | `CONTEXT.orientation.md` | Token distribution tree |
 | `CONTEXT.bundle.md` | Bundled source code (compressed) |
 | `CONTEXT.signatures.md` | Signatures-only structural view |
@@ -57,6 +63,9 @@ All outputs land in `.code-context/` (or your custom `--output-dir`):
 | `files.business.txt` | Curated business logic files |
 | `code_graph.json` | Persisted graph data |
 | `FILE_INDEX.md` | File index with graph metrics (complex repos) |
+| `analysis_result.json` | Structured analysis result (Pydantic JSON) |
+| `CONTEXT.modules/` | Per-module context files (full mode only) |
+| `CONTEXT.business.*.md` | Category-specific business logic files |
 
 ## Using the Output
 

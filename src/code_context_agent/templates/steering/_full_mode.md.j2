@@ -7,7 +7,7 @@ You are running in **full mode** (`--full`). This changes your behavior:
 - **No skip conditions**: Analyze ALL files, ALL modules, ALL patterns. Do not skip anything based on repo size.
 - **Exhaustive LSP traversal**: Follow every reference chain to its end. Use `lsp_workspace_symbols` to find all symbols, not just entrypoints.
 - **Complete git history**: Run `git_hotspots` with `limit=100`. Run `git_files_changed_together` for ALL business logic files, not just top 5.
-- **Full graph analysis**: Run ALL graph algorithms: hotspots, foundations, trust, modules, unused_symbols, refactoring, bridges, strongly_connected.
+- **Full graph analysis**: Run ALL graph algorithms: hotspots, foundations, trust, modules, triangles, coupling, entry_points, similar, category, dependencies, unused_symbols, refactoring.
 - **All rule packs**: Run both `py_business_logic` AND `py_code_smells` (or ts equivalents). Run `astgrep_inline_rule` for repo-specific patterns.
 
 ### context7 Usage

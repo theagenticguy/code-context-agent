@@ -10,7 +10,7 @@ Builds a dependency graph from the codebase using import/reference relationships
 
 ### `code_graph_analyze`
 
-Runs analysis algorithms on the graph. Supports six analysis modes:
+Runs analysis algorithms on the graph. Supports twelve analysis modes:
 
 #### Hotspots (Betweenness Centrality)
 
@@ -36,6 +36,14 @@ Finds tightly coupled triads -- sets of three files where each depends on the ot
 
 Analyzes the coupling between graph communities/modules. Identifies which modules have the most cross-dependencies.
 
+#### Unused Symbols
+
+Identifies symbols (functions, classes) that exist in the graph but have no incoming references. These are candidates for dead code removal.
+
+#### Refactoring
+
+Analyzes the graph for refactoring opportunities: duplicate code clusters (from clone detection), high-coupling modules, and files that bridge too many communities.
+
 ### `code_graph_explore`
 
 Interactive exploration of the graph. Allows querying neighbors, paths, and subgraphs for specific files or modules.
@@ -55,6 +63,30 @@ Loads a previously saved code graph from disk. Restores all nodes, edges, and me
 ### `code_graph_stats`
 
 Returns summary statistics about a code graph: total node and edge counts broken down by type. Useful for verifying that graph ingestion worked correctly (e.g., checking that LSP produced function/class nodes, ast-grep produced pattern_match nodes).
+
+### `code_graph_ingest_lsp`
+
+Ingests LSP tool results (symbols, references, definitions) into the graph. Creates nodes for functions, classes, and methods, and edges for call/reference/import relationships.
+
+### `code_graph_ingest_astgrep`
+
+Ingests ast-grep scan results into the graph. Creates `pattern_match` nodes and links them to the files where patterns were found.
+
+### `code_graph_ingest_rg`
+
+Ingests ripgrep search results into the graph. Creates text-match edges between files based on shared patterns.
+
+### `code_graph_ingest_inheritance`
+
+Ingests class inheritance relationships into the graph. Creates `INHERITS` edges between class nodes.
+
+### `code_graph_ingest_tests`
+
+Ingests test-production file relationships into the graph. Creates `TESTS` edges linking test files to the production files they cover.
+
+### `code_graph_ingest_clones`
+
+Ingests clone detection results into the graph. Creates `CLONE` edges between files that share duplicate code blocks, with metadata about the duplicated line ranges.
 
 ### `code_graph_ingest_git`
 
