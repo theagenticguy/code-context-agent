@@ -1055,7 +1055,7 @@ def write_file(file_path: str, content: str) -> str:
             {
                 "status": "error",
                 "error": f"Write denied: {path} is not within a .code-context/ directory",
-            }
+            },
         )
 
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -1072,7 +1072,7 @@ def write_file(file_path: str, content: str) -> str:
             "status": "success",
             "path": str(path),
             "bytes_written": len(content),
-        }
+        },
     )
 
 
