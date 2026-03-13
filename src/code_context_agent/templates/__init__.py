@@ -18,7 +18,7 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoes
 def _get_environment() -> Environment:
     """Get the configured Jinja2 environment (cached singleton)."""
     template_dir = Path(__file__).parent
-    return Environment(
+    return Environment(  # nosemgrep: python.flask.security.xss.audit.direct-use-of-jinja2.direct-use-of-jinja2
         loader=FileSystemLoader(str(template_dir)),
         undefined=StrictUndefined,
         autoescape=select_autoescape(enabled_extensions=()),  # no escaping — LLM prompt templates
@@ -40,7 +40,9 @@ def render_prompt(template_name: str, **context: Any) -> str:
     """
     env = _get_environment()
     template = env.get_template(template_name)
-    return template.render(**context)
+    # fmt: off
+    return template.render(**context)  # nosemgrep: python.flask.security.xss.audit.direct-use-of-jinja2.direct-use-of-jinja2  # noqa: E501
+    # fmt: on
 
 
 def render_steering(name: str, **context: Any) -> str:

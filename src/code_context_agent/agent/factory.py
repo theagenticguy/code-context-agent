@@ -49,6 +49,7 @@ def get_analysis_tools() -> list[Any]:
         repomix_orientation,
         repomix_split_bundle,
         rg_search,
+        write_file,
         write_file_list,
     )
     from ..tools.clones import detect_clones
@@ -92,6 +93,7 @@ def get_analysis_tools() -> list[Any]:
         repomix_json_export,
         repomix_split_bundle,
         rg_search,
+        write_file,
         write_file_list,
         read_file_bounded,
         # Git history tools (coupling, evolution, authorship)
