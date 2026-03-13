@@ -90,6 +90,12 @@ class AgentDisplayState(StrictModel):
     tool_errors: int = 0
     tool_start_time: float | None = None
 
+    # Phase tracking (v7)
+    phases: list[Any] = Field(default_factory=list)  # list[PhaseState]
+    current_phase_index: int = -1
+    discoveries: list[Any] = Field(default_factory=list)  # list[DiscoveryEvent]
+    max_discoveries: int = 50
+
     def clear_text_buffer(self) -> str:
         """Clear and return the text buffer.
 
@@ -168,6 +174,45 @@ class AgentDisplayState(StrictModel):
         """
         return len(self.completed_tools) - self.tool_errors
 
+    def advance_phase(self, phase: Any) -> None:
+        """Advance to a new phase if it's higher than the current one.
+
+        Args:
+            phase: AnalysisPhase enum value to advance to.
+        """
+        from .phases import PHASE_DESCRIPTIONS, PHASE_NAMES, PhaseState
+
+        # Don't regress to a lower phase
+        if self.phases and phase <= self.phases[-1].phase:
+            return
+
+        # Complete the previous phase
+        now = time.monotonic()
+        if self.phases and not self.phases[-1].is_complete:
+            self.phases[-1].completed_at = now
+
+        # Start the new phase
+        self.phases.append(
+            PhaseState(
+                phase=phase,
+                name=PHASE_NAMES.get(phase, f"Phase {phase}"),
+                description=PHASE_DESCRIPTIONS.get(phase, ""),
+                started_at=now,
+            ),
+        )
+        self.current_phase_index = len(self.phases) - 1
+
+    def add_discovery(self, event: Any) -> None:
+        """Add a discovery event, evicting oldest if at capacity.
+
+        Args:
+            event: DiscoveryEvent to add.
+        """
+        self.discoveries.append(event)
+        # Capped list — evict oldest when over capacity
+        while len(self.discoveries) > self.max_discoveries:
+            self.discoveries.pop(0)
+
     def reset(self) -> None:
         """Reset state for a new run."""
         self.current_phase = ""
@@ -183,3 +228,7 @@ class AgentDisplayState(StrictModel):
         self.turn_count = 0
         self.tool_errors = 0
         self.tool_start_time = None
+        # Reset phase tracking (v7)
+        self.phases = []
+        self.current_phase_index = -1
+        self.discoveries = []

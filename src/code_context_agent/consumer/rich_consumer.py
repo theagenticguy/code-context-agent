@@ -36,15 +36,101 @@ class RichEventConsumer(EventConsumer):
     tool execution status matters for a long-running analysis agent.
     """
 
-    def __init__(self, console: Console | None = None) -> None:
+    def __init__(self, console: Console | None = None, *, mode: str = "standard") -> None:
         """Initialize the dashboard consumer.
 
         Args:
             console: Optional Rich Console instance.
+            mode: Analysis mode ("standard" or "full").
         """
         self.console = console or Console()
         self.state = AgentDisplayState()
         self._live: Live | None = None
+        self._mode = mode
+
+    def _detect_phase(self, tool_name: str) -> None:
+        """Advance the phase indicator based on tool name."""
+        from .phases import resolve_phase
+
+        phase = resolve_phase(tool_name)
+        if phase is not None:
+            self.state.advance_phase(phase)
+
+    def _extract_discovery(self, tool_name: str, result: Any) -> Any:  # noqa: PLR0911
+        """Extract a discovery event from a tool result, or None."""
+        import json as _json
+        import time as _time
+
+        from .phases import DiscoveryEvent, DiscoveryEventKind
+
+        if not isinstance(result, str):
+            return None
+
+        try:
+            data = _json.loads(result)
+        except (_json.JSONDecodeError, TypeError):
+            return None
+
+        if not isinstance(data, dict) or data.get("status") == "error":
+            return None
+
+        now = _time.monotonic()
+
+        # File manifest
+        if tool_name == "create_file_manifest" and "file_count" in data:
+            return DiscoveryEvent(
+                kind=DiscoveryEventKind.FILES_DISCOVERED,
+                summary=f"Found {data['file_count']} files",
+                tool_name=tool_name,
+                timestamp=now,
+            )
+
+        # LSP symbols
+        if tool_name in ("lsp_document_symbols", "lsp_workspace_symbols") and "count" in data:
+            return DiscoveryEvent(
+                kind=DiscoveryEventKind.SYMBOLS_FOUND,
+                summary=f"Found {data['count']} symbols",
+                tool_name=tool_name,
+                timestamp=now,
+            )
+
+        # Git hotspots
+        if tool_name == "git_hotspots" and "count" in data:
+            return DiscoveryEvent(
+                kind=DiscoveryEventKind.HOTSPOTS_IDENTIFIED,
+                summary=f"Identified {data['count']} hotspots",
+                tool_name=tool_name,
+                timestamp=now,
+            )
+
+        # AST-grep matches
+        if tool_name in ("astgrep_scan", "astgrep_scan_rule_pack") and "match_count" in data:
+            return DiscoveryEvent(
+                kind=DiscoveryEventKind.PATTERNS_MATCHED,
+                summary=f"Matched {data['match_count']} patterns",
+                tool_name=tool_name,
+                timestamp=now,
+            )
+
+        # Graph modules
+        if tool_name == "code_graph_analyze" and "module_count" in data:
+            return DiscoveryEvent(
+                kind=DiscoveryEventKind.MODULES_DETECTED,
+                summary=f"Detected {data['module_count']} modules",
+                tool_name=tool_name,
+                timestamp=now,
+            )
+
+        # Graph creation
+        if tool_name == "code_graph_create":
+            return DiscoveryEvent(
+                kind=DiscoveryEventKind.GRAPH_BUILT,
+                summary="Code graph initialized",
+                tool_name=tool_name,
+                timestamp=now,
+            )
+
+        return None
 
     def _format_time(self, seconds: float) -> str:
         """Format seconds as MM:SS."""
@@ -185,6 +271,32 @@ class RichEventConsumer(EventConsumer):
 
         return table
 
+    def _build_phase_indicator(self) -> RenderableType | None:
+        """Build phase progress indicator."""
+        if not self.state.phases:
+            return None
+
+        t = Text()
+        current = self.state.phases[-1]
+        t.append("  Phase: ", style="dim")
+        t.append(f"[{current.phase}/10] ", style="bold cyan")
+        t.append(current.name, style="bold")
+        t.append(f"  ({current.description})", style="dim")
+        return t
+
+    def _build_discovery_feed(self) -> RenderableType | None:
+        """Build discovery event feed (last 3 items)."""
+        recent = self.state.discoveries[-3:] if self.state.discoveries else []
+        if not recent:
+            return None
+
+        t = Text()
+        for event in reversed(recent):
+            t.append("  ◆ ", style="cyan")
+            t.append(event.summary, style="bold")
+            t.append("\n")
+        return t
+
     def _build_display(self) -> RenderableType:
         """Build the fixed-height dashboard display."""
         elements: list[RenderableType] = []
@@ -193,8 +305,21 @@ class RichEventConsumer(EventConsumer):
         elements.append(self._build_timer())
         elements.append(Text(""))
 
+        # Phase indicator (v7)
+        phase = self._build_phase_indicator()
+        if phase:
+            elements.append(phase)
+            elements.append(Text(""))
+
         # Tool summary + categories
         elements.append(self._build_tool_summary())
+
+        # Discovery feed (v7)
+        discoveries = self._build_discovery_feed()
+        if discoveries:
+            elements.append(Text(""))
+            elements.append(Text("  Discoveries:", style="dim"))
+            elements.append(discoveries)
 
         # Active tool spinner
         active = self._build_active_tool()
@@ -225,9 +350,14 @@ class RichEventConsumer(EventConsumer):
             elements.append(Text(""))
             elements.append(Text("  ✓ Analysis complete", style="bold green"))
 
+        # Mode badge in panel title
+        title = "Code Context Agent"
+        if self._mode.startswith("full"):
+            title += " [FULL]"
+
         return Panel(
             Group(*elements) if elements else Text("Starting analysis...", style="dim"),
-            title="Code Context Agent",
+            title=title,
             border_style="cyan",
             padding=(1, 2),
         )
@@ -293,6 +423,7 @@ class RichEventConsumer(EventConsumer):
             tool_name=tool_name,
         )
         self.state.tool_start_time = time.monotonic()
+        self._detect_phase(tool_name)
 
     async def on_tool_args(self, tool_call_id: str, args_delta: str) -> None:
         """Handle tool args — silently accumulate."""
@@ -300,13 +431,17 @@ class RichEventConsumer(EventConsumer):
             self.state.active_tool.args_buffer += args_delta
 
     async def on_tool_result(self, tool_call_id: str, result: Any) -> None:
-        """Handle tool result — check for errors."""
+        """Handle tool result — check for errors and extract discoveries."""
         if self.state.active_tool and self.state.active_tool.tool_call_id == tool_call_id:
             self.state.active_tool.result = result
             if (isinstance(result, str) and "error" in result.lower()) or (
                 isinstance(result, dict) and result.get("error")
             ):
                 self.state.tool_errors += 1
+            # Extract discovery events
+            discovery = self._extract_discovery(self.state.active_tool.tool_name, result)
+            if discovery:
+                self.state.add_discovery(discovery)
 
     async def on_tool_end(self, tool_call_id: str) -> None:
         """Handle tool end — move to completed list."""

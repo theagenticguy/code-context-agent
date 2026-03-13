@@ -60,3 +60,11 @@ Used for finding specific patterns, imports, configuration values, and string li
 ### `read_file_bounded`
 
 Reads a specific file with line range bounds. Used sparingly -- only for files that have earned deep reading through high scores across multiple signals.
+
+### `write_file`
+
+Writes content to a file within the `.code-context/` output directory. Used by the agent to persist `CONTEXT.md`, `FILE_INDEX.md`, and other analysis artifacts.
+
+- Path must be within a `.code-context/` directory (security enforced)
+- Creates parent directories automatically
+- Returns the written path and byte count

@@ -438,7 +438,7 @@ wheels = [
 
 [[package]]
 name = "code-context-agent"
-version = "6.1.1"
+version = "7.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "ag-ui-protocol" },

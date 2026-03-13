@@ -73,6 +73,15 @@ class CodeHealthMetrics(FrozenModel):
     code_smell_count: int = Field(ge=0, default=0)
 
 
+class PhaseTimingItem(FrozenModel):
+    """Timing data for a single analysis phase."""
+
+    phase: int = Field(ge=1, le=10, description="Phase number")
+    name: str = Field(description="Phase name")
+    duration_seconds: float = Field(ge=0.0, description="Time spent in this phase")
+    tool_count: int = Field(ge=0, description="Number of tool calls in this phase")
+
+
 class AnalysisResult(FrozenModel):
     """Structured output for the complete analysis.
 
@@ -103,4 +112,9 @@ class AnalysisResult(FrozenModel):
     code_health: CodeHealthMetrics | None = Field(
         default=None,
         description="Aggregate code health metrics",
+    )
+    analysis_mode: str = Field(default="standard", description="Analysis mode: standard or full")
+    phase_timings: list[PhaseTimingItem] = Field(
+        default_factory=list,
+        description="Per-phase timing data",
     )

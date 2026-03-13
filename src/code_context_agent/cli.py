@@ -54,7 +54,7 @@ def main(
 
 
 @app.command
-def analyze(
+def analyze(  # noqa: C901, PLR0912
     path: Annotated[
         Path,
         Parameter(help="Path to the repository to analyze."),
@@ -83,6 +83,10 @@ def analyze(
             "Only re-analyzes files changed since this ref.",
         ),
     ] = "",
+    full: Annotated[
+        bool,
+        Parameter(help="Run exhaustive analysis with no size limits and fail-fast error handling."),
+    ] = False,
     quiet: Annotated[
         bool,
         Parameter(help="Suppress all output except errors on stderr. No TUI, no JSON."),
@@ -139,6 +143,20 @@ def analyze(
         print(f"Error: Path is not a directory: {repo_path}", file=sys.stderr)
         raise SystemExit(1)
 
+    # Validate flag combinations
+    _validate_flags(full=full, since=since)
+
+    # Derive analysis mode
+    mode = _derive_mode(full=full, focus=focus, since=since)
+
+    # Auto-preflight in full mode
+    if full and not quiet:
+        preflight = _preflight_check()
+        missing = [name for name, info in preflight.items() if not info["available"]]
+        if missing:
+            console.print(f"[yellow]Warning:[/yellow] Missing tools: {', '.join(missing)}")
+            console.print("  Full mode works best with all tools installed.")
+
     # Show analysis configuration
     if not quiet:
         console.print()
@@ -146,6 +164,8 @@ def analyze(
         console.print(f"  Repository: [cyan]{repo_path}[/cyan]")
         if focus:
             console.print(f"  Focus: [magenta]{focus}[/magenta]")
+        if full:
+            console.print("  Mode: [bold magenta]FULL (exhaustive)[/bold magenta]")
         console.print()
 
     # In debug mode or JSON mode, use quiet consumer (log output replaces Live display)
@@ -171,6 +191,7 @@ def analyze(
             quiet=use_quiet,
             issue_context=issue_context,
             since_context=since_context,
+            mode=mode,
         ),
     )
 
@@ -335,6 +356,85 @@ def serve(
         console.print(f"[dim]Starting MCP server ({transport} transport on {host}:{port})...[/dim]")
 
     mcp_server.run(transport=transport, host=host, port=port)
+
+
+@app.command
+def check() -> None:
+    """Check availability of external tool dependencies.
+
+    Verifies that ripgrep, ast-grep, repomix, and npx are installed
+    and accessible. Useful for diagnosing setup issues before running
+    analysis.
+
+    Example:
+        $ code-context-agent check
+    """
+    preflight = _preflight_check()
+    all_ok = True
+    for name, info in preflight.items():
+        if info["available"]:
+            console.print(f"  [green]\u2713[/green] {name}")
+        else:
+            console.print(f"  [red]\u2717[/red] {name} \u2014 install via {info['package']}")
+            all_ok = False
+    if all_ok:
+        console.print("\n[green]All tools available.[/green]")
+    else:
+        console.print("\n[yellow]Some tools are missing. Analysis may be limited.[/yellow]")
+        raise SystemExit(1)
+
+
+def _preflight_check() -> dict[str, dict[str, bool | str]]:
+    """Check availability of external tool dependencies.
+
+    Returns:
+        Dict mapping tool name to status info.
+    """
+    import shutil
+
+    tools = {
+        "ripgrep": {"cmd": "rg", "package": "ripgrep"},
+        "ast-grep": {"cmd": "ast-grep", "package": "ast-grep (npm)"},
+        "repomix": {"cmd": "repomix", "package": "repomix (npm)"},
+        "npx": {"cmd": "npx", "package": "Node.js"},
+    }
+
+    result: dict[str, dict[str, bool | str]] = {}
+    for name, info in tools.items():
+        available = shutil.which(info["cmd"]) is not None
+        result[name] = {"available": available, "package": info["package"]}
+
+    return result
+
+
+def _validate_flags(*, full: bool = False, since: str = "") -> None:
+    """Validate mutually exclusive flag combinations.
+
+    Raises:
+        SystemExit: If invalid flag combinations are detected.
+    """
+    if full and since:
+        console.print("[red]Error:[/red] --full and --since cannot be combined.")
+        console.print("  --full runs exhaustive analysis on the entire repo.")
+        console.print("  --since runs incremental analysis on changed files only.")
+        raise SystemExit(1)
+
+
+def _derive_mode(*, full: bool = False, focus: str = "", since: str = "") -> str:
+    """Derive the analysis mode string from CLI flags.
+
+    Returns:
+        Mode string: "standard", "full", "focus", "incremental", or "full+focus".
+    """
+    if full and focus:
+        return "full+focus"
+    if full:
+        return "full"
+    if focus:
+        return "focus"
+    if since:
+        return "incremental"
+    return "standard"
 
 
 def _fetch_issue_context(issue: str, *, quiet: bool = False) -> str | None:

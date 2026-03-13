@@ -8,7 +8,7 @@ flowchart TD
     B --> C[create_agent]
     C --> D[Strands Agent<br/>Opus 4.6 + adaptive thinking]
     D --> E[Jinja2 System Prompt]
-    D --> F[HookProviders<br/>quality + efficiency]
+    D --> F[HookProviders<br/>quality + efficiency + fail-fast]
     D --> G[AnalysisResult<br/>structured output]
     D --> H[Tool Execution]
     H --> I[Discovery<br/>ripgrep, repomix]
@@ -33,7 +33,7 @@ src/code_context_agent/
 │   ├── factory.py      # Agent creation with tools + structured output
 │   ├── runner.py       # Analysis runner with event streaming
 │   ├── prompts.py      # Jinja2 template rendering
-│   └── hooks.py        # HookProvider for quality/efficiency
+│   └── hooks.py        # HookProviders: quality, efficiency, fail-fast (full mode)
 ├── templates/          # Jinja2 prompt templates
 │   ├── system.md.j2    # Unified system prompt
 │   ├── partials/       # Composable prompt sections
@@ -45,15 +45,19 @@ src/code_context_agent/
 │   ├── __init__.py     # Package init
 │   └── server.py       # MCP tools, resources, and server definition
 ├── consumer/           # Event display (Rich TUI)
-├── tools/              # Analysis tools (40+)
-│   ├── discovery.py    # ripgrep, repomix (9 tools)
+│   ├── base.py         # EventConsumer ABC
+│   ├── phases.py       # 10-phase detection, discovery events (v7)
+│   ├── rich_consumer.py # Dashboard with phase indicator + discovery feed
+│   └── state.py        # AgentDisplayState with phase/discovery tracking
+├── tools/              # Analysis tools (45+)
+│   ├── discovery.py    # ripgrep, repomix, write_file (11 tools)
 │   ├── astgrep.py      # ast-grep (3 tools)
 │   ├── git.py          # git history (7 tools)
 │   ├── shell_tool.py   # Shell with security hardening
 │   ├── clones.py       # Clone detection via jscpd
 │   ├── validation.py   # Input validation (path traversal, injection prevention)
 │   ├── lsp/            # LSP integration (8 tools)
-│   └── graph/          # NetworkX analysis (12 tools)
+│   └── graph/          # NetworkX analysis (14 tools)
 └── rules/              # ast-grep rule packs
 ```
 
@@ -65,7 +69,7 @@ The agent uses [Strands Agents SDK](https://github.com/strands-agents/sdk-python
 
 - Tool registration and dispatch
 - Structured output via Pydantic models
-- Event streaming for real-time progress display
+- Event streaming for phase-aware progress display (10 phases + discovery feed)
 - HookProviders for quality and efficiency guardrails
 
 ### Prompt Architecture: Jinja2 Templates
@@ -114,6 +118,26 @@ Commodity tools (ripgrep, LSP, git, ast-grep) are intentionally not exposed -- t
 ### context7 MCP Integration
 
 The analysis agent loads [context7](https://context7.com) documentation tools via `strands.tools.mcp.MCPClient`, enabling library documentation lookup during analysis. This is controlled by `CODE_CONTEXT_CONTEXT7_ENABLED` (default: true) and requires `npx`.
+
+### Mode-Aware Pipeline (v7)
+
+The `--full` flag triggers exhaustive analysis. The mode is threaded through the entire pipeline:
+
+```
+CLI (--full) → _derive_mode() → run_analysis(mode=) → create_agent(mode=)
+                                      ↓                       ↓
+                              RichEventConsumer(mode=)   get_prompt(mode=)
+                              (phase indicator,          create_all_hooks(full_mode=)
+                               discovery feed,           (+ FailFastHook)
+                               mode badge)
+```
+
+- **FailFastHook** raises `FullModeToolError` when non-exempt tools return errors in full mode
+- **Phase detection** maps tool calls to 10 analysis phases for TUI progress display
+- **Discovery feed** extracts notable findings from tool results (file counts, symbol counts, hotspots)
+- **Mode-aware prompt** switches between size-limited (`_size_limits.md.j2`) and exhaustive (`_full_mode.md.j2`) steering directives
+
+See [Full Mode](../getting-started/full-mode.md) and [TUI Phases](tui-phases.md) for details.
 
 ---
 

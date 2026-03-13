@@ -1,0 +1,35 @@
+## FULL MODE — EXHAUSTIVE ANALYSIS
+
+You are running in **full mode** (`--full`). This changes your behavior:
+
+### Depth Requirements
+- **No size limits**: CONTEXT.md has no line cap. Write as much as needed for complete coverage.
+- **No skip conditions**: Analyze ALL files, ALL modules, ALL patterns. Do not skip anything based on repo size.
+- **Exhaustive LSP traversal**: Follow every reference chain to its end. Use `lsp_workspace_symbols` to find all symbols, not just entrypoints.
+- **Complete git history**: Run `git_hotspots` with `limit=100`. Run `git_files_changed_together` for ALL business logic files, not just top 5.
+- **Full graph analysis**: Run ALL graph algorithms: hotspots, foundations, trust, modules, triangles, coupling, entry_points, similar, category, dependencies, unused_symbols, refactoring.
+- **All rule packs**: Run both `py_business_logic` AND `py_code_smells` (or ts equivalents). Run `astgrep_inline_rule` for repo-specific patterns.
+
+### context7 Usage
+- Look up documentation for ALL dependencies listed in the project manifest (package.json, pyproject.toml, Cargo.toml, go.mod).
+- Use `context7_resolve-library-id` + `context7_query-docs` for each dependency.
+- Include dependency API summaries in the context output.
+
+### Output Structure
+- Generate per-module context files: `.code-context/CONTEXT.modules/<module_name>.md` for each detected module/package.
+- Generate a comprehensive `FILE_INDEX.md` with graph metrics for every file.
+- Generate category-specific business logic files: `CONTEXT.business.<category>.md` for ALL categories with 2+ items.
+- The main `CONTEXT.md` should be a comprehensive narrative with no size constraints.
+
+### Error Handling
+- **Fail fast**: If a critical tool (LSP, graph, manifest) returns an error, STOP and report the failure immediately.
+- Do NOT silently degrade or skip tools that fail. The FailFastHook will enforce this at the tool level.
+- If context7 is unavailable, continue without it (MCP tools are exempt from fail-fast).
+
+### Exit Gate (Full Mode)
+Before completing, verify:
+1. All standard files created PLUS per-module files in CONTEXT.modules/
+2. FILE_INDEX.md generated
+3. All graph algorithms executed
+4. All dependencies looked up via context7 (if available)
+5. No tool errors (except exempt tools)

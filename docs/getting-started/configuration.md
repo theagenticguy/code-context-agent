@@ -14,6 +14,11 @@ All configuration uses environment variables with the `CODE_CONTEXT_` prefix.
 | `CODE_CONTEXT_AGENT_MAX_DURATION` | `1200` | Timeout in seconds (default: 20 min) |
 | `CODE_CONTEXT_CONTEXT7_ENABLED` | `true` | Enable context7 MCP server for library documentation lookup |
 | `CODE_CONTEXT_OTEL_DISABLED` | `true` | Disable OpenTelemetry tracing (avoids context detachment errors) |
+| `CODE_CONTEXT_FULL_MAX_DURATION` | `3600` | Max duration for `--full` mode in seconds (300-14400) |
+| `CODE_CONTEXT_FULL_MAX_TURNS` | `3000` | Max agent turns for `--full` mode (100-10000) |
+| `CODE_CONTEXT_LSP_TIMEOUT` | `30` | LSP operation timeout in seconds (5-300) |
+| `CODE_CONTEXT_LSP_STARTUP_TIMEOUT` | `30` | Max seconds to wait for LSP server init (5-120) |
+| `CODE_CONTEXT_LSP_MAX_FILES` | `5000` | Max files before LSP analysis is skipped (100-50000) |
 
 ## LSP Server Registry
 
@@ -55,3 +60,17 @@ The context7 tools are prefixed with `context7_` in the agent's tool namespace:
 - `context7_query-docs` -- query documentation for a resolved library
 
 To disable: `export CODE_CONTEXT_CONTEXT7_ENABLED=false`
+
+## Full Mode Configuration
+
+When `--full` is passed to the `analyze` command, the agent overrides several settings for exhaustive analysis:
+
+| Setting | Standard Default | Full Mode Override |
+|---------|-----------------|-------------------|
+| `agent_max_duration` | 1200 (20 min) | `full_max_duration` (default: 3600 / 60 min) |
+| `agent_max_turns` | 1000 | `full_max_turns` (default: 3000) |
+| `lsp_max_files` | 5000 | 50,000 |
+
+These overrides are applied via `Settings.model_copy()` at runtime. The original settings are not modified.
+
+See [Full Mode](full-mode.md) for complete details on exhaustive analysis.

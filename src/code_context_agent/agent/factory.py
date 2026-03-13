@@ -185,15 +185,11 @@ def _create_context7_provider() -> Any | None:
         return None
 
 
-def create_agent() -> Agent:
+def create_agent(mode: str = "standard") -> Agent:
     """Create a configured agent for code context analysis.
 
-    Creates an Agent with:
-    - Opus 4.6 on Bedrock with adaptive thinking and 1M context
-    - All analysis tools (35+)
-    - Unified system prompt rendered from Jinja2 templates
-    - Structured output model (AnalysisResult)
-    - Quality/efficiency hooks
+    Args:
+        mode: Analysis mode ("standard", "full", "full+focus", "focus", "incremental").
 
     Returns:
         Configured Agent instance ready for analysis.
@@ -201,7 +197,7 @@ def create_agent() -> Agent:
     settings = get_settings()
 
     logger.info(
-        f"Creating agent: model={settings.model_id}, region={settings.region}, thinking=adaptive",
+        f"Creating agent: model={settings.model_id}, region={settings.region}, mode={mode}, thinking=adaptive",
     )
 
     # Create Bedrock model with adaptive thinking and 1M context
@@ -215,13 +211,16 @@ def create_agent() -> Agent:
         },
     )
 
-    # Render system prompt from Jinja2 template
-    system_prompt = get_prompt()
+    # Render system prompt from Jinja2 template (mode-aware)
+    system_prompt = get_prompt(mode=mode)
 
     tools = get_analysis_tools()
-    hooks = create_all_hooks()
 
-    logger.info(f"Agent configured with {len(tools)} tools, {len(hooks)} hooks")
+    # Full mode gets FailFastHook for strict error handling
+    full_mode = mode in ("full", "full+focus")
+    hooks = create_all_hooks(full_mode=full_mode)
+
+    logger.info(f"Agent configured with {len(tools)} tools, {len(hooks)} hooks, mode={mode}")
 
     return Agent(
         model=model,
@@ -229,5 +228,5 @@ def create_agent() -> Agent:
         system_prompt=system_prompt,
         structured_output_model=AnalysisResult,
         hooks=hooks,
-        callback_handler=None,  # We use stream_async for events
+        callback_handler=None,
     )

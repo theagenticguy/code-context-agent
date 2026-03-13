@@ -60,5 +60,14 @@ Default model: `global.anthropic.claude-opus-4-6-v1` (configurable via `CODE_CON
 ## Verify Installation
 
 ```bash
+# Check version
+code-context-agent --version
+
+# Verify external tool dependencies
+code-context-agent check
+
+# Show help
 code-context-agent --help
 ```
+
+The `check` command verifies that ripgrep, ast-grep, repomix, and npx are installed and accessible. See [Check Command](check-command.md) for details.

@@ -10,6 +10,7 @@ from code_context_agent.models.output import (
     CodeHealthMetrics,
     GeneratedFile,
     GraphStats,
+    PhaseTimingItem,
     RefactoringCandidate,
 )
 
@@ -224,3 +225,35 @@ class TestAnalysisResult:
         data = result.model_dump()
         restored = AnalysisResult.model_validate(data)
         assert restored == result
+
+
+class TestAnalysisResultMode:
+    def test_analysis_mode_default(self) -> None:
+        result = AnalysisResult(
+            status="completed",
+            summary="test",
+            total_files_analyzed=10,
+        )
+        assert result.analysis_mode == "standard"
+
+    def test_analysis_mode_full(self) -> None:
+        result = AnalysisResult(
+            status="completed",
+            summary="test",
+            total_files_analyzed=10,
+            analysis_mode="full",
+        )
+        assert result.analysis_mode == "full"
+
+    def test_phase_timings_empty_default(self) -> None:
+        result = AnalysisResult(
+            status="completed",
+            summary="test",
+            total_files_analyzed=10,
+        )
+        assert result.phase_timings == []
+
+    def test_phase_timing_item(self) -> None:
+        item = PhaseTimingItem(phase=3, name="Semantic Discovery", duration_seconds=45.2, tool_count=12)
+        assert item.phase == 3  # noqa: PLR2004
+        assert item.name == "Semantic Discovery"
