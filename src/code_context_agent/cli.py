@@ -202,7 +202,7 @@ def analyze(  # noqa: C901, PLR0912
 
 
 @app.command
-def viz(  # noqa: C901, PLR0915
+def viz(  # noqa: C901
     path: Annotated[
         Path,
         Parameter(help="Path to the repository (must contain .code-context/ output)."),
@@ -245,11 +245,8 @@ def viz(  # noqa: C901, PLR0915
         console.print("Run [cyan]code-context-agent analyze[/cyan] first.")
         raise SystemExit(1)
 
-    # Resolve viz directory (shipped alongside the package)
-    viz_dir = Path(__file__).parent.parent.parent / "viz"
-    if not viz_dir.exists():
-        # Fallback: look relative to the project root
-        viz_dir = Path(__file__).resolve().parent.parent.parent / "viz"
+    # Resolve viz directory (shipped inside the package)
+    viz_dir = Path(__file__).parent / "viz"
     if not viz_dir.exists():
         console.print("[red]Error:[/red] Visualization files not found.")
         raise SystemExit(1)

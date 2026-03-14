@@ -1,0 +1,3 @@
+# Local-only visualization assets (HTML/JS served on localhost)
+# Uses esc() sanitizer for innerHTML — not user-facing web content
+src/code_context_agent/viz/
