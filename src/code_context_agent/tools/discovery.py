@@ -1081,15 +1081,18 @@ def read_file_bounded(file_path: str, max_lines: int = 500, start_line: int = 1)
     """Read a file with bounded output for safe analysis.
 
     USE THIS TOOL:
+    - To deeply read and understand business logic files identified by graph analysis,
+      LSP, or AST-grep. Essential for Phase 6.5 (Deep Read).
     - To read a SINGLE specific file when you know the exact path
     - To inspect implementation details after finding via rg_search
     - To read configuration files (package.json, pyproject.toml, etc.)
     - When you need line numbers for subsequent LSP calls
+    - For files >500 lines, paginate using start_line (e.g., read 1-500, then 501-1000)
 
     DO NOT USE:
     - To read multiple files at once (use repomix_bundle instead)
-    - For initial exploration (use repomix_orientation first)
-    - For very large files (>1000 lines) without specifying start_line
+    - For initial exploration before Phase 3 (use repomix_orientation first)
+    - For files >500 lines without specifying start_line for pagination
 
     Reads file contents with line limits to prevent token overflow.
     Includes line numbers formatted as "  123| code here".

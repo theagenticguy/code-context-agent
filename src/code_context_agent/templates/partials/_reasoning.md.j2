@@ -24,6 +24,15 @@ When you encounter code patterns that seem non-obvious, apply 5 Whys reasoning t
 - `code_graph_analyze("hotspots")` — structural bottlenecks
 - `code_graph_analyze("modules")` — low cohesion scores
 
+**Always-on triggers** (apply to EVERY business logic file you read in Phase 6.5):
+- What domain concept does this file encode?
+- What invariants does it maintain that callers depend on?
+- What implicit contracts does it have with other modules?
+- What would break if this file were modified naively?
+- What error/edge cases does the implementation handle (or not)?
+
+These are not optional — record at least one insight per file read. If a file reveals nothing beyond its name and signature, note that too (it's a sign the file is pure plumbing and may not belong in the business logic list).
+
 **Output format**: Weave reasoning into existing CONTEXT.md sections:
 - In **Business Logic** table: add a "Why" column for top items
 - In **Risks**: frame each risk as the conclusion of a why-chain
