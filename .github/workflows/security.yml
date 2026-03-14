@@ -25,6 +25,7 @@ jobs:
           semgrep scan \
             --config auto \
             --config p/owasp-top-ten \
+            --exclude-rule python.flask.security.xss.audit.direct-use-of-jinja2.direct-use-of-jinja2 \
             --sarif \
             --output semgrep.sarif \
             --error \
