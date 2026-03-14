@@ -1,3 +1,31 @@
+## v7.1.0 (2026-03-14)
+
+### Feat
+
+- Phase 6.5 Deep Read + viz packaging fix + CI bump (#8)
+
+### Fix
+
+- **ci**: use BUMP_TOKEN PAT to bypass branch ruleset
+- **ci**: add graphviz system deps to bump workflow
+- **ci**: exclude false-positive semgrep jinja2 XSS rule (#6)
+
+## v7.0.0 (2026-03-13)
+
+### BREAKING CHANGE
+
+- create_all_hooks() now accepts full_mode kwarg;
+get_prompt() now accepts mode kwarg; run_analysis() now accepts
+mode kwarg; create_agent() now accepts mode parameter.
+
+### Feat
+
+- add --full exhaustive analysis mode (v7.0.0)
+
+### Fix
+
+- sync uv.lock after v6.1.1 version bump
+
 ## v6.1.1 (2026-03-13)
 
 ### Fix
