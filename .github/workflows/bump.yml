@@ -26,6 +26,9 @@ jobs:
         with:
           enable-cache: true
 
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends graphviz libgraphviz-dev pkg-config
+
       - name: Install dependencies
         run: uv sync --locked --group dev
 
