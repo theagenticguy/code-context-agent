@@ -1,0 +1,125 @@
+schema: spec-driven
+
+context: |
+  ## Project Identity
+  - **Name**: code-context-agent v7.1.0
+  - **Purpose**: AI-powered CLI that analyzes codebases and produces structured context documentation for AI coding assistants
+  - **License**: Apache-2.0
+  - **Python**: >=3.13 (managed via mise)
+  - **Package manager**: uv (never pip/poetry)
+
+  ## Architecture
+  Single Strands Agent (Claude Opus 4.6 on Bedrock) with 46+ @tool functions, AG-UI event streaming, and Pydantic structured output (AnalysisResult).
+
+  ```
+  CLI (cyclopts) --> run_analysis() --> Strands Agent (Opus 4.6)
+                                          |-- 46+ @tool functions
+                                          |-- context7 MCP (library docs)
+                                          |-- AG-UI event stream --> Rich TUI
+                                          |-- AnalysisResult (structured output)
+
+  FastMCP v3 Server (code-context-agent serve)
+      |-- start_analysis / check_analysis (kickoff/poll)
+      |-- query_code_graph (10 graph algorithms)
+      |-- explore_code_graph (progressive disclosure)
+      |-- 6 resource templates (analysis artifacts)
+  ```
+
+  ## Key Source Locations
+  | Path | Purpose |
+  |------|---------|
+  | src/code_context_agent/cli.py | CLI: analyze, serve, viz, check commands |
+  | src/code_context_agent/config.py | Settings via pydantic-settings, CODE_CONTEXT_ prefix |
+  | src/code_context_agent/agent/factory.py | Agent creation: tools, model, hooks, context7 MCP |
+  | src/code_context_agent/agent/runner.py | Analysis runner with AG-UI event streaming |
+  | src/code_context_agent/agent/hooks.py | HookProviders: OutputQuality, ToolEfficiency, FailFast |
+  | src/code_context_agent/agent/prompts.py | Jinja2 template rendering |
+  | src/code_context_agent/mcp/server.py | FastMCP v3 server (MCP tools + resources) |
+  | src/code_context_agent/tools/discovery.py | ripgrep, repomix tools |
+  | src/code_context_agent/tools/lsp/ | LSP client, session manager, tool wrappers |
+  | src/code_context_agent/tools/graph/ | CodeGraph model, CodeAnalyzer, ProgressiveExplorer |
+  | src/code_context_agent/tools/git.py | Git history analysis tools |
+  | src/code_context_agent/tools/astgrep.py | AST-grep pattern matching tools |
+  | src/code_context_agent/tools/shell_tool.py | Security-hardened shell with allowlist |
+  | src/code_context_agent/templates/ | Jinja2 system prompt (system.md.j2 + partials/ + steering/) |
+  | src/code_context_agent/models/output.py | AnalysisResult, BusinessLogicItem, ArchitecturalRisk |
+  | src/code_context_agent/models/base.py | FrozenModel (immutable), StrictModel (mutable) |
+  | src/code_context_agent/consumer/ | AG-UI event consumers: RichEventConsumer, QuietConsumer |
+
+  ## Tool Categories (46+)
+  - **Discovery** (11): create_file_manifest, repomix_*, rg_search, read_file_bounded, write_file, write_file_list
+  - **LSP** (8): lsp_start, lsp_document_symbols, lsp_references, lsp_definition, lsp_hover, lsp_workspace_symbols, lsp_diagnostics, lsp_shutdown
+  - **Graph** (14): code_graph_create, code_graph_ingest_* (7 adapters), code_graph_analyze, code_graph_explore, code_graph_export, code_graph_save/load, code_graph_stats
+  - **Git** (7): git_hotspots, git_files_changed_together, git_blame_summary, git_file_history, git_contributors, git_recent_commits, git_diff_file
+  - **AST** (3): astgrep_scan, astgrep_scan_rule_pack, astgrep_inline_rule
+  - **Shell** (1): shell (security-hardened, allowlist-based)
+  - **MCP** (via context7): context7_resolve-library-id, context7_query-docs
+  - **Orchestration** (1): graph (from strands_tools, multi-agent DAG)
+  - **Code Health** (1): detect_clones (jscpd-based)
+
+  ## Design Tenets (priority order)
+  1. Measure, don't guess (graph metrics over intuition)
+  2. Layer signals, read less (multi-signal > deep reading)
+  3. Compress aggressively, expand selectively (token budget discipline)
+  4. The model picks the depth (self-calibrating analysis)
+  5. Machines read it first (structured output for AI consumers)
+  6. Fail loud, fill gaps (surface failures, compensate with remaining signals)
+
+  ## Key Patterns
+  - All @tool functions return JSON strings with {"status": "success|error", ...} convention
+  - FrozenModel for data transfer (immutable), StrictModel for mutable internal state
+  - Imports inside functions in factory.py to avoid circular imports
+  - LSP tools have ordered fallback chains per language (ty -> pyright, etc.)
+  - Module-level state dicts (_graphs, _explorers, _jobs) for singletons
+  - Cached singleton Settings via @lru_cache (get_settings())
+  - Security: shell allowlist (ALLOWED_PROGRAMS), git read-only subcommands, path validation, sensitive dir blocking
+  - AG-UI event dispatch via registered handler pattern (_EVENT_HANDLERS dict)
+  - Jinja2 system prompt with mode-conditional includes (standard/full/focus/incremental)
+
+  ## Tech Stack
+  - strands-agents + strands-agents-tools (agent framework)
+  - ag-ui-protocol + ag-ui-strands (event streaming)
+  - networkx (graph), fastmcp (MCP server), cyclopts (CLI)
+  - pydantic + pydantic-settings (models + config)
+  - jinja2 (prompts), rich (TUI), loguru (logging)
+  - External CLIs: rg, ast-grep, repomix, npx, jscpd
+  - Lefthook hooks: ruff, ty, gitleaks, semgrep, commitizen
+
+  ## Development
+  - All commits: conventional commits via commitizen
+  - Pre-commit: ruff check+fix, ruff format, ty check, gitleaks
+  - Pre-push: lint, format-check, typecheck, test (93 tests), gitleaks, semgrep OWASP
+  - Line length: 120, Google-style docstrings
+  - Python 3.13+ typing: list[str] not List[str], X | None not Optional[X]
+  - pathlib.Path over os.path, from __future__ import annotations in all modules
+
+rules:
+  proposal:
+    - Reference design tenets by number when justifying changes
+    - Include which tool categories and source locations are affected
+    - State the analysis mode(s) impacted (standard, full, focus, incremental)
+    - Identify whether the change affects the CLI, agent, MCP server, or tools layer
+    - Proposals must explain impact on the 10-phase analysis pipeline
+    - Include a "Security Implications" section if the change touches shell, validation, or path handling
+  specs:
+    - Use WHEN/THEN scenario format for all behavioral requirements
+    - Reference specific Pydantic models by name (AnalysisResult, CodeNode, CodeEdge, etc.)
+    - Specify JSON return format for any new tool functions
+    - Include edge cases for tool error handling (status: error convention)
+    - LSP specs must include fallback chain behavior
+    - Graph specs must specify which algorithms are affected (hotspots, foundations, trust, modules, etc.)
+  design:
+    - Include a component diagram showing which source files are modified
+    - Specify whether new state is module-level singleton, cached via lru_cache, or passed through
+    - Document any new Jinja2 template partials or steering fragments
+    - Address circular import avoidance if adding new modules
+    - Specify hook integration (OutputQualityHook, ToolEfficiencyHook, FailFastHook) if applicable
+    - Include AG-UI event flow impact if the change affects the consumer or display layer
+    - Shell tool changes must document allowlist modifications and security review
+  tasks:
+    - Each task must be completable in under 2 hours (AI-assisted)
+    - Tasks must specify which test files need updating (tests/ mirrors src/ structure)
+    - Include the exact ruff/ty/pytest commands to verify the task
+    - Reference the specific phase(s) of the 10-phase pipeline affected
+    - Tasks that add tools must include the @tool decorator pattern and JSON return format
+    - Tasks that modify models must run `uvx ty check src/` as a verification step
