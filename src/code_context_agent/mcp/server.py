@@ -875,6 +875,49 @@ def diff_impact(
     )
 
 
+@mcp.tool
+def execute_cypher(
+    repo_path: Annotated[
+        str,
+        Field(description="Absolute path to repo with KuzuDB graph"),
+    ],
+    query: Annotated[
+        str,
+        Field(description="Read-only Cypher query to execute against the code graph"),
+    ],
+) -> dict:
+    """Execute a read-only Cypher query against a KuzuDB code graph.
+
+    USE THIS WHEN: You need custom graph queries beyond the built-in algorithms.
+    Only available when the graph backend is KuzuDB.
+
+    PREREQUISITE: Graph must have been built with KuzuDB backend
+    (CODE_CONTEXT_GRAPH_BACKEND=kuzu).
+
+    Examples:
+        - "MATCH (n:CodeNode) WHERE n.node_type = 'function' RETURN n.id, n.name LIMIT 10"
+        - "MATCH (a)-[e:CodeEdge]->(b) WHERE e.edge_type = 'calls' RETURN a.id, b.id LIMIT 20"
+        - "MATCH (n:CodeNode) RETURN n.node_type, count(n)"
+
+    Returns:
+        {"results": [[...], ...], "count": 10}
+    """
+    from code_context_agent.tools.graph.storage import KuzuStorage
+
+    db_path = Path(repo_path) / DEFAULT_OUTPUT_DIR / "graph.kuzu"
+    if not db_path.exists():
+        return {"error": "No KuzuDB graph found. Build with graph_backend=kuzu."}
+    storage = KuzuStorage(db_path)
+    try:
+        rows = storage.execute_cypher(query)
+        return _add_hints(
+            {"results": rows, "count": len(rows)},
+            ["Refine your Cypher query for more specific results"],
+        )
+    except ValueError as e:
+        return {"error": str(e)}
+
+
 # ---------------------------------------------------------------------------
 # Resources — read-only access to analysis artifacts
 # ---------------------------------------------------------------------------

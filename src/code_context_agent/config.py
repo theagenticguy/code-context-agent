@@ -164,6 +164,12 @@ class Settings(BaseSettings):
         description="Enable context7 MCP server for library documentation lookup during analysis",
     )
 
+    # Graph storage backend
+    graph_backend: str = Field(
+        default="networkx",
+        description="Graph storage backend: 'networkx' (in-memory, default) or 'kuzu' (persistent KuzuDB)",
+    )
+
     # Telemetry settings
     otel_disabled: bool = Field(
         default=True,
