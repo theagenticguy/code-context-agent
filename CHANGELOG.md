@@ -1,3 +1,9 @@
+## v7.2.0 (2026-03-22)
+
+### Feat
+
+- adapt GitNexus patterns — blast radius, flows, indexer, registry, BM25, KuzuDB, viz (#11)
+
 ## v7.1.0 (2026-03-14)
 
 ### Feat
