@@ -124,11 +124,15 @@ class CodeAnalyzer:
 
         return self._format_ranked_results(scores, top_k)
 
-    def find_entry_points(self) -> list[dict[str, Any]]:
+    def find_entry_points(self, framework_patterns: list | None = None) -> list[dict[str, Any]]:
         """Find likely entry points in the code.
 
         Entry points are nodes with no incoming call edges but
-        outgoing calls - they initiate execution flow.
+        outgoing calls - they initiate execution flow. When framework_patterns
+        are provided, matching nodes receive a score boost.
+
+        Args:
+            framework_patterns: Optional list of FrameworkPattern objects for scoring boost.
 
         Returns:
             List of dictionaries with entry point node info
@@ -166,6 +170,17 @@ class CodeAnalyzer:
 
         # Sort by out_degree (more calls = more significant entry point)
         entry_points.sort(key=lambda x: x.get("out_degree", 0), reverse=True)
+
+        # Apply framework-specific scoring boost
+        if framework_patterns:
+            from code_context_agent.tools.graph.frameworks import score_entry_point
+
+            for ep in entry_points:
+                node_data = self.graph.get_node_data(ep["id"]) or {}
+                boost = score_entry_point(node_data, framework_patterns)
+                ep["score"] = ep.get("score", 1.0) * boost
+                if boost > 1.0:
+                    ep["framework_boost"] = boost
 
         return entry_points
 
