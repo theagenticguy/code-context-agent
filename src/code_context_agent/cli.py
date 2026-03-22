@@ -315,6 +315,50 @@ def viz(  # noqa: C901
 
 
 @app.command
+def index(
+    path: Annotated[
+        Path,
+        Parameter(help="Path to the repository to index."),
+    ] = Path(),
+    *,
+    output_dir: Annotated[
+        Path | None,
+        Parameter(help="Output directory for the code graph. Defaults to <repo>/.code-context"),
+    ] = None,
+    quiet: Annotated[
+        bool,
+        Parameter(help="Suppress all output except errors."),
+    ] = False,
+) -> None:
+    """Build a code graph deterministically without LLM calls.
+
+    Faster and cheaper than full analysis. Uses LSP, AST-grep, and git
+    to build a structural code graph that can be queried via MCP tools.
+
+    Example:
+        $ code-context-agent index /path/to/repo
+        $ code-context-agent index . --output-dir ./output
+        $ code-context-agent index . --quiet
+    """
+    import asyncio
+    import sys
+
+    from code_context_agent.indexer import build_index
+
+    repo_path = path.resolve()
+
+    if not repo_path.exists():
+        print(f"Error: Path does not exist: {repo_path}", file=sys.stderr)
+        raise SystemExit(1)
+
+    if not repo_path.is_dir():
+        print(f"Error: Path is not a directory: {repo_path}", file=sys.stderr)
+        raise SystemExit(1)
+
+    asyncio.run(build_index(repo_path, output_dir, quiet))
+
+
+@app.command
 def serve(
     *,
     transport: Annotated[
