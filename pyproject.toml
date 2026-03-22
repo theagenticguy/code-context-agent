@@ -15,10 +15,12 @@ dependencies = [
     "cyclopts>=4.6.0",
     "fastmcp>=3.0.2,<4",
     "jinja2>=3.1.6",
+    "kuzu>=0.11.3",
     "loguru>=0.7.3",
     "networkx[default,extra]>=3.6.1",
     "pydantic>=2.12.5",
     "pydantic-settings>=2.13.1",
+    "rank-bm25>=0.2.2",
     "rich>=14.3.3",
     "strands-agents>=1.27.0",
     "strands-agents-tools>=0.2.21",
@@ -113,7 +115,7 @@ convention = "google"
 max-complexity = 10  # Enforce complexity limit after refactoring
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["D", "S101", "ARG"]
+"tests/**/*.py" = ["D", "S101", "ARG", "PLR2004"]
 "**/__init__.py" = ["F401", "RUF022"]  # Allow unused imports and unsorted __all__ in init files
 "src/code_context_agent/tools/**/*.py" = ["PLR2004", "PLR0911", "PLR0912", "SIM102", "SIM108"]  # Allow magic numbers and dispatcher patterns in tools
 
@@ -142,6 +144,7 @@ python-version = "3.13"
 
 [tool.ty.src]
 include = ["src"]
+exclude = ["src/code_context_agent/tools/graph/storage.py"]  # kuzu has imprecise type stubs
 
 # =============================================================================
 # Bandit Configuration (SAST)

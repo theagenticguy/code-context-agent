@@ -81,6 +81,7 @@ def get_analysis_tools() -> list[Any]:
         lsp_start,
         lsp_workspace_symbols,
     )
+    from ..tools.search.tools import bm25_search
     from ..tools.shell_tool import shell
 
     tools: list[Any] = [
@@ -93,6 +94,7 @@ def get_analysis_tools() -> list[Any]:
         repomix_json_export,
         repomix_split_bundle,
         rg_search,
+        bm25_search,
         write_file,
         write_file_list,
         read_file_bounded,
