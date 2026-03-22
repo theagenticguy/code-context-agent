@@ -281,6 +281,16 @@ def viz(  # noqa: C901
         def __init__(self, *args, **kwargs):
             super().__init__(*args, directory=str(viz_dir), **kwargs)
 
+        def do_GET(self):
+            """Handle GET requests with API endpoints and file serving."""
+            if self.path == "/api/graph" or self.path.startswith("/api/graph?"):
+                self._serve_json_file("code_graph.json")
+                return
+            if self.path == "/api/stats" or self.path.startswith("/api/stats?"):
+                self._serve_graph_stats()
+                return
+            super().do_GET()
+
         def translate_path(self, path):
             """Route /data/ requests to the agent output directory."""
             if path.startswith("/data/"):
@@ -291,6 +301,45 @@ def viz(  # noqa: C901
                     return str(agent_dir / "404")
                 return str(resolved)
             return super().translate_path(path)
+
+        def _serve_json_file(self, filename: str) -> None:
+            """Serve a JSON file from agent_dir."""
+            filepath = agent_dir / filename
+            if not filepath.exists():
+                self.send_error(404, f"{filename} not found")
+                return
+            data = filepath.read_text(encoding="utf-8")
+            encoded = data.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(encoded)
+
+        def _serve_graph_stats(self) -> None:
+            """Load graph and serve describe() as JSON."""
+            import json
+
+            filepath = agent_dir / "code_graph.json"
+            if not filepath.exists():
+                self.send_error(404, "code_graph.json not found")
+                return
+            try:
+                raw = json.loads(filepath.read_text(encoding="utf-8"))
+                from code_context_agent.tools.graph.model import CodeGraph
+
+                graph = CodeGraph.from_node_link_data(raw)
+                stats = graph.describe()
+                body = json.dumps(stats, indent=2).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(body)
+            except (KeyError, ValueError, OSError) as exc:
+                self.send_error(500, str(exc))
 
         def log_message(self, format, *args):
             pass  # Suppress request logs
