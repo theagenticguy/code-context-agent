@@ -215,6 +215,13 @@ async def _run_analysis_job(job_id: str, repo_path: str, focus: str | None, issu
         )
         _jobs[job_id]["status"] = result.get("status", "completed")
         _jobs[job_id]["result"] = result
+
+        # Auto-register in the multi-repo registry
+        from code_context_agent.mcp.registry import Registry
+
+        registry = Registry()
+        alias = Path(repo_path).name
+        registry.register(alias, repo_path)
     except Exception as e:  # noqa: BLE001
         logger.error(f"Analysis job {job_id} failed: {e}")
         _jobs[job_id]["status"] = "error"
@@ -401,6 +408,29 @@ def check_analysis(
         hints = [f"Continue polling check_analysis(job_id='{job_id}')"]
 
     return _add_hints(response, hints)
+
+
+@mcp.tool
+def list_repos() -> dict:
+    """List all repositories registered in the code-context-agent registry.
+
+    USE THIS WHEN: You want to discover which repositories have been analyzed
+    and are available for querying.
+
+    Returns:
+        {"repos": [{"alias": "...", "path": "...", "analyzed_at": "...", ...}], "count": 3}
+    """
+    from code_context_agent.mcp.registry import Registry
+
+    registry = Registry()
+    repos = registry.list_repos()
+    return _add_hints(
+        {"repos": repos, "count": len(repos)},
+        [
+            "Use query_code_graph(repo_path=<path>) to analyze a specific repo",
+            "Run start_analysis(repo_path=<path>) to analyze a new repo",
+        ],
+    )
 
 
 # ---------------------------------------------------------------------------
