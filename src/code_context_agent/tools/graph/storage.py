@@ -32,35 +32,35 @@ class GraphStorage(Protocol):
 
     def has_node(self, node_id: str) -> bool:
         """Check if a node exists."""
-        ...
+        ...  # type: ignore[empty-body]
 
     def get_node_data(self, node_id: str) -> dict[str, Any] | None:
         """Get node attribute data."""
-        ...
+        ...  # type: ignore[empty-body]
 
     def get_nodes_by_type(self, node_type: NodeType) -> list[str]:
         """Get all node IDs of a specific type."""
-        ...
+        ...  # type: ignore[empty-body]
 
     def get_edges_by_type(self, edge_type: EdgeType) -> list[tuple[str, str, dict[str, Any]]]:
         """Get all edges of a specific type."""
-        ...
+        ...  # type: ignore[empty-body]
 
     def node_count(self) -> int:
         """Return the number of nodes."""
-        ...
+        ...  # type: ignore[empty-body]
 
     def edge_count(self) -> int:
         """Return the number of edges."""
-        ...
+        ...  # type: ignore[empty-body]
 
     def to_node_link_data(self) -> dict[str, Any]:
         """Export to node-link JSON format."""
-        ...
+        ...  # type: ignore[empty-body]
 
     def describe(self) -> dict[str, Any]:
         """Get a summary of the graph."""
-        ...
+        ...  # type: ignore[empty-body]
 
 
 class NetworkXStorage:
