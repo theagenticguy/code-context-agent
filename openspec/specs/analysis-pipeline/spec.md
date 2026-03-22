@@ -1,11 +1,11 @@
 # Analysis Pipeline Specification
 
-> Global spec documenting the 10-phase analysis pipeline, mode variants, and prompt architecture in code-context-agent v7.1.0.
+> Global spec documenting the 10-phase analysis pipeline, deterministic index mode, mode variants, and prompt architecture in code-context-agent v7.1.0.
 > Last updated: 2026-03-22
 
 ## Purpose
 
-Define the 10-phase analysis pipeline executed by the Strands Agent, including per-phase tool usage, mode-specific variants (standard, full, focus, incremental), the Jinja2 prompt architecture, graph algorithm catalog, and output constraints. This spec is the authoritative reference for what the agent does during analysis.
+Define the 10-phase analysis pipeline executed by the Strands Agent, the deterministic index mode (LLM-free pipeline), per-phase tool usage, mode-specific variants (standard, full, focus, incremental), the Jinja2 prompt architecture, graph algorithm catalog, and output constraints. This spec is the authoritative reference for what the agent does during analysis.
 
 ## Pipeline Overview
 
@@ -110,6 +110,47 @@ templates/
 
 Mode-conditional rendering: full modes include _full_mode.md.j2, others include _size_limits.md.j2.
 
+## Deterministic Index Mode
+
+The `index` CLI command provides an LLM-free alternative to the full analysis pipeline. It builds a structural code graph without any Bedrock API calls, making it faster and cheaper.
+
+### Index vs. Analyze Layering
+
+```
+index (fast, deterministic, LLM-free)
+  |-- File manifest (rg or fallback)
+  |-- LSP symbols per file
+  |-- AST-grep rule packs
+  |-- Git hotspots + co-changes
+  |-- Clone detection
+  |-- Output: code_graph.json only
+  |
+  v (optional)
+analyze (full LLM pipeline, 10 phases)
+  |-- Loads existing graph if present (index → analyze)
+  |-- LLM-driven deep read, business logic ranking
+  |-- Narrated CONTEXT.md, bundles, orientation
+  |-- Output: full .code-context/ artifact set
+```
+
+The index mode covers steps equivalent to Phases 1, 3, 4, 5 (partial), and 6 of the full pipeline but without LLM steering or narration. The resulting graph can be:
+- Queried via MCP tools (`query_code_graph`, `explore_code_graph`)
+- Visualized via the `viz` command
+- Used as a foundation for a subsequent `analyze --since` incremental run
+
+### Index Pipeline Steps
+
+| Step | Tool | Graceful Failure |
+|------|------|-----------------|
+| 1. File manifest | `rg --files` | Falls back to `Path.rglob` |
+| 2. Language detection | Extension mapping | Always succeeds |
+| 3. LSP symbols | Per-language LSP server | Skips language if server unavailable |
+| 4. AST-grep patterns | Rule packs per language | Skips if `ast-grep` not installed |
+| 5. Git hotspots | `git log` analysis | Skips if not a git repo |
+| 6. Git co-changes | Per-hotspot co-change | Skips on failure |
+| 7. Clone detection | `jscpd` via npx | Skips if `npx` not installed |
+| 8. Save graph | JSON serialization | Required (will error if write fails) |
+
 ## Graph Algorithms
 
 | Algorithm | Method | NetworkX Function | Edge Types | Returns |
@@ -117,7 +158,7 @@ Mode-conditional rendering: full modes include _full_mode.md.j2, others include 
 | hotspots | find_hotspots | betweenness_centrality | calls, references | Ranked list |
 | foundations | find_foundations | pagerank | calls, imports | Ranked list |
 | trust | find_trusted_foundations | pagerank (personalized) | calls, imports | Ranked list |
-| entry_points | find_entry_points | in/out_degree | calls | Sorted list |
+| entry_points | find_entry_points | in/out_degree + framework boost | calls | Sorted list |
 | modules | detect_modules | leiden/louvain_communities | calls, imports | Clusters |
 | triangles | find_triangles | enumerate_all_cliques | calls, imports | Triads |
 | similar | get_similar_nodes | pagerank (personalized) | all | Ranked list |
@@ -127,6 +168,9 @@ Mode-conditional rendering: full modes include _full_mode.md.j2, others include 
 | refactoring | find_refactoring_candidates | composite | all | Ranked candidates |
 | clusters_by_pattern | find_clusters_by_pattern | node filter | all | Grouped matches |
 | clusters_by_category | find_clusters_by_category | node filter | all | Categorized matches |
+| blast_radius | blast_radius | BFS with confidence decay | calls, references, imports | Impact scores |
+| flows | trace_execution_flows | DFS from entry points | calls | Named paths |
+| diff_impact | diff_impact | Line-overlap mapping + blast_radius | all | Affected nodes + test suggestions |
 
 ## Requirements
 
@@ -213,3 +257,29 @@ The agent MUST verify all required outputs before signaling completion.
 #### Scenario: All artifacts present
 - **WHEN** the agent reaches the exit gate
 - **THEN** it verifies: files.all.txt, files.business.txt, CONTEXT.orientation.md, CONTEXT.bundle.md, CONTEXT.md exist and CONTEXT.md is <=300 lines
+
+### Requirement: The deterministic index SHALL produce a valid graph without LLM calls
+The index pipeline MUST build a code_graph.json using only deterministic tools.
+
+#### Scenario: Index a Python repository
+- **WHEN** `build_index(repo_path)` is called on a Python repository with rg, ty, and ast-grep available
+- **THEN** a code_graph.json is written containing LSP-derived nodes/edges, AST-grep pattern matches, git hotspots, and clone data
+
+#### Scenario: Index with missing tools
+- **WHEN** `build_index(repo_path)` is called and ast-grep is not installed
+- **THEN** Steps 1-3, 5-7 complete successfully; Step 4 (AST-grep) is skipped with a warning
+
+#### Scenario: Index as foundation for incremental analysis
+- **WHEN** `build_index(repo_path)` is run, then `analyze --since HEAD~3` is run on the same repo
+- **THEN** the analyze command loads the existing graph from code_graph.json and only re-analyzes changed files
+
+### Requirement: Entry point detection SHALL incorporate framework patterns
+The `find_entry_points` algorithm MUST use framework detection to boost scores for known entry point patterns.
+
+#### Scenario: FastAPI project
+- **WHEN** `find_entry_points` runs on a repo where `detect_frameworks` finds "fastapi"
+- **THEN** functions matching `@(app|router).(get|post|put|delete|patch)` patterns receive a 3.0x entry point boost
+
+#### Scenario: Multiple frameworks
+- **WHEN** a repo contains both Next.js pages and pytest test files
+- **THEN** patterns from both "nextjs" and "pytest" framework definitions are applied with their respective boosts

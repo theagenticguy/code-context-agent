@@ -1,11 +1,11 @@
 # Tool System Specification
 
-> Global spec documenting the 46+ tool system in code-context-agent v7.1.0.
+> Global spec documenting the 47+ tool system in code-context-agent v7.1.0.
 > Last updated: 2026-03-22
 
 ## Purpose
 
-Define the tool registration pattern, all tool categories and their functions, the hook system for quality enforcement, input validation boundaries, and security constraints. This spec is the authoritative reference for how tools are built, registered, and governed.
+Define the tool registration pattern, all tool categories and their functions, the BM25 search tool, the hook system for quality enforcement, input validation boundaries, and security constraints. This spec is the authoritative reference for how tools are built, registered, and governed.
 
 ## Tool Registration
 
@@ -39,6 +39,22 @@ MCP tools use `@mcp.tool` from FastMCP v3 and return dicts (FastMCP handles seri
 | `read_file_bounded` | discovery.py | Bounded file reading with line numbers and pagination |
 | `write_file` | discovery.py | Write to .code-context/ only (security enforced) |
 | `write_file_list` | discovery.py | Write curated file path list for bundling |
+
+### Search Tools (1)
+
+| Tool | Source | Purpose |
+|------|--------|---------|
+| `bm25_search` | search/tools.py | BM25-ranked text search; unlike ripgrep (exact matching), ranks results by relevance using TF-IDF |
+
+**BM25 search parameters:**
+- `query` (str): Natural language or keyword query
+- `repo_path` (str): Absolute path to repository
+- `top_k` (int, default 20): Maximum results to return
+- `rebuild` (bool, default False): Force index rebuild
+
+**State:** Module-level `_indexes: dict[str, BM25Index]` caches indexes per repo. Index is built from file contents on first query and reused until `rebuild=True`.
+
+**Backed by** `rank_bm25.BM25Okapi` (Okapi BM25 algorithm). Index built via `BM25Index.from_files()` which tokenizes file contents.
 
 ### LSP Tools (8)
 
@@ -82,6 +98,16 @@ MCP tools use `@mcp.tool` from FastMCP v3 and return dicts (FastMCP handles seri
 | `code_graph_load` | graph/tools.py | Load graph from JSON |
 | `code_graph_stats` | graph/tools.py | Quick summary (node/edge counts by type, density) |
 
+**New graph analysis algorithms** (dispatched via `code_graph_analyze`):
+
+| Algorithm | Method | Description |
+|-----------|--------|-------------|
+| `blast_radius` | `CodeAnalyzer.blast_radius` | BFS impact analysis from a node. Decays by distance and edge confidence: `impact = 1/(2^distance) * confidence_product`. Requires `node_a`. |
+| `flows` | `CodeAnalyzer.trace_execution_flows` | Traces execution flows from entry points through CALLS edges. Returns named paths with depth scoring. |
+| `diff_impact` | `CodeAnalyzer.diff_impact` | Maps git diff changed lines to graph nodes via line overlap, runs blast_radius on each, merges affected nodes, and suggests test files via TESTS edges. Requires `node_a` as JSON of changed files. |
+
+**Framework detection integration:** `find_entry_points` integrates with `tools/graph/frameworks.py` to boost scores for framework-specific entry points (Next.js pages, FastAPI routes, Django views, Flask routes, Express handlers, CLI mains, pytest fixtures). Framework patterns are defined as `FrameworkPattern` models with `file_glob`, optional `symbol_pattern`, and `entry_point_boost` (1.0-10.0).
+
 **State:** Module-level `_graphs: dict[str, CodeGraph]` and `_explorers: dict[str, ProgressiveExplorer]`.
 
 ### Git Tools (7)
@@ -117,6 +143,23 @@ MCP tools use `@mcp.tool` from FastMCP v3 and return dicts (FastMCP handles seri
 - Blocked: sensitive dirs (/etc, /root, /boot, /proc, /sys)
 - Output truncation: MAX_OUTPUT_SIZE = 100,000 chars
 - Default timeout: 900s
+
+### MCP Server Tools (FastMCP v3)
+
+The MCP server (`mcp/server.py`) exposes additional tools for external AI clients:
+
+| Tool | Purpose |
+|------|---------|
+| `start_analysis` | Kickoff background analysis, returns job_id |
+| `check_analysis` | Poll job status |
+| `query_code_graph` | Run graph algorithms (all standard + blast_radius, flows, diff_impact) |
+| `explore_code_graph` | Progressive disclosure exploration |
+| `get_graph_stats` | Quick graph summary |
+| `list_repos` | List all repos in the multi-repo registry (~/.code-context/registry.json) |
+| `diff_impact` | Map git diff to impacted nodes and suggest tests |
+| `execute_cypher` | Run read-only Cypher queries against a KuzuDB graph |
+
+**MCP next-step hints pattern:** Every MCP tool response includes a `next_steps` field with context-sensitive suggestions for the AI client. The `_add_hints(result, hints)` helper appends hints to any tool response dict. Hints are defined per-algorithm in `QUERY_ALGORITHM_HINTS`, per-action in `EXPLORE_ACTION_HINTS`, and inline for other tools. This guides agentic clients through multi-step workflows without hardcoding sequences.
 
 ### External Tools (via MCP)
 
@@ -227,3 +270,55 @@ FailFastHook MUST be added to the hooks list only when full_mode=True.
 #### Scenario: Full mode tool error on non-exempt tool
 - **WHEN** a non-exempt tool returns {"status": "error"} in full mode
 - **THEN** FailFastHook raises FullModeToolError, halting the agent
+
+### Requirement: BM25 search SHALL rank results by relevance
+bm25_search MUST return files ranked by BM25 Okapi relevance score, not just pattern matches.
+
+#### Scenario: Natural language query
+- **WHEN** `bm25_search(query="authentication middleware", repo_path="/path/to/repo")` is called
+- **THEN** results are ranked by TF-IDF relevance, with the most semantically relevant files first
+
+#### Scenario: Index caching
+- **WHEN** bm25_search is called twice on the same repo without rebuild=True
+- **THEN** the second call reuses the cached BM25Index from `_indexes`
+
+#### Scenario: Index rebuild
+- **WHEN** bm25_search is called with rebuild=True
+- **THEN** the existing index is discarded and rebuilt from current file contents
+
+### Requirement: MCP tools SHALL include next-step hints
+Every MCP tool response MUST include a `next_steps` field with context-sensitive suggestions.
+
+#### Scenario: query_code_graph returns hotspots
+- **WHEN** `query_code_graph(algorithm="hotspots")` completes
+- **THEN** the response includes hints like "Use explore_code_graph to drill into top hotspots"
+
+#### Scenario: check_analysis returns running status
+- **WHEN** `check_analysis(job_id)` returns status="running"
+- **THEN** the response includes a hint to continue polling
+
+### Requirement: Graph analysis SHALL support blast_radius, flows, and diff_impact algorithms
+The `code_graph_analyze` tool MUST dispatch to these three new analysis algorithms.
+
+#### Scenario: Blast radius analysis
+- **WHEN** `code_graph_analyze(graph_name, "blast_radius", node_a="src/auth.py:login")` is called
+- **THEN** it returns affected nodes with impact scores decayed by distance and edge confidence
+
+#### Scenario: Execution flow tracing
+- **WHEN** `code_graph_analyze(graph_name, "flows")` is called
+- **THEN** it returns named execution flows from entry points through CALLS edges
+
+#### Scenario: Diff impact analysis
+- **WHEN** `code_graph_analyze(graph_name, "diff_impact", node_a='[{"file_path":"src/auth.py","lines":[10,11]}]')` is called
+- **THEN** it maps changed lines to graph nodes, computes blast radius, and suggests test files
+
+### Requirement: Framework detection SHALL boost entry point scoring
+The `find_entry_points` algorithm MUST apply framework-specific boost multipliers from detected frameworks.
+
+#### Scenario: FastAPI route detection
+- **WHEN** `find_entry_points` runs on a repo containing `**/routers/**/*.py` files
+- **THEN** functions matching `@(app|router).(get|post|put|delete|patch)` receive a 3.0x score boost
+
+#### Scenario: No framework detected
+- **WHEN** `find_entry_points` runs on a repo with no recognized framework patterns
+- **THEN** all entry points receive the default 1.0x multiplier (no boost)
