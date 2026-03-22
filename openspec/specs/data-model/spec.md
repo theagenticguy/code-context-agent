@@ -1,6 +1,6 @@
 # Data Model Specification
 
-> Global spec documenting Pydantic models, code graph model, and structured output schema in code-context-agent v7.1.0.
+> Global spec documenting Pydantic models, code graph model, graph storage backends, and structured output schema in code-context-agent v7.1.0.
 > Last updated: 2026-03-22
 
 ## Purpose
@@ -103,7 +103,22 @@ Defined in `tools/graph/model.py`. Wraps a NetworkX `MultiDiGraph`.
 | target | str | Target node ID |
 | edge_type | EdgeType | Relationship classification |
 | weight | float | Edge weight for algorithms (default 1.0) |
+| confidence | float | Source reliability score (0.0-1.0, default 1.0) |
 | metadata | dict | Extensible: line number, context |
+
+#### Edge Confidence Values by Source
+
+Confidence scores indicate how reliable the edge data source is. Higher values mean greater certainty that the relationship exists in reality.
+
+| Source | Confidence | Rationale |
+|--------|------------|-----------|
+| LSP (symbols, references, definitions) | 0.95 | Compiler-grade type resolution |
+| Inheritance ingest | 0.85 | Structural relationship from AST |
+| Clone detection (similar_to) | 0.75 | Token-level similarity heuristic |
+| Test-production mapping (tests) | 0.70 | Name-based heuristic matching |
+| Git co-change (cochanges) | 0.60 | Statistical correlation, not causal |
+
+Confidence is factored into graph algorithms. For example, `blast_radius` decays impact per hop using the formula: `impact = 1 / (2^distance) * confidence_product`, where `confidence_product` is the product of edge confidences along the path. The `get_view()` method aggregates parallel edges by taking the max confidence.
 
 ### CodeGraph Class
 
@@ -119,6 +134,43 @@ Non-Pydantic class wrapping `nx.MultiDiGraph`. Key methods:
 | `to_node_link_data()` | dict | JSON-serializable export |
 | `from_node_link_data(dict)` | CodeGraph | Reconstruct from JSON (handles old/new nx format) |
 | `describe()` | dict | Summary: counts, type distributions, density |
+
+## Graph Storage
+
+Defined in `tools/graph/storage.py`. A `GraphStorage` protocol allows pluggable backends.
+
+### GraphStorage Protocol
+
+```
+GraphStorage (Protocol, runtime_checkable)
+  |-- add_node(CodeNode) -> None
+  |-- add_edge(CodeEdge) -> None
+  |-- has_node(str) -> bool
+  |-- get_node_data(str) -> dict | None
+  |-- get_nodes_by_type(NodeType) -> list[str]
+  |-- get_edges_by_type(EdgeType) -> list[tuple]
+  |-- node_count() -> int
+  |-- edge_count() -> int
+  |-- to_node_link_data() -> dict
+  |-- describe() -> dict
+```
+
+### NetworkXStorage (default)
+
+In-memory backend wrapping `CodeGraph`. Delegates all operations to the underlying `nx.MultiDiGraph`. Selected when `CODE_CONTEXT_GRAPH_BACKEND=networkx` (default).
+
+### KuzuStorage (persistent)
+
+KuzuDB-backed persistent graph storage. Selected when `CODE_CONTEXT_GRAPH_BACKEND=kuzu`. Stores the graph in a KuzuDB database directory (`<repo>/.code-context/graph.kuzu`) for persistence across sessions.
+
+| Feature | Details |
+|---------|---------|
+| Schema | `CodeNode` node table (id PK, name, node_type, file_path, line_start, line_end, metadata), `CodeEdge` rel table (edge_type, weight, confidence, metadata) |
+| Cypher queries | `execute_cypher(query)` for read-only queries (CREATE/DELETE/SET/MERGE/DROP/ALTER blocked) |
+| NetworkX compat | `_to_networkx()` converts to `nx.MultiDiGraph` for algorithm compatibility |
+| CodeGraph compat | `to_code_graph()` converts to `CodeGraph` for existing tool integration |
+
+Backend selection is configured via `Settings.graph_backend` (`CODE_CONTEXT_GRAPH_BACKEND` env var).
 
 ## Configuration Model
 
@@ -138,6 +190,7 @@ Defined in `config.py::Settings(BaseSettings)`. Env prefix: `CODE_CONTEXT_`.
 | full_max_duration | int | 3600 | Full mode time limit (300-14400s) |
 | full_max_turns | int | 3000 | Full mode turn limit (100-10000) |
 | context7_enabled | bool | true | Enable context7 MCP |
+| graph_backend | str | networkx | Graph storage: 'networkx' (in-memory) or 'kuzu' (persistent KuzuDB) |
 | otel_disabled | bool | true | Disable OpenTelemetry |
 
 ## Output Artifacts
@@ -221,3 +274,37 @@ Numeric fields MUST use ge/le/gt/lt constraints. String fields MUST use descript
 #### Scenario: PhaseTimingItem with invalid phase
 - **WHEN** a PhaseTimingItem is created with phase=11
 - **THEN** Pydantic validation raises an error (phase must be 1-10)
+
+### Requirement: CodeEdge SHALL carry a confidence score
+Every CodeEdge MUST have a confidence field (0.0-1.0) reflecting source reliability.
+
+#### Scenario: LSP-derived edge
+- **WHEN** an edge is created from LSP references or definitions
+- **THEN** its confidence is 0.95
+
+#### Scenario: Git co-change edge
+- **WHEN** an edge is created from git co-change analysis
+- **THEN** its confidence is 0.60
+
+#### Scenario: Confidence used in algorithms
+- **WHEN** blast_radius computes impact through a path with mixed-confidence edges
+- **THEN** the cumulative confidence (product of per-hop confidences) attenuates the impact score
+
+### Requirement: GraphStorage SHALL support pluggable backends
+The system MUST support both NetworkX (in-memory) and KuzuDB (persistent) backends via the GraphStorage protocol.
+
+#### Scenario: Default backend
+- **WHEN** `CODE_CONTEXT_GRAPH_BACKEND` is not set or is "networkx"
+- **THEN** `NetworkXStorage` is used (in-memory, default)
+
+#### Scenario: KuzuDB backend
+- **WHEN** `CODE_CONTEXT_GRAPH_BACKEND=kuzu`
+- **THEN** `KuzuStorage` is used with database at `<repo>/.code-context/graph.kuzu`
+
+#### Scenario: KuzuDB Cypher queries
+- **WHEN** `execute_cypher("MATCH (n:CodeNode) RETURN n.id")` is called on KuzuStorage
+- **THEN** results are returned as a list of rows
+
+#### Scenario: KuzuDB write protection
+- **WHEN** `execute_cypher("DELETE (n:CodeNode)")` is called on KuzuStorage
+- **THEN** a ValueError is raised (write operations blocked)

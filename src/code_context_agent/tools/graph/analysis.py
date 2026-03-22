@@ -7,6 +7,7 @@ This module provides the CodeAnalyzer class with methods for:
 """
 
 import re
+from collections import deque
 from typing import Any
 
 import networkx as nx
@@ -123,11 +124,15 @@ class CodeAnalyzer:
 
         return self._format_ranked_results(scores, top_k)
 
-    def find_entry_points(self) -> list[dict[str, Any]]:
+    def find_entry_points(self, framework_patterns: list | None = None) -> list[dict[str, Any]]:
         """Find likely entry points in the code.
 
         Entry points are nodes with no incoming call edges but
-        outgoing calls - they initiate execution flow.
+        outgoing calls - they initiate execution flow. When framework_patterns
+        are provided, matching nodes receive a score boost.
+
+        Args:
+            framework_patterns: Optional list of FrameworkPattern objects for scoring boost.
 
         Returns:
             List of dictionaries with entry point node info
@@ -165,6 +170,17 @@ class CodeAnalyzer:
 
         # Sort by out_degree (more calls = more significant entry point)
         entry_points.sort(key=lambda x: x.get("out_degree", 0), reverse=True)
+
+        # Apply framework-specific scoring boost
+        if framework_patterns:
+            from code_context_agent.tools.graph.frameworks import score_entry_point
+
+            for ep in entry_points:
+                node_data = self.graph.get_node_data(ep["id"]) or {}
+                boost = score_entry_point(node_data, framework_patterns)
+                ep["score"] = ep.get("score", 1.0) * boost
+                if boost > 1.0:
+                    ep["framework_boost"] = boost
 
         return entry_points
 
@@ -565,6 +581,351 @@ class CodeAnalyzer:
         # Sort by score descending, return top_k
         candidates.sort(key=lambda x: x["score"], reverse=True)
         return candidates[:top_k]
+
+    def blast_radius(
+        self,
+        node_id: str,
+        max_depth: int = 5,
+        top_k: int = 20,
+    ) -> dict[str, Any]:
+        """Compute the blast radius of changing a node.
+
+        BFS outward from the target node through reverse edges (incoming callers,
+        importers, references). Each hop increases distance and halves the impact
+        score. Edge confidence is factored into the decay.
+
+        Impact formula per affected node: 1 / (2^distance) * confidence_product
+
+        Args:
+            node_id: The node to analyze blast radius for.
+            max_depth: Maximum BFS depth (hops) to trace.
+            top_k: Maximum affected nodes to return.
+
+        Returns:
+            Dictionary with total_affected, risk_score, depth_histogram,
+            and ranked affected_nodes list.
+        """
+        view = self.graph.get_view([EdgeType.CALLS, EdgeType.IMPORTS, EdgeType.REFERENCES])
+
+        if not view.has_node(node_id):
+            return {"error": f"Node not found: {node_id}"}
+
+        # BFS on the reverse graph (who depends on this node?)
+        reverse = view.reverse()
+
+        # BFS with distance tracking and confidence accumulation
+        # Each entry: (node, distance, cumulative_confidence)
+        visited: dict[str, tuple[int, float]] = {}  # node -> (distance, impact)
+        queue: deque[tuple[str, int, float]] = deque([(node_id, 0, 1.0)])
+        visited[node_id] = (0, 1.0)
+
+        while queue:
+            current, dist, conf_product = queue.popleft()
+
+            if dist >= max_depth:
+                continue
+
+            for neighbor in reverse.successors(current):
+                if neighbor in visited:
+                    continue
+
+                edge_data = reverse.edges[current, neighbor]
+                edge_conf = edge_data.get("confidence", 1.0)
+                new_conf = conf_product * edge_conf
+                new_dist = dist + 1
+                impact = new_conf / (2**new_dist)
+
+                visited[neighbor] = (new_dist, impact)
+                queue.append((neighbor, new_dist, new_conf))
+
+        # Remove the source node itself
+        visited.pop(node_id, None)
+
+        if not visited:
+            return {
+                "node_id": node_id,
+                "total_affected": 0,
+                "risk_score": 0.0,
+                "depth_histogram": {},
+                "affected_nodes": [],
+            }
+
+        # Build depth histogram
+        depth_histogram: dict[int, int] = {}
+        for _nid, (d, _impact) in visited.items():
+            depth_histogram[d] = depth_histogram.get(d, 0) + 1
+
+        # Rank by impact score
+        ranked = sorted(visited.items(), key=lambda x: x[1][1], reverse=True)[:top_k]
+
+        affected_nodes = []
+        for nid, (d, impact) in ranked:
+            nd = self.graph.get_node_data(nid) or {}
+            affected_nodes.append(
+                {
+                    "id": nid,
+                    "name": nd.get("name", nid),
+                    "node_type": nd.get("node_type", "unknown"),
+                    "file_path": nd.get("file_path", ""),
+                    "distance": d,
+                    "impact": round(impact, 6),
+                },
+            )
+
+        # Risk score: sum of all impacts
+        risk_score = sum(impact for _, (_, impact) in visited.items())
+
+        return {
+            "node_id": node_id,
+            "total_affected": len(visited),
+            "risk_score": round(risk_score, 4),
+            "depth_histogram": dict(sorted(depth_histogram.items())),
+            "affected_nodes": affected_nodes,
+        }
+
+    def diff_impact(  # noqa: C901
+        self,
+        changed_files: list[dict[str, Any]],
+        max_depth: int = 3,
+        top_k: int = 20,
+    ) -> dict[str, Any]:
+        """Map git diff changed lines to graph nodes and compute aggregate blast radius.
+
+        For each changed file+line range, finds overlapping graph nodes (by file_path
+        and line_start/line_end overlap). Runs blast_radius on each matched node,
+        merges results, and suggests test files via TESTS edges.
+
+        Args:
+            changed_files: List of dicts with keys:
+                - file_path (str): Relative path to the changed file.
+                - lines (list[int]): Changed line numbers (1-indexed).
+            max_depth: Max BFS depth for blast_radius per node.
+            top_k: Max affected nodes to return in the merged result.
+
+        Returns:
+            Dictionary with directly_changed (matched nodes), total_affected,
+            aggregate_risk, affected_nodes (merged, deduplicated), and suggested_tests.
+        """
+        if not changed_files:
+            return {
+                "directly_changed": [],
+                "total_affected": 0,
+                "aggregate_risk": 0.0,
+                "affected_nodes": [],
+                "suggested_tests": [],
+            }
+
+        # Step 1: Build file -> nodes index
+        file_nodes: dict[str, list[tuple[str, dict[str, Any]]]] = {}
+        for node_id, data in self.graph.nodes(data=True):
+            fp = data.get("file_path", "")
+            if fp:
+                if fp not in file_nodes:
+                    file_nodes[fp] = []
+                file_nodes[fp].append((node_id, dict(data)))
+
+        # Step 2: Match changed lines to graph nodes
+        directly_changed: list[dict[str, Any]] = []
+        matched_node_ids: set[str] = set()
+
+        for change in changed_files:
+            fp = change.get("file_path", "")
+            lines = set(change.get("lines", []))
+            if not fp or not lines:
+                continue
+
+            # Try exact path and also suffix matching (diff may use relative paths)
+            candidates = file_nodes.get(fp, [])
+            if not candidates:
+                for stored_fp, nodes in file_nodes.items():
+                    if stored_fp.endswith(fp) or fp.endswith(stored_fp):
+                        candidates = nodes
+                        break
+
+            for node_id, data in candidates:
+                line_start = data.get("line_start", 0)
+                line_end = data.get("line_end", 0)
+                if any(line_start <= line <= line_end for line in lines):
+                    if node_id not in matched_node_ids:
+                        matched_node_ids.add(node_id)
+                        directly_changed.append(
+                            {
+                                "id": node_id,
+                                "name": data.get("name", node_id),
+                                "node_type": data.get("node_type", "unknown"),
+                                "file_path": data.get("file_path", ""),
+                                "line_start": line_start,
+                                "line_end": line_end,
+                            },
+                        )
+
+        # Step 3: Run blast_radius on each matched node and merge
+        all_affected: dict[str, dict[str, Any]] = {}
+        aggregate_risk = 0.0
+
+        for node_info in directly_changed:
+            br = self.blast_radius(node_info["id"], max_depth=max_depth, top_k=50)
+            if "error" in br:
+                continue
+            aggregate_risk += br.get("risk_score", 0.0)
+            for affected in br.get("affected_nodes", []):
+                aid = affected["id"]
+                if aid in matched_node_ids:
+                    continue
+                if aid not in all_affected or affected["impact"] > all_affected[aid]["impact"]:
+                    all_affected[aid] = affected
+
+        merged = sorted(all_affected.values(), key=lambda x: x["impact"], reverse=True)[:top_k]
+
+        # Step 4: Suggest test files via TESTS edges
+        test_edges = self.graph.get_edges_by_type(EdgeType.TESTS)
+        suggested_tests: list[str] = []
+        all_impacted = matched_node_ids | set(all_affected.keys())
+        for source, target, _data in test_edges:
+            if target in all_impacted and source not in suggested_tests:
+                suggested_tests.append(source)
+
+        return {
+            "directly_changed": directly_changed,
+            "total_affected": len(all_affected),
+            "aggregate_risk": round(aggregate_risk, 4),
+            "affected_nodes": merged,
+            "suggested_tests": suggested_tests,
+        }
+
+    def trace_execution_flows(  # noqa: C901, PLR0915
+        self,
+        max_depth: int = 8,
+        min_flow_length: int = 3,
+        max_flows: int = 15,
+    ) -> list[dict[str, Any]]:
+        """Trace execution flows from entry points through CALLS edges.
+
+        Identifies entry points and traces forward through the call graph to produce
+        named execution flows. Each flow represents a path from an entry point to a
+        leaf (no outgoing CALLS) or the max depth cutoff.
+
+        Args:
+            max_depth: Maximum call chain depth to trace.
+            min_flow_length: Minimum number of nodes for a flow to be included.
+            max_flows: Maximum number of flows to return.
+
+        Returns:
+            List of flow dicts sorted by score descending, each containing:
+            flow_id, name, entry_point, length, path, nodes, score.
+        """
+        calls_view = self.graph.get_view([EdgeType.CALLS])
+
+        if calls_view.number_of_nodes() == 0:
+            return []
+
+        # Get entry points, take top 10 by out-degree in calls view
+        entry_points = self.find_entry_points()
+        entry_points.sort(
+            key=lambda ep: calls_view.out_degree(ep["id"]) if calls_view.has_node(ep["id"]) else 0,
+            reverse=True,
+        )
+        entry_points = entry_points[:10]
+
+        if not entry_points:
+            return []
+
+        # Collect all flows via iterative DFS from each entry point
+        max_paths_per_entry = 5
+        all_flows: list[list[str]] = []
+
+        for ep in entry_points:
+            ep_id = ep["id"]
+            if not calls_view.has_node(ep_id):
+                continue
+
+            paths: list[list[str]] = []
+            stack: list[tuple[str, list[str], set[str]]] = [(ep_id, [ep_id], {ep_id})]
+
+            while stack and len(paths) < max_paths_per_entry:
+                node, path, visited = stack.pop()
+
+                successors = [s for s in calls_view.successors(node) if s not in visited]
+                is_leaf = len(successors) == 0
+                at_depth = len(path) > max_depth
+
+                if is_leaf or at_depth:
+                    paths.append(path)
+                    continue
+
+                for succ in successors:
+                    stack.append((succ, [*path, succ], visited | {succ}))
+
+            all_flows.extend(paths)
+
+        # Filter by min length
+        all_flows = [f for f in all_flows if len(f) >= min_flow_length]
+
+        if not all_flows:
+            return []
+
+        # Deduplicate: remove flows that are strict prefixes of longer flows
+        all_flows.sort(key=len, reverse=True)
+        kept: list[list[str]] = []
+        for flow in all_flows:
+            is_prefix = False
+            for longer in kept:
+                if len(flow) < len(longer) and longer[: len(flow)] == flow:
+                    is_prefix = True
+                    break
+            if not is_prefix:
+                kept.append(flow)
+
+        # Score: length * sum of degrees in calls view
+        scored: list[tuple[list[str], float]] = []
+        for flow in kept:
+            degree_sum = sum(calls_view.degree(n) for n in flow if calls_view.has_node(n))
+            score = len(flow) * degree_sum
+            scored.append((flow, score))
+
+        # Normalize scores
+        max_score = max(s for _, s in scored) if scored else 1.0
+        if max_score == 0:
+            max_score = 1.0
+
+        scored.sort(key=lambda x: x[1], reverse=True)
+        scored = scored[:max_flows]
+
+        # Build result dicts
+        results: list[dict[str, Any]] = []
+        for i, (path, score) in enumerate(scored):
+            first_name = (self.graph.get_node_data(path[0]) or {}).get("name", path[0])
+            last_name = (self.graph.get_node_data(path[-1]) or {}).get("name", path[-1])
+            if len(path) > 2:
+                name = f"{first_name} -> ... -> {last_name}"
+            else:
+                name = " -> ".join((self.graph.get_node_data(n) or {}).get("name", n) for n in path)
+
+            nodes = []
+            for nid in path:
+                nd = self.graph.get_node_data(nid) or {}
+                nodes.append(
+                    {
+                        "id": nid,
+                        "name": nd.get("name", nid),
+                        "node_type": nd.get("node_type", "unknown"),
+                        "file_path": nd.get("file_path", ""),
+                    },
+                )
+
+            results.append(
+                {
+                    "flow_id": i,
+                    "name": name,
+                    "entry_point": path[0],
+                    "length": len(path),
+                    "path": path,
+                    "nodes": nodes,
+                    "score": score / max_score,
+                },
+            )
+
+        return results
 
     def _format_ranked_results(
         self,

@@ -638,6 +638,8 @@ def code_graph_analyze(  # noqa: C901
             - "triangles": Find tightly-coupled code triads
             - "unused_symbols": Dead code detection (zero cross-file references)
             - "refactoring": Combined refactoring opportunity ranking
+            - "flows": Trace execution flows from entry points through CALLS edges
+            - "blast_radius": Impact analysis from a node (requires node_a)
         top_k: Maximum results for ranked analyses (hotspots, foundations,
             similar). Default 10. Use 20-30 for comprehensive analysis.
         node_a: Required for "coupling", "similar", "dependencies".
@@ -765,6 +767,38 @@ def code_graph_analyze(  # noqa: C901
                 "count": len(results),
             },
         )
+
+    if analysis_type == "flows":
+        results = analyzer.trace_execution_flows(
+            max_depth=top_k if top_k != 10 else 8,
+            max_flows=top_k,
+        )
+        return _json_response(
+            {
+                "status": "success",
+                "analysis": "flows",
+                "results": results,
+                "count": len(results),
+            },
+        )
+
+    if analysis_type == "blast_radius":
+        if not node_a:
+            return _json_response({"status": "error", "message": "node_a required for blast_radius analysis"})
+        results = analyzer.blast_radius(node_a, max_depth=5, top_k=top_k)
+        return _json_response({"status": "success", "analysis": "blast_radius", **results})
+
+    if analysis_type == "diff_impact":
+        if not node_a:
+            return _json_response(
+                {"status": "error", "message": "node_a required for diff_impact (JSON of changed_files)"},
+            )
+        try:
+            changed_files = json.loads(node_a)
+        except json.JSONDecodeError as e:
+            return _json_response({"status": "error", "message": f"Invalid changed_files JSON in node_a: {e}"})
+        results = analyzer.diff_impact(changed_files, max_depth=5, top_k=top_k)
+        return _json_response({"status": "success", "analysis": "diff_impact", **results})
 
     return _json_response({"status": "error", "message": f"Unknown analysis_type: {analysis_type}"})
 

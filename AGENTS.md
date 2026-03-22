@@ -5,21 +5,39 @@ documentation for AI coding assistants. v7.0.0.
 
 ## Architecture
 
-Single Strands Agent (Claude Opus 4.6 on Bedrock) with 40+ tools, AG-UI
+Single Strands Agent (Claude Opus 4.6 on Bedrock) with 50+ tools, AG-UI
 event streaming, and Pydantic structured output (`AnalysisResult`).
+Includes a deterministic indexer, multi-repo registry, BM25 search,
+optional KuzuDB persistent graph backend, and D3.js web visualization.
 
 ```
 CLI (cyclopts) → run_analysis() → Strands Agent (Opus 4.6)
-                                      ├── 40+ @tool functions
+                                      ├── 50+ @tool functions
+                                      ├── BM25 ranked text search
                                       ├── context7 MCP (library docs)
                                       ├── AG-UI event stream → Rich TUI
                                       └── AnalysisResult (structured output)
 
+Deterministic Indexer (code-context-agent index)
+    ├── LSP + AST-grep + git analysis (no LLM)
+    ├── Framework detection (8 frameworks)
+    ├── Edge confidence scoring (0.60–0.95 per source)
+    └── GraphStorage backend (NetworkX or KuzuDB)
+
 FastMCP v3 Server (code-context-agent serve)
     ├── start_analysis / check_analysis (kickoff/poll)
-    ├── query_code_graph (10 graph algorithms)
+    ├── query_code_graph (13 graph algorithms incl. blast_radius, flows)
+    ├── diff_impact / execute_cypher / list_repos
     ├── explore_code_graph (progressive disclosure)
+    ├── Next-step hints in all tool responses
     └── 6 resource templates (analysis artifacts)
+
+Multi-Repo Registry (~/.code-context/registry.json)
+    ├── Lazy graph cache with 5-min TTL
+    └── list_repos MCP tool
+
+Web Visualization (code-context-agent viz)
+    └── D3.js force-directed graph with controls, info panel, dark theme
 ```
 
 ### Key source locations
@@ -37,18 +55,25 @@ FastMCP v3 Server (code-context-agent serve)
 | `src/code_context_agent/tools/graph/` | CodeGraph model, CodeAnalyzer, ProgressiveExplorer |
 | `src/code_context_agent/tools/git.py` | Git history analysis tools |
 | `src/code_context_agent/tools/astgrep.py` | AST-grep pattern matching tools |
+| `src/code_context_agent/tools/search/` | BM25 ranked text search |
+| `src/code_context_agent/tools/graph/storage.py` | GraphStorage protocol, KuzuDB backend |
+| `src/code_context_agent/tools/graph/frameworks.py` | Framework detection patterns |
+| `src/code_context_agent/indexer.py` | Deterministic index pipeline (no LLM) |
+| `src/code_context_agent/mcp/registry.py` | Multi-repo registry with lazy graph cache |
+| `src/code_context_agent/viz/index.html` | D3.js interactive graph visualization |
 | `src/code_context_agent/templates/` | Jinja2 system prompt (system.md.j2 + partials/ + steering/) |
 | `src/code_context_agent/models/output.py` | AnalysisResult, BusinessLogicItem, ArchitecturalRisk |
 
-### Tool categories (40+)
+### Tool categories (50+)
 
 - **Discovery** (9): `create_file_manifest`, `repomix_*`, `rg_search`, `read_file_bounded`, `write_file_list`
+- **Search** (1): `bm25_search` (BM25 ranked text search via rank_bm25)
 - **LSP** (8): `lsp_start`, `lsp_document_symbols`, `lsp_references`, `lsp_definition`, `lsp_hover`, `lsp_workspace_symbols`, `lsp_diagnostics`, `lsp_shutdown`
-- **Graph** (12): `code_graph_create`, `code_graph_ingest_*`, `code_graph_analyze`, `code_graph_explore`, `code_graph_export`, `code_graph_save/load`, `code_graph_stats`
+- **Graph** (15): `code_graph_create`, `code_graph_ingest_*`, `code_graph_analyze` (incl. `blast_radius`, `flows`, `diff_impact`), `code_graph_explore`, `code_graph_export`, `code_graph_save/load`, `code_graph_stats`. Includes framework detection (8 frameworks) for entry point scoring and edge confidence scoring (0.60-0.95 per source).
 - **Git** (7): `git_hotspots`, `git_files_changed_together`, `git_blame_summary`, `git_file_history`, `git_contributors`, `git_recent_commits`, `git_diff_file`
 - **AST** (3): `astgrep_scan`, `astgrep_scan_rule_pack`, `astgrep_inline_rule`
 - **Shell** (1): `shell`
-- **MCP** (via context7): `context7_resolve-library-id`, `context7_query-docs`
+- **MCP** (via context7 + registry): `context7_resolve-library-id`, `context7_query-docs`, `list_repos`, `diff_impact`, `execute_cypher`. All MCP tool responses include contextual `next_steps` hints.
 - **Orchestration** (1): `graph` (from strands_tools, multi-agent DAG)
 
 ### State management
@@ -56,6 +81,9 @@ FastMCP v3 Server (code-context-agent serve)
 - **Code graphs**: Module-level `_graphs: dict[str, CodeGraph]` in `tools/graph/tools.py`
 - **LSP sessions**: Singleton `LspSessionManager` in `tools/lsp/session.py` with fallback chains
 - **MCP jobs**: Module-level `_jobs` dict in `mcp/server.py` for kickoff/poll pattern
+- **Registry**: `~/.code-context/registry.json` with lazy graph cache (5-min TTL) in `mcp/registry.py`
+- **KuzuDB**: Optional persistent graph backend via `CODE_CONTEXT_GRAPH_BACKEND=kuzu` in `tools/graph/storage.py`
+- **BM25 index cache**: Module-level `_indexes` dict in `tools/search/`
 - **Config**: Cached singleton via `get_settings()` with `@lru_cache`
 
 ## Patterns and conventions
@@ -139,6 +167,7 @@ Both are in `models/base.py`. Use `FrozenModel` for new data models.
 | Install all deps | `uv sync --all-groups` |
 | Run CLI | `uv run code-context-agent` |
 | Analyze a repo | `uv run code-context-agent analyze /path/to/repo` |
+| Index a repo | `uv run code-context-agent index /path/to/repo` |
 | Start MCP server | `uv run code-context-agent serve` |
 | Lint | `uvx ruff check src/` |
 | Format | `uvx ruff format src/` |
@@ -154,7 +183,7 @@ Hooks are enforced automatically. Do not skip them.
 
 - **pre-commit**: ruff check+fix, ruff format, ty check, gitleaks
 - **commit-msg**: conventional commit validation via commitizen
-- **pre-push**: lint, format-check, typecheck, test (93 tests), gitleaks, semgrep OWASP
+- **pre-push**: lint, format-check, typecheck, test (362 tests), gitleaks, semgrep OWASP
 
 ### Conventional commits
 
@@ -209,4 +238,5 @@ All env vars use the `CODE_CONTEXT_` prefix:
 | `CODE_CONTEXT_AGENT_MAX_TURNS` | `1000` | |
 | `CODE_CONTEXT_AGENT_MAX_DURATION` | `1200` | 20 min default |
 | `CODE_CONTEXT_CONTEXT7_ENABLED` | `true` | Requires npx |
+| `CODE_CONTEXT_GRAPH_BACKEND` | `networkx` | `networkx` or `kuzu` (KuzuDB persistent graph) |
 | `CODE_CONTEXT_OTEL_DISABLED` | `true` | Avoids context detachment errors |

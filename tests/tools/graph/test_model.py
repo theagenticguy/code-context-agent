@@ -120,6 +120,72 @@ class TestCodeEdge:
         assert result["edge_type"] == "imports"
 
 
+class TestCodeEdgeConfidence:
+    """Tests for CodeEdge confidence field."""
+
+    def test_code_edge_confidence_default(self) -> None:
+        """Test that confidence defaults to 1.0."""
+        edge = CodeEdge(source="a", target="b", edge_type=EdgeType.CALLS)
+        assert edge.confidence == 1.0
+
+    def test_code_edge_confidence_custom(self) -> None:
+        """Test that an explicit confidence value is preserved."""
+        edge = CodeEdge(source="a", target="b", edge_type=EdgeType.CALLS, confidence=0.75)
+        assert edge.confidence == 0.75  # noqa: PLR2004
+
+    def test_code_edge_confidence_roundtrip(self) -> None:
+        """Test that to_dict includes confidence and from_node_link_data preserves it."""
+        graph = CodeGraph()
+        graph.add_node(
+            CodeNode(id="a", name="a", node_type=NodeType.FUNCTION, file_path="/a.py", line_start=1, line_end=5),
+        )
+        graph.add_node(
+            CodeNode(id="b", name="b", node_type=NodeType.FUNCTION, file_path="/b.py", line_start=1, line_end=5),
+        )
+        edge = CodeEdge(source="a", target="b", edge_type=EdgeType.CALLS, confidence=0.85)
+
+        # to_dict includes confidence
+        d = edge.to_dict()
+        assert d["confidence"] == 0.85  # noqa: PLR2004
+
+        # Round-trip through node-link serialization
+        graph.add_edge(edge)
+        data = graph.to_node_link_data()
+        restored = CodeGraph.from_node_link_data(data)
+        edges = list(restored._graph.edges(data=True))
+        assert len(edges) == 1
+        assert edges[0][2]["confidence"] == 0.85  # noqa: PLR2004
+
+    def test_add_edge_stores_confidence(self) -> None:
+        """Test that add_edge passes confidence to the NetworkX graph."""
+        graph = CodeGraph()
+        graph.add_node(
+            CodeNode(id="a", name="a", node_type=NodeType.FUNCTION, file_path="/a.py", line_start=1, line_end=5),
+        )
+        graph.add_node(
+            CodeNode(id="b", name="b", node_type=NodeType.FUNCTION, file_path="/b.py", line_start=1, line_end=5),
+        )
+        graph.add_edge(CodeEdge(source="a", target="b", edge_type=EdgeType.CALLS, confidence=0.60))
+
+        edge_data = graph._graph.edges["a", "b", "calls"]
+        assert edge_data["confidence"] == 0.60  # noqa: PLR2004
+
+    def test_get_view_preserves_max_confidence(self) -> None:
+        """Test that get_view takes max confidence across parallel edges."""
+        graph = CodeGraph()
+        graph.add_node(
+            CodeNode(id="a", name="a", node_type=NodeType.FUNCTION, file_path="/a.py", line_start=1, line_end=5),
+        )
+        graph.add_node(
+            CodeNode(id="b", name="b", node_type=NodeType.FUNCTION, file_path="/b.py", line_start=1, line_end=5),
+        )
+        graph.add_edge(CodeEdge(source="a", target="b", edge_type=EdgeType.CALLS, confidence=0.60))
+        graph.add_edge(CodeEdge(source="a", target="b", edge_type=EdgeType.REFERENCES, confidence=0.95))
+
+        view = graph.get_view()
+        assert view["a"]["b"]["confidence"] == 0.95  # noqa: PLR2004
+
+
 class TestCodeGraph:
     """Tests for CodeGraph class."""
 
@@ -192,7 +258,7 @@ class TestCodeGraph:
                 file_path="/a.py",
                 line_start=1,
                 line_end=5,
-            )
+            ),
         )
         graph.add_node(
             CodeNode(
@@ -202,7 +268,7 @@ class TestCodeGraph:
                 file_path="/b.py",
                 line_start=1,
                 line_end=5,
-            )
+            ),
         )
         graph.add_node(
             CodeNode(
@@ -212,7 +278,7 @@ class TestCodeGraph:
                 file_path="/c.py",
                 line_start=1,
                 line_end=10,
-            )
+            ),
         )
 
         functions = graph.get_nodes_by_type(NodeType.FUNCTION)
@@ -231,7 +297,7 @@ class TestCodeGraph:
                 file_path="/a.py",
                 line_start=1,
                 line_end=5,
-            )
+            ),
         )
         graph.add_node(
             CodeNode(
@@ -241,7 +307,7 @@ class TestCodeGraph:
                 file_path="/b.py",
                 line_start=1,
                 line_end=5,
-            )
+            ),
         )
         graph.add_node(
             CodeNode(
@@ -251,7 +317,7 @@ class TestCodeGraph:
                 file_path="/c.py",
                 line_start=1,
                 line_end=5,
-            )
+            ),
         )
 
         graph.add_edge(CodeEdge(source="a", target="b", edge_type=EdgeType.CALLS))
@@ -273,7 +339,7 @@ class TestCodeGraph:
                 file_path="/a.py",
                 line_start=1,
                 line_end=5,
-            )
+            ),
         )
         graph.add_node(
             CodeNode(
@@ -283,7 +349,7 @@ class TestCodeGraph:
                 file_path="/b.py",
                 line_start=1,
                 line_end=5,
-            )
+            ),
         )
         graph.add_edge(CodeEdge(source="a", target="b", edge_type=EdgeType.CALLS))
 
@@ -310,7 +376,7 @@ class TestCodeGraph:
                 file_path="/a.py",
                 line_start=1,
                 line_end=5,
-            )
+            ),
         )
         graph.add_node(
             CodeNode(
@@ -320,7 +386,7 @@ class TestCodeGraph:
                 file_path="/b.py",
                 line_start=1,
                 line_end=10,
-            )
+            ),
         )
         graph.add_edge(CodeEdge(source="a", target="b", edge_type=EdgeType.CALLS))
 
@@ -352,7 +418,7 @@ class TestCodeGraph:
                 file_path="/x.py",
                 line_start=1,
                 line_end=5,
-            )
+            ),
         )
         graph.add_node(
             CodeNode(
@@ -362,7 +428,7 @@ class TestCodeGraph:
                 file_path="/y.py",
                 line_start=1,
                 line_end=5,
-            )
+            ),
         )
         graph.add_edge(CodeEdge(source="x", target="y", edge_type=EdgeType.CALLS))
 

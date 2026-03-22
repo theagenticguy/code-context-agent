@@ -78,6 +78,32 @@ cat .code-context/CONTEXT.md | your-ai-assistant
 
 The narrated context includes architecture diagrams, ranked file tables, risk assessments, and business logic summaries -- all formatted for machine parsing (tables over prose, typed schemas, bounded diagrams).
 
+## Quick Indexing (No LLM)
+
+For a fast, cheap graph without AI narration:
+
+```bash
+# Build a code graph deterministically
+code-context-agent index .
+
+# Then query it via MCP or visualize it
+code-context-agent serve
+code-context-agent viz .
+```
+
+See the [Deterministic Indexer documentation](../tools/indexer.md) for details.
+
+## Visualization
+
+After analysis or indexing, launch an interactive web UI:
+
+```bash
+code-context-agent viz .
+code-context-agent viz . --port 9000
+```
+
+This opens a D3.js force-directed graph visualization with hotspot highlighting, module coloring, dependency chains, and the CONTEXT.md narrative. See the [Visualization guide](viz.md) for details.
+
 ## MCP Server
 
 After analysis, you can expose the results to coding agents via MCP:
@@ -94,6 +120,6 @@ After analysis, you can expose the results to coding agents via MCP:
     code-context-agent serve --transport http --port 8000
     ```
 
-The MCP server provides tools for querying the code graph (`query_code_graph`), progressive exploration (`explore_code_graph`), graph statistics (`get_graph_stats`), and kicking off new analyses (`start_analysis`). It also exposes the analysis artifacts as MCP resources.
+The MCP server provides tools for querying the code graph (`query_code_graph`), progressive exploration (`explore_code_graph`), graph statistics (`get_graph_stats`), diff impact analysis (`diff_impact`), multi-repo discovery (`list_repos`), Cypher queries (`execute_cypher`), and kicking off new analyses (`start_analysis`). It also exposes the analysis artifacts as MCP resources.
 
 See the [MCP Server documentation](../tools/mcp.md) for full details and client configuration.

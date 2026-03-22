@@ -281,6 +281,16 @@ def viz(  # noqa: C901
         def __init__(self, *args, **kwargs):
             super().__init__(*args, directory=str(viz_dir), **kwargs)
 
+        def do_GET(self):
+            """Handle GET requests with API endpoints and file serving."""
+            if self.path == "/api/graph" or self.path.startswith("/api/graph?"):
+                self._serve_json_file("code_graph.json")
+                return
+            if self.path == "/api/stats" or self.path.startswith("/api/stats?"):
+                self._serve_graph_stats()
+                return
+            super().do_GET()
+
         def translate_path(self, path):
             """Route /data/ requests to the agent output directory."""
             if path.startswith("/data/"):
@@ -291,6 +301,45 @@ def viz(  # noqa: C901
                     return str(agent_dir / "404")
                 return str(resolved)
             return super().translate_path(path)
+
+        def _serve_json_file(self, filename: str) -> None:
+            """Serve a JSON file from agent_dir."""
+            filepath = agent_dir / filename
+            if not filepath.exists():
+                self.send_error(404, f"{filename} not found")
+                return
+            data = filepath.read_text(encoding="utf-8")
+            encoded = data.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(encoded)
+
+        def _serve_graph_stats(self) -> None:
+            """Load graph and serve describe() as JSON."""
+            import json
+
+            filepath = agent_dir / "code_graph.json"
+            if not filepath.exists():
+                self.send_error(404, "code_graph.json not found")
+                return
+            try:
+                raw = json.loads(filepath.read_text(encoding="utf-8"))
+                from code_context_agent.tools.graph.model import CodeGraph
+
+                graph = CodeGraph.from_node_link_data(raw)
+                stats = graph.describe()
+                body = json.dumps(stats, indent=2).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(body)
+            except (KeyError, ValueError, OSError) as exc:
+                self.send_error(500, str(exc))
 
         def log_message(self, format, *args):
             pass  # Suppress request logs
@@ -312,6 +361,50 @@ def viz(  # noqa: C901
             httpd.serve_forever()
         except KeyboardInterrupt:
             console.print("\n[dim]Server stopped[/dim]")
+
+
+@app.command
+def index(
+    path: Annotated[
+        Path,
+        Parameter(help="Path to the repository to index."),
+    ] = Path(),
+    *,
+    output_dir: Annotated[
+        Path | None,
+        Parameter(help="Output directory for the code graph. Defaults to <repo>/.code-context"),
+    ] = None,
+    quiet: Annotated[
+        bool,
+        Parameter(help="Suppress all output except errors."),
+    ] = False,
+) -> None:
+    """Build a code graph deterministically without LLM calls.
+
+    Faster and cheaper than full analysis. Uses LSP, AST-grep, and git
+    to build a structural code graph that can be queried via MCP tools.
+
+    Example:
+        $ code-context-agent index /path/to/repo
+        $ code-context-agent index . --output-dir ./output
+        $ code-context-agent index . --quiet
+    """
+    import asyncio
+    import sys
+
+    from code_context_agent.indexer import build_index
+
+    repo_path = path.resolve()
+
+    if not repo_path.exists():
+        print(f"Error: Path does not exist: {repo_path}", file=sys.stderr)
+        raise SystemExit(1)
+
+    if not repo_path.is_dir():
+        print(f"Error: Path is not a directory: {repo_path}", file=sys.stderr)
+        raise SystemExit(1)
+
+    asyncio.run(build_index(repo_path, output_dir, quiet))
 
 
 @app.command

@@ -106,6 +106,7 @@ plugins:
           - getting-started/quickstart.md
           - getting-started/check-command.md
           - getting-started/full-mode.md
+          - getting-started/viz.md
         Architecture:
           - architecture/overview.md
           - architecture/tenets.md
@@ -113,6 +114,7 @@ plugins:
         Tools:
           - tools/overview.md
           - tools/discovery.md
+          - tools/search.md
           - tools/lsp.md
           - tools/ast.md
           - tools/graph.md
@@ -120,6 +122,9 @@ plugins:
           - tools/shell.md
           - tools/clones.md
           - tools/mcp.md
+          - tools/indexer.md
+          - tools/registry.md
+          - tools/storage.md
         Security:
           - security/overview.md
         Development:
@@ -176,6 +181,7 @@ nav:
       - Quick Start: getting-started/quickstart.md
       - Check Command: getting-started/check-command.md
       - Full Mode: getting-started/full-mode.md
+      - Visualization: getting-started/viz.md
   - Architecture:
       - Overview: architecture/overview.md
       - Tenets: architecture/tenets.md
@@ -183,6 +189,7 @@ nav:
   - Tools:
       - Overview: tools/overview.md
       - Discovery & Search: tools/discovery.md
+      - BM25 Search: tools/search.md
       - LSP Integration: tools/lsp.md
       - AST Patterns: tools/ast.md
       - Graph Analysis: tools/graph.md
@@ -190,6 +197,9 @@ nav:
       - Shell: tools/shell.md
       - Clone Detection: tools/clones.md
       - MCP Server: tools/mcp.md
+      - Deterministic Indexer: tools/indexer.md
+      - Multi-Repo Registry: tools/registry.md
+      - Graph Storage: tools/storage.md
   - Security:
       - Overview: security/overview.md
   - Code Reference: reference/

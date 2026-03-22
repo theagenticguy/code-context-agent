@@ -1,11 +1,113 @@
 """Tests for graph adapters including git adapters."""
 
 from code_context_agent.tools.graph.adapters import (
+    ingest_clone_results,
     ingest_git_cochanges,
     ingest_git_contributors,
     ingest_git_hotspots,
+    ingest_inheritance,
+    ingest_lsp_definition,
+    ingest_lsp_references,
+    ingest_lsp_symbols,
 )
 from code_context_agent.tools.graph.model import EdgeType, NodeType
+
+
+class TestAdapterConfidenceValues:
+    """Tests for confidence values set by adapters."""
+
+    def test_lsp_adapters_set_confidence_095(self) -> None:
+        """Test that LSP reference/definition/symbol edges have confidence 0.95."""
+        # LSP symbols (CONTAINS edges)
+        symbols_result = {
+            "status": "success",
+            "symbols": [
+                {
+                    "name": "MyClass",
+                    "kind": 5,
+                    "range": {"start": {"line": 1}, "end": {"line": 20}},
+                    "children": [
+                        {
+                            "name": "my_method",
+                            "kind": 6,
+                            "range": {"start": {"line": 2}, "end": {"line": 10}},
+                            "children": [],
+                        },
+                    ],
+                },
+            ],
+        }
+        _, edges = ingest_lsp_symbols(symbols_result, "/src/foo.py")
+        assert len(edges) == 1
+        assert edges[0].confidence == 0.95  # noqa: PLR2004
+
+        # LSP references (REFERENCES edges)
+        refs_result = {
+            "status": "success",
+            "references": [
+                {"uri": "file:///src/bar.py", "range": {"start": {"line": 5}, "end": {"line": 5}}},
+            ],
+        }
+        ref_edges = ingest_lsp_references(refs_result, "src/foo.py:MyClass")
+        assert len(ref_edges) == 1
+        assert ref_edges[0].confidence == 0.95  # noqa: PLR2004
+
+        # LSP definition (IMPORTS/CALLS edges)
+        def_result = {
+            "status": "success",
+            "definitions": [
+                {"uri": "file:///src/baz.py", "range": {"start": {"line": 10}, "end": {"line": 10}}},
+            ],
+        }
+        def_edges = ingest_lsp_definition(def_result, "/src/foo.py", 5)
+        assert len(def_edges) == 1
+        assert def_edges[0].confidence == 0.95  # noqa: PLR2004
+
+    def test_cochange_adapter_sets_confidence_060(self) -> None:
+        """Test that cochange edges have confidence 0.60."""
+        cochanges_result = {
+            "status": "success",
+            "file_path": "src/auth.py",
+            "total_commits": 20,
+            "cochanged_files": [
+                {"path": "src/user.py", "count": 15, "percentage": 75.0},
+            ],
+        }
+        edges = ingest_git_cochanges(cochanges_result)
+        assert len(edges) == 1
+        assert edges[0].confidence == 0.60  # noqa: PLR2004
+
+    def test_inheritance_adapter_sets_confidence_085(self) -> None:
+        """Test that inheritance edges have confidence 0.85."""
+        edges = ingest_inheritance(
+            "class Foo extends Bar implements IBaz",
+            "src/foo.ts:Foo",
+            "src/foo.ts",
+        )
+        assert len(edges) == 2  # noqa: PLR2004
+        assert all(e.confidence == 0.85 for e in edges)  # noqa: PLR2004
+
+    def test_clone_adapter_sets_confidence_075(self) -> None:
+        """Test that clone/similar_to edges have confidence 0.75."""
+        clone_result = {
+            "status": "success",
+            "clones": [
+                {
+                    "first_file": "src/a.py",
+                    "second_file": "src/b.py",
+                    "first_start": 1,
+                    "first_end": 10,
+                    "second_start": 5,
+                    "second_end": 15,
+                    "lines": 10,
+                    "tokens": 50,
+                    "fragment": "def foo(): pass",
+                },
+            ],
+        }
+        edges = ingest_clone_results(clone_result)
+        assert len(edges) == 1
+        assert edges[0].confidence == 0.75  # noqa: PLR2004
 
 
 class TestIngestGitCochanges:

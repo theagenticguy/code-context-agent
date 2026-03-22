@@ -12,13 +12,13 @@
   <a href="https://github.com/astral-sh/ty"><img src="https://img.shields.io/badge/types-ty-blue?style=flat-square" alt="ty"></a>
 </p>
 
-<p align="center"><strong>AI-powered codebase analysis with 48 tools, graph algorithms, and structured output for AI coding assistants.</strong></p>
+<p align="center"><strong>AI-powered codebase analysis with 49 tools, graph algorithms, and structured output for AI coding assistants.</strong></p>
 
 ---
 
 # code-context-agent
 
-`code-context-agent` uses Claude Opus 4.6 (via Amazon Bedrock) with 48 tools to analyze unfamiliar codebases and produce structured context documentation for AI coding assistants. It combines semantic analysis (LSP), structural pattern matching (ast-grep), graph algorithms (NetworkX), git history analysis, and intelligent code bundling (repomix) to generate narrated markdown that helps developers and AI assistants quickly understand a codebase's architecture and business logic.
+`code-context-agent` uses Claude Opus 4.6 (via Amazon Bedrock) with 49 tools to analyze unfamiliar codebases and produce structured context documentation for AI coding assistants. It combines semantic analysis (LSP), structural pattern matching (ast-grep), graph algorithms (NetworkX + KuzuDB), git history analysis, BM25 ranked search, and intelligent code bundling (repomix) to generate narrated markdown that helps developers and AI assistants quickly understand a codebase's architecture and business logic.
 
 > [!CAUTION]
 > This CLI runs a **fully autonomous AI agent loop**. The agent decides which tools to invoke, what files to read, and what shell commands to run. While shell commands are restricted to a read-only allowlist and all inputs are validated, the agent makes its own decisions within those bounds. **Review all generated output before using it in production.**
@@ -53,16 +53,24 @@ These principles guide every design decision. See [tenets.md](tenets.md) for ful
 ## Features
 
 - **Claude Opus 4.6** with adaptive thinking and 1M context window
-- **48 analysis tools**: LSP, ast-grep, ripgrep, repomix, git history, NetworkX graph
+- **49 analysis tools**: LSP, ast-grep, ripgrep, repomix, git history, NetworkX graph, BM25 search
 - **Multi-language LSP**: Python (ty), TypeScript, Rust, Go, Java (configurable fallback chains)
-- **Graph-based insights**: Hotspots (betweenness centrality), foundations (PageRank/TrustRank), modules (Louvain/Leiden), triangle detection
+- **Graph-based insights**: Hotspots, foundations (PageRank/TrustRank), modules (Louvain/Leiden), blast radius analysis, execution flow tracing, diff impact mapping
+- **Edge confidence scoring**: Each graph edge carries a confidence value (0.60--0.95) reflecting its data source reliability (LSP, AST, git, heuristic)
+- **BM25 ranked search**: TF-IDF-style relevance ranking that complements ripgrep's exact pattern matching
+- **Framework detection**: Automatically identifies Next.js, Express, Django, Flask, FastAPI, pytest, and CLI frameworks to boost entry point scoring
+- **KuzuDB persistent backend**: Optionally persist the code graph to a KuzuDB database for Cypher queries and cross-session reuse
+- **Deterministic indexing**: `code-context-agent index` builds a code graph without LLM calls -- fast, cheap, and reproducible
+- **Git diff impact analysis**: Map changed lines to affected symbols, propagate blast radius, and suggest tests
+- **Multi-repo MCP registry**: Track multiple analyzed repositories in `~/.code-context/registry.json` and switch between them from any MCP client
+- **Interactive D3.js visualization**: Web-based graph explorer with force layout, hotspot charts, module views, and dashboard metrics
 - **Git-aware bundling**: Embeds diffs, commit history, and coupling data directly in context bundles
 - **Tree-sitter compression**: Extract signatures/types only, stripping function bodies for token efficiency
 - **Structured output**: Pydantic-typed `AnalysisResult` with ranked business logic, risks, and graph stats
 - **`--full` mode**: Exhaustive analysis with no size limits, fail-fast error handling, and per-module output
 - **Phase-aware TUI**: 10-phase progress tracking with discovery feed and mode badge
 - **Rich terminal UI**: Real-time progress display with Rich library
-- **MCP server**: Expose graph algorithms and analysis as MCP tools for Claude Code, Cursor, and other agents
+- **MCP server**: Expose graph algorithms, diff impact, Cypher queries, and multi-repo discovery as MCP tools
 - **context7 integration**: Library documentation lookup during analysis via MCP
 - **Security hardened**: Shell allowlist, input validation on all tool parameters, path traversal prevention, no network access from agent tools
 
@@ -72,8 +80,13 @@ These principles guide every design decision. See [tenets.md](tenets.md) for ful
 
 ```mermaid
 flowchart TD
-    A[CLI: cyclopts] --> B[run_analysis]
-    B --> C[create_agent]
+    A[CLI: cyclopts] --> B1[analyze]
+    A --> B2[index]
+    A --> B3[viz]
+    A --> B4[serve]
+    B1 --> C[create_agent]
+    B2 --> IX[Deterministic Indexer<br/>LSP + AST + git, no LLM]
+    B3 --> VZ[D3.js Web Visualization<br/>force layout + dashboards]
     C --> D[Strands Agent<br/>Opus 4.6 + adaptive thinking]
     D --> E[Jinja2 System Prompt]
     D --> F[HookProviders<br/>quality + efficiency + fail-fast]
@@ -82,13 +95,14 @@ flowchart TD
     H --> I[Discovery<br/>ripgrep, repomix]
     H --> J[LSP<br/>ty, ts-server, rust-analyzer]
     H --> K[AST<br/>ast-grep patterns]
-    H --> L[Graph<br/>NetworkX analysis]
-    H --> M[Git<br/>coupling, churn, blame]
-    H --> N[Shell<br/>bounded execution]
-    H --> O[Output Files<br/>.code-context/ directory]
+    H --> L[Graph<br/>NetworkX + KuzuDB]
+    H --> M[Git<br/>coupling, churn, blame, diff impact]
+    H --> N[Search<br/>BM25 ranked + ripgrep]
+    H --> O[Shell<br/>bounded execution]
     H --> P[context7 MCP<br/>library docs]
-    D -.-> Q[FastMCP Server<br/>MCP protocol]
+    B4 --> Q[FastMCP Server<br/>MCP protocol]
     Q --> R[Claude Code / Cursor<br/>MCP clients]
+    Q --> REG[Multi-Repo Registry<br/>~/.code-context/registry.json]
 ```
 
 ### Tool Categories
@@ -96,10 +110,10 @@ flowchart TD
 | Category | Tools | Purpose |
 |----------|-------|---------|
 | **Discovery** | `create_file_manifest`, `repomix_orientation`, `repomix_bundle`, `repomix_compressed_signatures`, `repomix_split_bundle`, `repomix_json_export` | File inventory, bundling, token-aware orientation |
-| **Search** | `rg_search`, `read_file_bounded` | Text search and bounded file reading |
+| **Search** | `rg_search`, `read_file_bounded`, `bm25_search` | Exact pattern matching, bounded reading, and BM25 ranked relevance search |
 | **LSP** | `lsp_start`, `lsp_document_symbols`, `lsp_references`, `lsp_definition`, `lsp_hover`, `lsp_workspace_symbols`, `lsp_diagnostics` | Semantic analysis across multiple languages |
 | **AST** | `astgrep_scan`, `astgrep_scan_rule_pack`, `astgrep_inline_rule` | Structural pattern matching |
-| **Graph** | `code_graph_create`, `code_graph_analyze` (hotspots, foundations, trust, modules, triangles, coupling), `code_graph_explore`, `code_graph_export` | Dependency and structural analysis |
+| **Graph** | `code_graph_create`, `code_graph_analyze` (hotspots, foundations, trust, modules, triangles, coupling, blast radius, execution flows, diff impact), `code_graph_explore`, `code_graph_export` | Dependency analysis, impact propagation, execution flow tracing |
 | **Git** | `git_hotspots`, `git_files_changed_together`, `git_blame_summary`, `git_file_history`, `git_contributors`, `git_recent_commits`, `git_diff_file` | Temporal analysis and coupling detection |
 | **Shell** | `shell` | Read-only command execution (allowlisted programs only) |
 
@@ -209,6 +223,21 @@ code-context-agent analyze . --full --focus "authentication"
 code-context-agent check
 ```
 
+### Index (LLM-Free)
+
+Build a code graph deterministically without any LLM calls -- fast, cheap, and reproducible. Uses LSP, AST-grep, and git to construct the graph, which can then be queried via MCP tools or visualized.
+
+```bash
+# Index the current directory
+code-context-agent index .
+
+# Index a specific repo with custom output
+code-context-agent index /path/to/repo --output-dir ./output
+
+# Quiet mode (errors only)
+code-context-agent index . --quiet
+```
+
 ### MCP Server
 
 Expose the analysis capabilities to coding agents (Claude Code, Cursor, etc.) via the Model Context Protocol:
@@ -225,16 +254,28 @@ The MCP server exposes the core differentiators — graph algorithms, progressiv
 
 **MCP Tools:**
 - `start_analysis` / `check_analysis` — kickoff/poll for the full analysis pipeline
-- `query_code_graph` — run algorithms (PageRank, betweenness centrality, Louvain community detection, etc.)
+- `query_code_graph` — run algorithms (PageRank, betweenness centrality, Louvain community detection, blast radius, execution flows, etc.)
 - `explore_code_graph` — progressive drill-down into graph structure
+- `diff_impact` — map git diff hunks to affected symbols, propagate blast radius, and suggest tests
+- `execute_cypher` — run read-only Cypher queries against the KuzuDB persistent graph
+- `list_repos` — discover all analyzed repositories from the multi-repo registry
 - `get_graph_stats` — graph composition summary
+
+All MCP tool responses include **next-step hints** guiding the AI client toward useful follow-up actions.
 
 ### Visualize Results
 
+Launch an interactive D3.js web visualization with force-directed graph layout, hotspot bar charts, module donut charts, and dashboard metrics.
+
 ```bash
-# Launch interactive web visualization
+# Launch web visualization (opens browser)
 code-context-agent viz .
+
+# Custom port, don't auto-open browser
+code-context-agent viz /path/to/repo --port 9000 --no-open
 ```
+
+Requires a prior `analyze` or `index` run to generate `.code-context/` output files.
 
 ---
 
@@ -290,16 +331,17 @@ All configuration uses the `CODE_CONTEXT_` prefix:
 
 ```
 src/code_context_agent/
-├── cli.py              # CLI entry point (cyclopts)
+├── cli.py              # CLI entry point: analyze, index, viz, serve, check
 ├── config.py           # Configuration (pydantic-settings)
+├── indexer.py          # Deterministic indexer (no LLM)
 ├── agent/              # Agent orchestration
 │   ├── factory.py      # Agent creation with tools + MCP providers
 │   ├── runner.py       # Analysis runner with event streaming
 │   ├── prompts.py      # Jinja2 template rendering
 │   └── hooks.py        # HookProviders: quality, efficiency, fail-fast
 ├── mcp/                # FastMCP v3 server
-│   ├── __init__.py     # Package init
-│   └── server.py       # MCP tools, resources, and server definition
+│   ├── server.py       # MCP tools, resources, and server definition
+│   └── registry.py     # Multi-repo registry (~/.code-context/registry.json)
 ├── templates/          # Jinja2 prompt templates
 │   ├── system.md.j2    # Unified system prompt
 │   ├── partials/       # Composable prompt sections
@@ -311,12 +353,17 @@ src/code_context_agent/
 │   ├── phases.py       # Phase detection, discovery events
 │   ├── rich_consumer.py # Dashboard with phase indicator
 │   └── state.py        # Mutable display state
-├── tools/              # Analysis tools (48)
+├── tools/              # Analysis tools (49)
 │   ├── discovery.py    # ripgrep, repomix, write_file (11 tools)
 │   ├── astgrep.py      # ast-grep (3 tools)
 │   ├── git.py          # git history (7 tools)
+│   ├── search/         # BM25 ranked search (1 tool)
 │   ├── lsp/            # LSP integration (8 tools)
-│   └── graph/          # NetworkX analysis (14 tools)
+│   └── graph/          # NetworkX + KuzuDB analysis (15 tools)
+│       ├── analysis.py # Graph algorithms incl. blast radius, execution flows, diff impact
+│       ├── storage.py  # KuzuDB persistent backend with Cypher query support
+│       └── frameworks.py # Framework detection (Next.js, Express, Django, Flask, FastAPI, etc.)
+├── viz/                # D3.js web visualization (HTML, JS, CSS)
 └── rules/              # ast-grep rule packs
 ```
 
@@ -339,6 +386,8 @@ Contributions are welcome. Please open an issue or pull request.
 - [repomix](https://github.com/yamadashy/repomix) — Code bundling with Tree-sitter
 - [ty](https://docs.astral.sh/ty/) — Python type checker/LSP server
 - [NetworkX](https://networkx.org/) -- Graph algorithms
+- [KuzuDB](https://kuzudb.com/) -- Embedded graph database with Cypher support
+- [rank-bm25](https://github.com/dorianbrown/rank_bm25) -- BM25 ranking algorithm
 - [FastMCP](https://github.com/jlowin/fastmcp) -- Model Context Protocol server framework
 
 ---

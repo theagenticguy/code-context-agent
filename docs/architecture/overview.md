@@ -5,21 +5,27 @@
 ```mermaid
 flowchart TD
     A[CLI: cyclopts] --> B[run_analysis]
+    A --> IDX[index command]
+    A --> VIZ[viz command]
     B --> C[create_agent]
+    IDX --> IDXP[Deterministic Indexer<br/>LSP + AST-grep + git]
+    VIZ --> VIZS[Web Visualizer<br/>D3.js force-directed graph]
     C --> D[Strands Agent<br/>Opus 4.6 + adaptive thinking]
     D --> E[Jinja2 System Prompt]
     D --> F[HookProviders<br/>quality + efficiency + fail-fast]
     D --> G[AnalysisResult<br/>structured output]
     D --> H[Tool Execution]
     H --> I[Discovery<br/>ripgrep, repomix]
+    H --> S[Search<br/>BM25 ranked search]
     H --> J[LSP<br/>ty, ts-server, rust-analyzer]
     H --> K[AST<br/>ast-grep patterns]
-    H --> L[Graph<br/>NetworkX analysis]
+    H --> L[Graph<br/>NetworkX / KuzuDB]
     H --> M[Git<br/>coupling, churn, blame]
     H --> N[Shell<br/>bounded execution]
     H --> O[Output Files<br/>.code-context/ directory]
     H --> P[context7 MCP<br/>library docs]
     D -.-> Q[FastMCP Server<br/>MCP protocol]
+    Q --> REG[Multi-Repo Registry<br/>~/.code-context/registry.json]
     Q --> R[Claude Code / Cursor<br/>MCP clients]
 ```
 
@@ -27,8 +33,9 @@ flowchart TD
 
 ```
 src/code_context_agent/
-├── cli.py              # CLI entry point (cyclopts)
+├── cli.py              # CLI entry point (cyclopts): analyze, serve, viz, index, check
 ├── config.py           # Configuration (pydantic-settings)
+├── indexer.py          # Deterministic indexer (LLM-free graph builder)
 ├── agent/              # Agent orchestration
 │   ├── factory.py      # Agent creation with tools + structured output
 │   ├── runner.py       # Analysis runner with event streaming
@@ -43,21 +50,36 @@ src/code_context_agent/
 │   └── output.py       # AnalysisResult, BusinessLogicItem, etc.
 ├── mcp/                # FastMCP v3 server
 │   ├── __init__.py     # Package init
-│   └── server.py       # MCP tools, resources, and server definition
+│   ├── server.py       # MCP tools, resources, and server definition
+│   └── registry.py     # Multi-repo registry (~/.code-context/registry.json)
 ├── consumer/           # Event display (Rich TUI)
 │   ├── base.py         # EventConsumer ABC
 │   ├── phases.py       # 10-phase detection, discovery events (v7)
 │   ├── rich_consumer.py # Dashboard with phase indicator + discovery feed
 │   └── state.py        # AgentDisplayState with phase/discovery tracking
-├── tools/              # Analysis tools (45+)
+├── tools/              # Analysis tools (50+)
 │   ├── discovery.py    # ripgrep, repomix, write_file (11 tools)
+│   ├── search/         # BM25 ranked search (1 tool)
+│   │   ├── bm25.py     # BM25Index with rank_bm25 backend
+│   │   └── tools.py    # bm25_search @tool wrapper
 │   ├── astgrep.py      # ast-grep (3 tools)
 │   ├── git.py          # git history (7 tools)
 │   ├── shell_tool.py   # Shell with security hardening
 │   ├── clones.py       # Clone detection via jscpd
 │   ├── validation.py   # Input validation (path traversal, injection prevention)
 │   ├── lsp/            # LSP integration (8 tools)
-│   └── graph/          # NetworkX analysis (14 tools)
+│   └── graph/          # Graph analysis (14 tools)
+│       ├── model.py    # CodeGraph, CodeNode, CodeEdge (with confidence)
+│       ├── analysis.py # CodeAnalyzer: blast_radius, diff_impact, flows
+│       ├── tools.py    # @tool wrappers for graph operations
+│       ├── adapters.py # Ingestion adapters (LSP, AST-grep, git, clones)
+│       ├── disclosure.py # ProgressiveExplorer
+│       ├── frameworks.py # Framework detection (Next.js, FastAPI, Django, etc.)
+│       └── storage.py  # GraphStorage protocol, NetworkXStorage, KuzuStorage
+├── viz/                # Web visualization (D3.js)
+│   ├── index.html      # Single-page app
+│   ├── style.css       # Dark theme styles
+│   └── js/             # Modules: graph, hotspots, modules, dependencies, narrative
 └── rules/              # ast-grep rule packs
 ```
 
@@ -100,6 +122,10 @@ Files are ranked by graph metrics rather than heuristics, following [Tenet 1: Me
 - **PageRank/TrustRank** -- identifies foundational modules
 - **Louvain/Leiden communities** -- detects module boundaries
 - **Triangle detection** -- finds tightly coupled triads
+- **Blast radius** -- quantifies change impact with confidence-weighted decay
+- **Execution flows** -- traces call paths from entry points to leaves
+- **Diff impact** -- maps changed lines to affected graph nodes and suggests tests
+- **Framework detection** -- boosts entry point scoring for known frameworks (Next.js, FastAPI, Django, etc.)
 
 ### Structured Output
 
@@ -109,11 +135,31 @@ The agent produces a Pydantic-typed `AnalysisResult` rather than freeform text, 
 
 The `mcp/` package exposes the core differentiators via the [Model Context Protocol](https://modelcontextprotocol.io), enabling coding agents (Claude Code, Cursor, etc.) to use the analysis capabilities directly:
 
-- **Tools**: `start_analysis`/`check_analysis` (kickoff/poll), `query_code_graph` (10 algorithms), `explore_code_graph` (progressive disclosure), `get_graph_stats`
+- **Tools**: `start_analysis`/`check_analysis` (kickoff/poll), `query_code_graph` (12 algorithms), `explore_code_graph` (progressive disclosure), `get_graph_stats`, `list_repos` (multi-repo registry), `diff_impact` (change impact analysis), `execute_cypher` (KuzuDB queries)
 - **Resources**: Read-only access to analysis artifacts via `analysis://` URI templates
 - **Transport**: stdio (default, for local MCP clients) or HTTP (for networked access)
+- **Hints**: All tool responses include `next_steps` with context-sensitive guidance for AI clients
 
 Commodity tools (ripgrep, LSP, git, ast-grep) are intentionally not exposed -- they are already available in every coding agent's MCP marketplace.
+
+### Multi-Repo Registry
+
+The `mcp/registry.py` module maintains a central registry at `~/.code-context/registry.json`. Completed analyses are auto-registered so MCP clients can discover available repos via `list_repos`. Graphs are cached in memory with a 5-minute TTL.
+
+### Deterministic Indexer
+
+The `indexer.py` module provides `code-context-agent index` -- a fast, LLM-free pipeline that builds a code graph deterministically using LSP, AST-grep, git history, and clone detection. Steps that require missing tools are skipped gracefully. The resulting `code_graph.json` is immediately queryable via MCP tools.
+
+### Graph Storage Backends
+
+The `tools/graph/storage.py` module defines a `GraphStorage` protocol with two implementations:
+
+- **NetworkXStorage** -- in-memory, wraps the existing `CodeGraph` (default)
+- **KuzuStorage** -- persistent, backed by [KuzuDB](https://kuzudb.com/) on disk with Cypher query support via `execute_cypher`
+
+### Web Visualization
+
+The `viz/` package provides a D3.js-based interactive visualization served locally via `code-context-agent viz`. Features include force-directed graph rendering, module coloring, hotspot highlighting, dependency chains, and the CONTEXT.md narrative. The viz command serves static files and proxies `/data/` requests to the `.code-context/` output directory.
 
 ### context7 MCP Integration
 

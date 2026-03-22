@@ -10,7 +10,7 @@ Builds a dependency graph from the codebase using import/reference relationships
 
 ### `code_graph_analyze`
 
-Runs analysis algorithms on the graph. Supports twelve analysis modes:
+Runs analysis algorithms on the graph. Supports fifteen analysis modes:
 
 #### Hotspots (Betweenness Centrality)
 
@@ -43,6 +43,32 @@ Identifies symbols (functions, classes) that exist in the graph but have no inco
 #### Refactoring
 
 Analyzes the graph for refactoring opportunities: duplicate code clusters (from clone detection), high-coupling modules, and files that bridge too many communities.
+
+#### Blast Radius
+
+Computes the impact of changing a specific node. BFS outward through reverse edges (callers, importers, references) with exponential decay: each hop halves the impact score. Edge confidence is factored into the decay, so low-confidence edges attenuate propagation. Returns total affected nodes, a risk score (sum of all impacts), a depth histogram, and ranked affected nodes.
+
+```
+Impact formula: 1 / (2^distance) * confidence_product
+```
+
+Requires `node_a` parameter. Use for: pre-change risk assessment, identifying high-impact refactoring targets.
+
+#### Execution Flows
+
+Traces execution paths from entry points through CALLS edges using DFS. Identifies named flows from entry points to leaves (or depth cutoff), deduplicates prefix paths, and scores flows by length and degree. Returns up to `max_flows` results sorted by score. Use for: understanding request handling paths, documenting execution architecture.
+
+#### Diff Impact
+
+Maps git diff changed lines to graph nodes and computes aggregate blast radius. For each changed file+line range, finds overlapping graph nodes by line overlap, runs blast radius on each, merges results, and suggests test files via TESTS edges. Returns directly changed nodes, aggregate risk score, affected nodes, and suggested tests.
+
+Requires `node_a` parameter containing a JSON array of changed files:
+
+```json
+[{"file_path": "src/foo.py", "lines": [10, 11, 12]}]
+```
+
+Use for: PR review impact assessment, CI test selection.
 
 ### `code_graph_explore`
 
@@ -95,6 +121,30 @@ Adds git history data to the code graph. Supports three result types:
 - **`hotspots`** -- from `git_hotspots`. Creates or updates FILE nodes with churn metadata.
 - **`cochanges`** -- from `git_files_changed_together`. Creates COCHANGES edges between co-changing files, filtered by a configurable `min_percentage` threshold.
 - **`contributors`** -- from `git_contributors` or `git_blame_summary`. Attaches ownership metadata to FILE nodes.
+
+## Edge Confidence Scoring
+
+Every `CodeEdge` carries a `confidence` field (0.0--1.0) indicating how reliable the data source is. Edges from LSP definitions have confidence 1.0 (precise semantic data), while ripgrep text-match edges may carry lower confidence. Confidence affects:
+
+- **Blast radius propagation** -- low-confidence edges attenuate impact scores at each hop
+- **View aggregation** -- when multiple edges between the same node pair are aggregated, the max confidence is kept
+- **Ranking quality** -- high-confidence edges contribute more to centrality and PageRank calculations
+
+## Framework Detection
+
+The `frameworks` module detects framework-specific patterns (Next.js pages, FastAPI routes, Django views, Express handlers, etc.) from file paths and applies scoring boosts to entry points. Detected frameworks include:
+
+| Framework | Detection Pattern | Entry Point Boost |
+|-----------|------------------|-------------------|
+| Next.js | `pages/**/*.tsx`, `app/**/page.tsx` | 3.0x |
+| FastAPI | `@(app\|router).(get\|post\|...)` | 3.0x |
+| Django | `**/views.py`, `**/urls.py` | 2.5--3.0x |
+| Express | `app.(get\|post\|use)` | 3.0x |
+| Flask | `@app.route`, `@blueprint.route` | 3.0x |
+| CLI | `**/cli.py`, `**/__main__.py` | 2.5--3.0x |
+| pytest | `**/test_*.py`, `**/conftest.py` | 1.5x |
+
+Framework detection runs automatically during `find_entry_points()` when framework patterns are provided.
 
 ## How Graph Metrics Drive Ranking
 

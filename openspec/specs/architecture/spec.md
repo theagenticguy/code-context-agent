@@ -13,16 +13,20 @@ code-context-agent is a single-agent system that analyzes codebases and produces
 
 | Layer | Component | Source | Purpose |
 |-------|-----------|--------|---------|
-| CLI | cyclopts App | `cli.py` | Commands: analyze, serve, viz, check |
-| Agent | Strands Agent | `agent/factory.py` | Opus 4.6 on Bedrock, 46+ tools, adaptive thinking |
+| CLI | cyclopts App | `cli.py` | Commands: analyze, serve, viz, index, check |
+| Agent | Strands Agent | `agent/factory.py` | Opus 4.6 on Bedrock, 47+ tools, adaptive thinking |
 | Runner | AG-UI streaming | `agent/runner.py` | Event stream orchestration, turn/time limits |
 | Hooks | HookProviders | `agent/hooks.py` | OutputQuality, ToolEfficiency, FailFast |
 | Prompts | Jinja2 templates | `templates/` | system.md.j2 + partials/ + steering/ |
-| Tools | @tool functions | `tools/` | Discovery, LSP, Graph, Git, AST, Shell |
-| MCP | FastMCP v3 server | `mcp/server.py` | Kickoff/poll, graph query, exploration, resources |
+| Tools | @tool functions | `tools/` | Discovery, LSP, Graph, Git, AST, Shell, Search |
+| Indexer | Deterministic pipeline | `indexer.py` | LLM-free graph building (LSP, AST-grep, git, clones) |
+| MCP | FastMCP v3 server | `mcp/server.py` | Kickoff/poll, graph query, exploration, registry, resources |
+| Registry | Multi-repo tracker | `mcp/registry.py` | ~/.code-context/registry.json, graph caching |
+| Storage | Graph backends | `tools/graph/storage.py` | GraphStorage protocol: NetworkX (default) or KuzuDB |
 | Models | Pydantic | `models/` | FrozenModel/StrictModel base, AnalysisResult output |
 | Config | pydantic-settings | `config.py` | CODE_CONTEXT_ env prefix, cached singleton |
 | Display | Rich TUI | `consumer/` | AG-UI event consumer, phase progress, discoveries |
+| Viz | Web dashboard | `viz/` | D3.js force-directed graph, hotspots, modules, dependencies |
 
 ## Execution Flow
 
@@ -60,6 +64,43 @@ _execute_analysis_stream()
 Return dict: {status, output_dir, context_path, turn_count, duration_seconds}
 ```
 
+## Indexer (Deterministic Pipeline)
+
+The `index` CLI command builds a code graph without any LLM invocations. Defined in `indexer.py`.
+
+```
+cli.py::index()
+  |
+  v
+indexer.py::build_index()
+  |-- Step 1: File manifest via rg --files (fallback: Path.rglob)
+  |-- Step 2: Language detection from file extensions
+  |-- Step 3: LSP document symbols per file -> ingest_lsp_symbols()
+  |-- Step 4: AST-grep rule packs per language -> ingest_astgrep_rule_pack()
+  |-- Step 5: Git hotspots + co-changes -> ingest_git_hotspots(), ingest_git_cochanges()
+  |-- Step 6: Clone detection via jscpd -> ingest_clone_results()
+  |-- Step 7: Save graph to <repo>/.code-context/code_graph.json
+  |
+  v
+Return CodeGraph
+```
+
+Every external tool call is graceful: if a tool is missing (rg, ast-grep, npx) the step is skipped and indexing continues. The resulting graph can be queried via MCP tools or the `viz` command without running a full LLM-powered analysis.
+
+## Multi-Repo Registry
+
+Defined in `mcp/registry.py`. Maintains a central registry at `~/.code-context/registry.json` tracking all analyzed repositories.
+
+| Component | Details |
+|-----------|---------|
+| Registry location | `~/.code-context/registry.json` |
+| Entry model | `RepoEntry(FrozenModel)`: path, alias, analyzed_at, graph_exists, artifact_count |
+| Auto-registration | `start_analysis` MCP tool auto-registers repos on completion |
+| Graph caching | 5-minute TTL cache via `load_graph(alias)` |
+| Atomic writes | Writes use temp file + rename pattern for safety |
+
+MCP clients can discover available repos via the `list_repos` tool.
+
 ## Analysis Modes
 
 | Mode | CLI Flags | Max Duration | Max Turns | Behavior |
@@ -75,11 +116,14 @@ Return dict: {status, output_dir, context_path, turn_count, duration_seconds}
 The FastMCP v3 server exposes three tool types and six resource templates:
 
 **Tools (kickoff/poll pattern):**
-- `start_analysis(repo_path, focus?, issue?)` -- spawns background asyncio task, returns job_id
+- `start_analysis(repo_path, focus?, issue?)` -- spawns background asyncio task, returns job_id, auto-registers in registry
 - `check_analysis(job_id)` -- polls job status from module-level `_jobs` dict
-- `query_code_graph(repo_path, algorithm, ...)` -- 10 graph algorithms on persisted graph
+- `query_code_graph(repo_path, algorithm, ...)` -- 13+ graph algorithms on persisted graph (including blast_radius, flows, diff_impact)
 - `explore_code_graph(repo_path, action, ...)` -- progressive disclosure exploration
 - `get_graph_stats(repo_path)` -- quick graph summary
+- `list_repos()` -- list all repos from multi-repo registry (~/.code-context/registry.json)
+- `diff_impact(repo_path, changed_files, ...)` -- map git diff to impacted nodes, suggest tests
+- `execute_cypher(repo_path, query)` -- read-only Cypher queries (KuzuDB backend only)
 
 **Resources:**
 - `analysis://{repo_path}/context` -- CONTEXT.md
@@ -101,6 +145,9 @@ The FastMCP v3 server exposes three tool types and six resource templates:
 | LSP sessions | `tools/lsp/session.py` | Analysis session | Singleton `LspSessionManager` with fallback chains |
 | MCP jobs | `mcp/server.py` | Server lifetime | Module-level `_jobs: dict[str, dict]` |
 | Phase tracking | `consumer/state.py` | Analysis session | `AnalysisState` in consumer |
+| BM25 indexes | `tools/search/tools.py` | Analysis session | Module-level `_indexes: dict[str, BM25Index]` |
+| Registry | `mcp/registry.py` | Persistent (disk) | `~/.code-context/registry.json` with 5-min graph cache |
+| KuzuDB | `tools/graph/storage.py` | Persistent (disk) | `<repo>/.code-context/graph.kuzu` database directory |
 
 ## Security Boundaries
 
@@ -130,6 +177,8 @@ The FastMCP v3 server exposes three tool types and six resource templates:
 | rich | TUI display |
 | loguru | Structured logging |
 | ty | Python type checker (also used as LSP server) |
+| kuzu | KuzuDB embedded graph database (optional, for persistent backend) |
+| rank-bm25 | BM25 Okapi text search ranking |
 
 ## External CLI Dependencies
 
@@ -141,6 +190,21 @@ The FastMCP v3 server exposes three tool types and six resource templates:
 | npx | context7 MCP server launcher | Optional |
 | jscpd | Clone detection | Optional |
 
+## Web Visualization
+
+The `viz` CLI command launches a local HTTP server serving a D3.js-powered web dashboard.
+
+| Component | Details |
+|-----------|---------|
+| Entry point | `cli.py::viz()` |
+| Static assets | `viz/` directory (HTML, CSS, JS) |
+| D3.js version | v7 (loaded from CDN) |
+| Views | Dashboard (stats, donut charts), Network Graph (force-directed), Hotspots (bar chart), Modules (pack layout), Dependencies (tree) |
+| API endpoints | `/api/graph` (code_graph.json), `/api/stats` (graph.describe()) |
+| Data proxy | `/data/*` routes to `.code-context/` directory with path traversal protection |
+
+The viz server runs on `localhost:<port>` (default 8080) and auto-opens a browser. Graph data is loaded from the `.code-context/code_graph.json` artifact.
+
 ## Requirements
 
 ### Requirement: The system SHALL create exactly one Strands Agent per analysis run
@@ -148,7 +212,7 @@ Agent is stateless between runs. All per-run state MUST live in module-level dic
 
 #### Scenario: Standard analysis run
 - **WHEN** `run_analysis()` is called with mode="standard"
-- **THEN** one Agent is created with 46+ tools, max_turns=1000, max_duration=1200s
+- **THEN** one Agent is created with 47+ tools, max_turns=1000, max_duration=1200s
 
 #### Scenario: Full mode analysis run
 - **WHEN** `run_analysis()` is called with mode="full"
@@ -208,3 +272,40 @@ The shell tool MUST validate all commands against an allowlist before execution.
 #### Scenario: Write outside output directory
 - **WHEN** `write_file("/etc/passwd", "content")` is called
 - **THEN** write is denied with "not within a .code-context/ directory"
+
+### Requirement: The indexer SHALL build graphs without LLM invocations
+The `index` command MUST produce a valid code_graph.json using only deterministic tools (LSP, AST-grep, git, jscpd).
+
+#### Scenario: Index a repository
+- **WHEN** `code-context-agent index /path/to/repo` is run
+- **THEN** a code_graph.json is written to `<repo>/.code-context/` without any Bedrock API calls
+
+#### Scenario: Missing external tool
+- **WHEN** ast-grep is not installed during indexing
+- **THEN** the AST-grep step is skipped and indexing continues with remaining steps
+
+#### Scenario: Index then analyze
+- **WHEN** `index` is run first, then `analyze --since HEAD~5` is run
+- **THEN** the analyze command loads the existing graph and only re-analyzes changed files
+
+### Requirement: The registry SHALL track all analyzed repositories
+The multi-repo registry MUST persist repo metadata to `~/.code-context/registry.json`.
+
+#### Scenario: Analysis auto-registers repo
+- **WHEN** `start_analysis(repo_path)` completes successfully via MCP
+- **THEN** the repo is registered with alias, path, timestamp, and artifact count
+
+#### Scenario: List registered repos
+- **WHEN** `list_repos()` is called via MCP
+- **THEN** all registered repos are returned with their metadata
+
+### Requirement: The viz server SHALL prevent path traversal
+The `/data/*` route in the viz server MUST validate that resolved paths stay within the `.code-context/` directory.
+
+#### Scenario: Normal data access
+- **WHEN** `/data/code_graph.json` is requested
+- **THEN** the file is served from `<repo>/.code-context/code_graph.json`
+
+#### Scenario: Path traversal attempt
+- **WHEN** `/data/../../etc/passwd` is requested
+- **THEN** the request is blocked (resolved path outside agent_dir)

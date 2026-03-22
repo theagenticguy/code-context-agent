@@ -9,47 +9,58 @@ context: |
   - **Package manager**: uv (never pip/poetry)
 
   ## Architecture
-  Single Strands Agent (Claude Opus 4.6 on Bedrock) with 46+ @tool functions, AG-UI event streaming, and Pydantic structured output (AnalysisResult).
+  Single Strands Agent (Claude Opus 4.6 on Bedrock) with 47+ @tool functions, AG-UI event streaming, and Pydantic structured output (AnalysisResult). Pluggable graph storage (NetworkX or KuzuDB).
 
   ```
   CLI (cyclopts) --> run_analysis() --> Strands Agent (Opus 4.6)
-                                          |-- 46+ @tool functions
+                                          |-- 47+ @tool functions
                                           |-- context7 MCP (library docs)
                                           |-- AG-UI event stream --> Rich TUI
                                           |-- AnalysisResult (structured output)
 
+  CLI (cyclopts) --> build_index() --> Deterministic Pipeline (LLM-free)
+                                          |-- LSP, AST-grep, git, jscpd
+                                          |-- Output: code_graph.json only
+
   FastMCP v3 Server (code-context-agent serve)
       |-- start_analysis / check_analysis (kickoff/poll)
-      |-- query_code_graph (10 graph algorithms)
+      |-- query_code_graph (16 graph algorithms incl. blast_radius, flows, diff_impact)
       |-- explore_code_graph (progressive disclosure)
+      |-- list_repos / diff_impact / execute_cypher
       |-- 6 resource templates (analysis artifacts)
+      |-- Multi-repo registry (~/.code-context/registry.json)
   ```
 
   ## Key Source Locations
   | Path | Purpose |
   |------|---------|
-  | src/code_context_agent/cli.py | CLI: analyze, serve, viz, check commands |
+  | src/code_context_agent/cli.py | CLI: analyze, serve, viz, index, check commands |
   | src/code_context_agent/config.py | Settings via pydantic-settings, CODE_CONTEXT_ prefix |
   | src/code_context_agent/agent/factory.py | Agent creation: tools, model, hooks, context7 MCP |
   | src/code_context_agent/agent/runner.py | Analysis runner with AG-UI event streaming |
   | src/code_context_agent/agent/hooks.py | HookProviders: OutputQuality, ToolEfficiency, FailFast |
   | src/code_context_agent/agent/prompts.py | Jinja2 template rendering |
-  | src/code_context_agent/mcp/server.py | FastMCP v3 server (MCP tools + resources) |
+  | src/code_context_agent/mcp/server.py | FastMCP v3 server (MCP tools + resources + registry) |
   | src/code_context_agent/tools/discovery.py | ripgrep, repomix tools |
   | src/code_context_agent/tools/lsp/ | LSP client, session manager, tool wrappers |
-  | src/code_context_agent/tools/graph/ | CodeGraph model, CodeAnalyzer, ProgressiveExplorer |
+  | src/code_context_agent/tools/graph/ | CodeGraph model, CodeAnalyzer, ProgressiveExplorer, GraphStorage, frameworks |
   | src/code_context_agent/tools/git.py | Git history analysis tools |
   | src/code_context_agent/tools/astgrep.py | AST-grep pattern matching tools |
   | src/code_context_agent/tools/shell_tool.py | Security-hardened shell with allowlist |
   | src/code_context_agent/templates/ | Jinja2 system prompt (system.md.j2 + partials/ + steering/) |
   | src/code_context_agent/models/output.py | AnalysisResult, BusinessLogicItem, ArchitecturalRisk |
   | src/code_context_agent/models/base.py | FrozenModel (immutable), StrictModel (mutable) |
+  | src/code_context_agent/mcp/registry.py | Multi-repo registry (~/.code-context/registry.json) |
+  | src/code_context_agent/indexer.py | Deterministic index pipeline (LLM-free graph building) |
+  | src/code_context_agent/tools/search/ | BM25 ranked text search (BM25Index, bm25_search tool) |
+  | src/code_context_agent/viz/ | D3.js web visualization (graph, hotspots, modules, dashboard) |
   | src/code_context_agent/consumer/ | AG-UI event consumers: RichEventConsumer, QuietConsumer |
 
-  ## Tool Categories (46+)
+  ## Tool Categories (47+)
   - **Discovery** (11): create_file_manifest, repomix_*, rg_search, read_file_bounded, write_file, write_file_list
+  - **Search** (1): bm25_search (BM25 ranked text search)
   - **LSP** (8): lsp_start, lsp_document_symbols, lsp_references, lsp_definition, lsp_hover, lsp_workspace_symbols, lsp_diagnostics, lsp_shutdown
-  - **Graph** (14): code_graph_create, code_graph_ingest_* (7 adapters), code_graph_analyze, code_graph_explore, code_graph_export, code_graph_save/load, code_graph_stats
+  - **Graph** (14): code_graph_create, code_graph_ingest_* (7 adapters), code_graph_analyze (16 algorithms incl. blast_radius, flows, diff_impact), code_graph_explore, code_graph_export, code_graph_save/load, code_graph_stats
   - **Git** (7): git_hotspots, git_files_changed_together, git_blame_summary, git_file_history, git_contributors, git_recent_commits, git_diff_file
   - **AST** (3): astgrep_scan, astgrep_scan_rule_pack, astgrep_inline_rule
   - **Shell** (1): shell (security-hardened, allowlist-based)
@@ -79,7 +90,8 @@ context: |
   ## Tech Stack
   - strands-agents + strands-agents-tools (agent framework)
   - ag-ui-protocol + ag-ui-strands (event streaming)
-  - networkx (graph), fastmcp (MCP server), cyclopts (CLI)
+  - networkx (graph), kuzu (persistent graph, optional), rank-bm25 (text search)
+  - fastmcp (MCP server), cyclopts (CLI)
   - pydantic + pydantic-settings (models + config)
   - jinja2 (prompts), rich (TUI), loguru (logging)
   - External CLIs: rg, ast-grep, repomix, npx, jscpd
