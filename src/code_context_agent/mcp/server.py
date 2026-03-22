@@ -76,6 +76,100 @@ interactive surface. Check for .code-context/code_graph.json before running anal
 # ---------------------------------------------------------------------------
 
 
+def _add_hints(result: dict[str, Any], hints: list[str]) -> dict[str, Any]:
+    """Append next-step hints to an MCP tool response (returns a new dict)."""
+    return {**result, "next_steps": hints}
+
+
+# Hint mappings for algorithm-specific and action-specific guidance
+QUERY_ALGORITHM_HINTS: dict[str, list[str]] = {
+    "hotspots": [
+        "Expand the top hotspot with explore_code_graph(action='expand_node', node_id='...')",
+        "Check coupling between top hotspots with query_code_graph(algorithm='coupling')",
+    ],
+    "foundations": [
+        "Run query_code_graph(algorithm='trust') for noise-resistant ranking",
+        "Expand top foundation with explore_code_graph(action='expand_node')",
+    ],
+    "trust": [
+        "Foundations and trust results together reveal the most critical code",
+        "Expand trusted nodes to see their callers and callees",
+    ],
+    "modules": [
+        "Expand a module with explore_code_graph(action='expand_module', module_id=0)",
+        "Modules with low cohesion may be refactoring candidates",
+    ],
+    "entry_points": [
+        "Trace execution flows from entry points with query_code_graph(algorithm='flows')",
+        "Entry points are good starting nodes for blast_radius analysis",
+    ],
+    "coupling": [
+        "High coupling (>2.0) suggests the nodes should be refactored together",
+        "Check if coupled nodes are in the same module",
+    ],
+    "similar": [
+        "Similar nodes may be candidates for extraction into a shared utility",
+    ],
+    "dependencies": [
+        "Follow the dependency chain to understand the full call path",
+    ],
+    "triangles": [
+        "Triangles reveal tightly-coupled triads that change together",
+    ],
+    "category": [
+        "Explore specific nodes in this category with expand_node",
+    ],
+    "flows": [
+        "Expand entry points of top flows with explore_code_graph(action='expand_node')",
+        "Check coupling between flow endpoints with query_code_graph(algorithm='coupling')",
+    ],
+    "blast_radius": [
+        "High-impact affected nodes should be tested before deploying changes",
+        "Check coupling between the source and top affected nodes",
+    ],
+    "unused_symbols": [
+        "Verify unused symbols are truly dead code before removing",
+    ],
+    "refactoring": [
+        "Prioritize refactoring candidates with the highest score",
+    ],
+    "diff_impact": [
+        "Review suggested_tests to ensure adequate test coverage for the change",
+        "High aggregate_risk (>5.0) suggests the change has wide blast radius",
+    ],
+}
+
+EXPLORE_ACTION_HINTS: dict[str, list[str]] = {
+    "overview": [
+        "Expand the top hotspot node with explore_code_graph(action='expand_node', node_id='...')",
+        "Explore the largest module with explore_code_graph(action='expand_module', module_id=0)",
+        "Check a specific category with explore_code_graph(action='category', category='...')",
+    ],
+    "expand_node": [
+        "Follow suggested_next nodes to continue exploring",
+        "Use explore_code_graph(action='path', ...) to trace connections between nodes",
+    ],
+    "expand_module": [
+        "Expand individual nodes within the module for deeper analysis",
+        "Check external connections to understand module boundaries",
+    ],
+    "path": [
+        "Nodes along the path may be change-coupled — check with query_code_graph(algorithm='coupling')",
+    ],
+    "category": [
+        "Expand individual nodes in this category for details",
+    ],
+    "status": [
+        "Focus on unexplored areas with low coverage",
+    ],
+}
+
+GRAPH_STATS_HINTS: list[str] = [
+    "Run explore_code_graph(action='overview') for structural overview",
+    "Run query_code_graph(algorithm='hotspots') to find critical code",
+]
+
+
 def _agent_dir(repo_path: str) -> Path:
     """Resolve the output directory for a repository."""
     return Path(repo_path).resolve() / DEFAULT_OUTPUT_DIR
@@ -210,13 +304,19 @@ async def start_analysis(
     )
 
     logger.info(f"Analysis job {job_id} started for {repo}")
-    return {
-        "job_id": job_id,
-        "status": "starting",
-        "repo_path": str(repo),
-        "output_dir": output_dir,
-        "message": "Analysis started. Poll check_analysis(job_id) for progress.",
-    }
+    return _add_hints(
+        {
+            "job_id": job_id,
+            "status": "starting",
+            "repo_path": str(repo),
+            "output_dir": output_dir,
+            "message": "Analysis started. Poll check_analysis(job_id) for progress.",
+        },
+        [
+            f"Poll with check_analysis(job_id='{job_id}') every 30 seconds until completed",
+            "If the repo was already analyzed, use query_code_graph or explore_code_graph for instant results",
+        ],
+    )
 
 
 @mcp.tool
@@ -280,7 +380,27 @@ def check_analysis(
     elif job["status"] == "error":
         response["error"] = job["error"]
 
-    return response
+    # Context-sensitive hints based on job status
+    status = job["status"]
+    if status in ("running", "starting"):
+        hints = [f"Continue polling check_analysis(job_id='{job_id}') — analysis is still in progress"]
+    elif status == "completed":
+        hints = [
+            "Run query_code_graph(repo_path, algorithm='hotspots') to find critical code",
+            "Run explore_code_graph(repo_path, action='overview') for structural overview",
+            f"Read analysis://{job['repo_path']}/context for the narrative architecture document",
+        ]
+    elif status == "error":
+        hints = [
+            "Check the error message for details",
+            "Retry with start_analysis if the error is transient",
+        ]
+    elif status == "stopped":
+        hints = ["Analysis was interrupted — review partial results with query_code_graph if a graph exists"]
+    else:
+        hints = [f"Continue polling check_analysis(job_id='{job_id}')"]
+
+    return _add_hints(response, hints)
 
 
 # ---------------------------------------------------------------------------
@@ -308,6 +428,8 @@ def _build_algorithm_dispatch(
         "dependencies": lambda: _run_dependencies(analyzer, node_a),
         "category": lambda: _run_category(analyzer, category),
         "triangles": lambda: {"algorithm": "triangles", "results": analyzer.find_triangles(top_k=top_k)},
+        "flows": lambda: {"algorithm": "flows", "results": analyzer.trace_execution_flows(max_flows=top_k)},
+        "blast_radius": lambda: _run_blast_radius(analyzer, node_a, top_k),
     }
 
 
@@ -339,6 +461,12 @@ def _run_dependencies(analyzer: CodeAnalyzer, node_a: str) -> dict[str, Any]:
     return {"algorithm": "dependencies", "results": analyzer.get_dependency_chain(node_a, "outgoing")}
 
 
+def _run_blast_radius(analyzer: CodeAnalyzer, node_a: str, top_k: int) -> dict[str, Any]:
+    if not node_a:
+        return {"error": "node_a required for blast_radius analysis"}
+    return {"algorithm": "blast_radius", **analyzer.blast_radius(node_a, top_k=top_k)}
+
+
 def _run_category(analyzer: CodeAnalyzer, category: str) -> dict[str, Any]:
     if not category:
         return {"error": "category required for category analysis"}
@@ -358,7 +486,7 @@ def query_code_graph(
         Field(
             description=(
                 "Algorithm to run. One of: hotspots, foundations, trust, modules, "
-                "entry_points, coupling, similar, dependencies, category, triangles"
+                "entry_points, coupling, similar, dependencies, category, triangles, flows, blast_radius"
             ),
         ),
     ],
@@ -468,10 +596,13 @@ def query_code_graph(
         return {
             "error": (
                 f"Unknown algorithm: {algorithm}. Valid: hotspots, foundations, trust, "
-                "modules, entry_points, coupling, similar, dependencies, category, triangles"
+                "modules, entry_points, coupling, similar, dependencies, category, triangles, flows, blast_radius"
             ),
         }
-    return handler()
+    result = handler()
+    default_hints = ["Try explore_code_graph(action='overview') for a structural overview"]
+    hints = QUERY_ALGORITHM_HINTS.get(algorithm, default_hints)
+    return _add_hints(result, hints)
 
 
 # ---------------------------------------------------------------------------
@@ -616,7 +747,9 @@ def explore_code_graph(
         return {
             "error": f"Unknown action: {action}. Valid: overview, expand_node, expand_module, path, category, status",
         }
-    return handler()
+    result = handler()
+    hints = EXPLORE_ACTION_HINTS.get(action, ["Run explore_code_graph(action='overview') to start"])
+    return _add_hints(result, hints)
 
 
 @mcp.tool
@@ -646,7 +779,70 @@ def get_graph_stats(
         }
     """
     graph = _load_graph(repo_path)
-    return graph.describe()
+    return _add_hints(graph.describe(), GRAPH_STATS_HINTS)
+
+
+@mcp.tool
+def diff_impact(
+    repo_path: Annotated[
+        str,
+        Field(
+            description="Absolute path to repo (must have .code-context/code_graph.json from prior analysis)",
+        ),
+    ],
+    changed_files: Annotated[
+        str,
+        Field(
+            description=(
+                'JSON array of changed files. Each element: {"file_path": "src/foo.py", "lines": [10, 11, 12]}. '
+                "Lines are 1-indexed line numbers that were modified."
+            ),
+        ),
+    ],
+    max_depth: Annotated[
+        int,
+        Field(description="Max BFS depth for blast radius per changed symbol (default 3)"),
+    ] = 3,
+    top_k: Annotated[
+        int,
+        Field(description="Max affected nodes to return (default 20)"),
+    ] = 20,
+) -> dict:
+    """Map a git diff to impacted code graph nodes and suggest tests to run.
+
+    USE THIS WHEN: You have a set of changed files/lines (from git diff, PR, or
+    local edits) and want to understand the downstream impact on the codebase.
+
+    PREREQUISITE: .code-context/code_graph.json must exist (from start_analysis).
+
+    HOW IT WORKS:
+    1. Maps changed lines to graph nodes (functions/classes) by line overlap
+    2. Runs blast_radius on each matched node
+    3. Merges and deduplicates affected nodes
+    4. Suggests test files via TESTS edges in the graph
+
+    Returns:
+        {
+            "directly_changed": [{"id": "...", "name": "...", ...}],
+            "total_affected": 15,
+            "aggregate_risk": 3.25,
+            "affected_nodes": [{"id": "...", "impact": 0.5, "distance": 1, ...}],
+            "suggested_tests": ["tests/test_auth.py", ...]
+        }
+    """
+    graph = _load_graph(repo_path)
+    analyzer = CodeAnalyzer(graph)
+
+    try:
+        parsed = json.loads(changed_files)
+    except json.JSONDecodeError as e:
+        return {"error": f"Invalid changed_files JSON: {e}"}
+
+    result = analyzer.diff_impact(parsed, max_depth=max_depth, top_k=top_k)
+    return _add_hints(
+        {"algorithm": "diff_impact", **result},
+        QUERY_ALGORITHM_HINTS.get("diff_impact", []),
+    )
 
 
 # ---------------------------------------------------------------------------

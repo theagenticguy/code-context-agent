@@ -109,6 +109,7 @@ def ingest_lsp_symbols(
                     source=parent_id,
                     target=node_id,
                     edge_type=EdgeType.CONTAINS,
+                    confidence=0.95,
                 ),
             )
 
@@ -157,6 +158,7 @@ def ingest_lsp_references(
                 source=referrer_id,
                 target=source_node_id,
                 edge_type=EdgeType.REFERENCES,
+                confidence=0.95,
                 metadata={
                     "file": file_path,
                     "line": line,
@@ -207,6 +209,7 @@ def ingest_lsp_definition(
                 source=source_id,
                 target=target_id,
                 edge_type=edge_type,
+                confidence=0.95,
                 metadata={
                     "from_file": from_file,
                     "to_file": target_file,
@@ -423,6 +426,7 @@ def ingest_inheritance(
                 source=class_node_id,
                 target=f"{file_path}:{base_class}",
                 edge_type=EdgeType.INHERITS,
+                confidence=0.85,
                 metadata={"language": "typescript"},
             ),
         )
@@ -436,6 +440,7 @@ def ingest_inheritance(
                         source=class_node_id,
                         target=f"{file_path}:{iface}",
                         edge_type=EdgeType.IMPLEMENTS,
+                        confidence=0.85,
                         metadata={"language": "typescript"},
                     ),
                 )
@@ -453,6 +458,7 @@ def ingest_inheritance(
                         source=class_node_id,
                         target=f"{file_path}:{base}",
                         edge_type=EdgeType.INHERITS,
+                        confidence=0.85,
                         metadata={"language": "python"},
                     ),
                 )
@@ -495,6 +501,7 @@ def ingest_test_mapping(
                     source=test_file,
                     target=prod_file,
                     edge_type=EdgeType.TESTS,
+                    confidence=0.70,
                     metadata={"convention": "name_match"},
                 ),
             )
@@ -586,6 +593,7 @@ def ingest_git_cochanges(
                 target=target_file,
                 edge_type=EdgeType.COCHANGES,
                 weight=weight,
+                confidence=0.60,
                 metadata={
                     "count": cochange.get("count", 0),
                     "percentage": percentage,
@@ -706,6 +714,7 @@ def ingest_clone_results(
                 source=first_file,
                 target=second_file,
                 edge_type=EdgeType.SIMILAR_TO,
+                confidence=0.75,
                 metadata={
                     "first_start": clone.get("first_start", 0),
                     "first_end": clone.get("first_end", 0),

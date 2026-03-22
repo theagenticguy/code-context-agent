@@ -98,6 +98,7 @@ class CodeEdge(FrozenModel):
         target: Target node ID
         edge_type: Classification of the relationship
         weight: Edge weight for algorithms (default 1.0)
+        confidence: How reliable the edge data source is (0.0-1.0, default 1.0)
         metadata: Additional properties (line where relationship occurs, etc.)
     """
 
@@ -105,6 +106,7 @@ class CodeEdge(FrozenModel):
     target: str
     edge_type: EdgeType
     weight: float = 1.0
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -169,6 +171,7 @@ class CodeGraph:
             key=edge.edge_type.value,
             edge_type=edge.edge_type.value,
             weight=edge.weight,
+            confidence=edge.confidence,
             **edge.metadata,
         )
 
@@ -244,10 +247,17 @@ class CodeGraph:
         for u, v, k, d in self._graph.edges(keys=True, data=True):
             if edge_types is None or EdgeType(k) in edge_types:
                 if view.has_edge(u, v):
-                    # Aggregate weights
+                    # Aggregate: sum weights, take max confidence
                     view[u][v]["weight"] += d.get("weight", 1.0)
+                    view[u][v]["confidence"] = max(view[u][v]["confidence"], d.get("confidence", 1.0))
                 else:
-                    view.add_edge(u, v, weight=d.get("weight", 1.0), types=[k])
+                    view.add_edge(
+                        u,
+                        v,
+                        weight=d.get("weight", 1.0),
+                        confidence=d.get("confidence", 1.0),
+                        types=[k],
+                    )
 
         return view
 

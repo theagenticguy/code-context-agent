@@ -27,7 +27,7 @@ def create_sample_graph() -> CodeGraph:
             file_path="/main.py",
             line_start=1,
             line_end=10,
-        )
+        ),
     )
     graph.add_node(
         CodeNode(
@@ -37,7 +37,7 @@ def create_sample_graph() -> CodeGraph:
             file_path="/helpers.py",
             line_start=1,
             line_end=10,
-        )
+        ),
     )
     graph.add_node(
         CodeNode(
@@ -47,7 +47,7 @@ def create_sample_graph() -> CodeGraph:
             file_path="/helpers.py",
             line_start=15,
             line_end=25,
-        )
+        ),
     )
     graph.add_node(
         CodeNode(
@@ -57,7 +57,7 @@ def create_sample_graph() -> CodeGraph:
             file_path="/utils.py",
             line_start=1,
             line_end=5,
-        )
+        ),
     )
 
     # main calls helpers
@@ -84,7 +84,7 @@ def create_clustered_graph() -> CodeGraph:
             file_path="/auth/login.py",
             line_start=1,
             line_end=10,
-        )
+        ),
     )
     graph.add_node(
         CodeNode(
@@ -94,7 +94,7 @@ def create_clustered_graph() -> CodeGraph:
             file_path="/auth/logout.py",
             line_start=1,
             line_end=10,
-        )
+        ),
     )
     graph.add_node(
         CodeNode(
@@ -104,7 +104,7 @@ def create_clustered_graph() -> CodeGraph:
             file_path="/auth/session.py",
             line_start=1,
             line_end=10,
-        )
+        ),
     )
 
     graph.add_edge(CodeEdge(source="auth/login", target="auth/session", edge_type=EdgeType.CALLS))
@@ -119,7 +119,7 @@ def create_clustered_graph() -> CodeGraph:
             file_path="/db/connect.py",
             line_start=1,
             line_end=10,
-        )
+        ),
     )
     graph.add_node(
         CodeNode(
@@ -129,7 +129,7 @@ def create_clustered_graph() -> CodeGraph:
             file_path="/db/query.py",
             line_start=1,
             line_end=10,
-        )
+        ),
     )
     graph.add_node(
         CodeNode(
@@ -139,7 +139,7 @@ def create_clustered_graph() -> CodeGraph:
             file_path="/db/pool.py",
             line_start=1,
             line_end=10,
-        )
+        ),
     )
 
     graph.add_edge(CodeEdge(source="db/connect", target="db/pool", edge_type=EdgeType.CALLS))
@@ -370,7 +370,7 @@ class TestUnusedSymbols:
                 file_path="a.py",
                 line_start=1,
                 line_end=5,
-            )
+            ),
         )
         graph.add_node(
             CodeNode(
@@ -380,7 +380,7 @@ class TestUnusedSymbols:
                 file_path="b.py",
                 line_start=1,
                 line_end=5,
-            )
+            ),
         )
         graph.add_edge(CodeEdge(source="b.py:caller", target="a.py:used_func", edge_type=EdgeType.CALLS))
 
@@ -393,7 +393,7 @@ class TestUnusedSymbols:
                 file_path="c.py",
                 line_start=1,
                 line_end=5,
-            )
+            ),
         )
 
         analyzer = CodeAnalyzer(graph)
@@ -414,7 +414,7 @@ class TestUnusedSymbols:
                 file_path="a.py",
                 line_start=1,
                 line_end=5,
-            )
+            ),
         )
         graph.add_node(
             CodeNode(
@@ -424,7 +424,7 @@ class TestUnusedSymbols:
                 file_path="a.py",
                 line_start=10,
                 line_end=15,
-            )
+            ),
         )
 
         analyzer = CodeAnalyzer(graph)
@@ -443,7 +443,7 @@ class TestUnusedSymbols:
                 file_path="a.py",
                 line_start=1,
                 line_end=5,
-            )
+            ),
         )
 
         analyzer = CodeAnalyzer(graph)
@@ -463,7 +463,7 @@ class TestUnusedSymbols:
                 file_path="a.py",
                 line_start=1,
                 line_end=5,
-            )
+            ),
         )
         graph.add_node(
             CodeNode(
@@ -473,7 +473,7 @@ class TestUnusedSymbols:
                 file_path="a.py",
                 line_start=10,
                 line_end=15,
-            )
+            ),
         )
         graph.add_edge(CodeEdge(source="a.py:caller", target="a.py:helper", edge_type=EdgeType.CALLS))
 
@@ -495,7 +495,7 @@ class TestUnusedSymbols:
                 file_path="a.py",
                 line_start=1,
                 line_end=50,
-            )
+            ),
         )
         graph.add_node(
             CodeNode(
@@ -505,7 +505,7 @@ class TestUnusedSymbols:
                 file_path="a.py",
                 line_start=55,
                 line_end=60,
-            )
+            ),
         )
 
         analyzer = CodeAnalyzer(graph)
@@ -538,7 +538,7 @@ class TestRefactoringCandidates:
                 file_path="a.py",
                 line_start=0,
                 line_end=100,
-            )
+            ),
         )
         graph.add_node(
             CodeNode(
@@ -548,7 +548,7 @@ class TestRefactoringCandidates:
                 file_path="b.py",
                 line_start=0,
                 line_end=100,
-            )
+            ),
         )
         graph.add_edge(
             CodeEdge(
@@ -556,7 +556,7 @@ class TestRefactoringCandidates:
                 target="b.py",
                 edge_type=EdgeType.SIMILAR_TO,
                 metadata={"duplicated_lines": 15},
-            )
+            ),
         )
 
         analyzer = CodeAnalyzer(graph)
@@ -578,7 +578,7 @@ class TestRefactoringCandidates:
                 line_start=10,
                 line_end=200,
                 metadata={"rule_id": "py-god-function", "note": "code_smell"},
-            )
+            ),
         )
         graph.add_node(
             CodeNode(
@@ -589,7 +589,7 @@ class TestRefactoringCandidates:
                 line_start=5,
                 line_end=150,
                 metadata={"rule_id": "py-god-function", "note": "code_smell"},
-            )
+            ),
         )
 
         analyzer = CodeAnalyzer(graph)
@@ -610,7 +610,7 @@ class TestRefactoringCandidates:
                 file_path="a.py",
                 line_start=1,
                 line_end=5,
-            )
+            ),
         )
         graph.add_node(
             CodeNode(
@@ -620,7 +620,7 @@ class TestRefactoringCandidates:
                 file_path="a.py",
                 line_start=10,
                 line_end=15,
-            )
+            ),
         )
 
         analyzer = CodeAnalyzer(graph)
@@ -642,7 +642,7 @@ class TestRefactoringCandidates:
                 file_path="a.py",
                 line_start=0,
                 line_end=100,
-            )
+            ),
         )
         graph.add_node(
             CodeNode(
@@ -652,7 +652,7 @@ class TestRefactoringCandidates:
                 file_path="b.py",
                 line_start=0,
                 line_end=100,
-            )
+            ),
         )
         graph.add_edge(
             CodeEdge(
@@ -660,7 +660,7 @@ class TestRefactoringCandidates:
                 target="b.py",
                 edge_type=EdgeType.SIMILAR_TO,
                 metadata={"duplicated_lines": 20},
-            )
+            ),
         )
 
         # Low-score single orphan (1 * 1.0 = 1)
@@ -672,7 +672,7 @@ class TestRefactoringCandidates:
                 file_path="c.py",
                 line_start=1,
                 line_end=5,
-            )
+            ),
         )
 
         analyzer = CodeAnalyzer(graph)
@@ -685,3 +685,234 @@ class TestRefactoringCandidates:
         """Empty graph returns no refactoring candidates."""
         analyzer = CodeAnalyzer(CodeGraph())
         assert analyzer.find_refactoring_candidates() == []
+
+
+class TestTraceExecutionFlows:
+    """Tests for execution flow tracing."""
+
+    def test_trace_flows_simple_chain(self) -> None:
+        """Linear call chain A->B->C->D produces one flow."""
+        graph = CodeGraph()
+        for name in ["A", "B", "C", "D"]:
+            graph.add_node(
+                CodeNode(
+                    id=name,
+                    name=name,
+                    node_type=NodeType.FUNCTION,
+                    file_path="test.py",
+                    line_start=1,
+                    line_end=5,
+                ),
+            )
+        for src, tgt in [("A", "B"), ("B", "C"), ("C", "D")]:
+            graph.add_edge(CodeEdge(source=src, target=tgt, edge_type=EdgeType.CALLS))
+
+        analyzer = CodeAnalyzer(graph)
+        flows = analyzer.trace_execution_flows(min_flow_length=2)
+        assert len(flows) >= 1
+        longest_flow = max(flows, key=lambda f: f["length"])
+        assert longest_flow["length"] == 4  # noqa: PLR2004
+        assert longest_flow["path"] == ["A", "B", "C", "D"]
+
+    def test_trace_flows_respects_max_depth(self) -> None:
+        """Flows are truncated at max_depth."""
+        graph = CodeGraph()
+        nodes = [f"N{i}" for i in range(10)]
+        for name in nodes:
+            graph.add_node(
+                CodeNode(
+                    id=name,
+                    name=name,
+                    node_type=NodeType.FUNCTION,
+                    file_path="test.py",
+                    line_start=1,
+                    line_end=5,
+                ),
+            )
+        for i in range(9):
+            graph.add_edge(CodeEdge(source=nodes[i], target=nodes[i + 1], edge_type=EdgeType.CALLS))
+
+        analyzer = CodeAnalyzer(graph)
+        flows = analyzer.trace_execution_flows(max_depth=3, min_flow_length=2)
+        for flow in flows:
+            assert flow["length"] <= 4  # entry + 3 hops  # noqa: PLR2004
+
+    def test_trace_flows_deduplicates_prefixes(self) -> None:
+        """If flow A->B is prefix of A->B->C, only the longer flow is kept."""
+        graph = CodeGraph()
+        for name in ["A", "B", "C"]:
+            graph.add_node(
+                CodeNode(
+                    id=name,
+                    name=name,
+                    node_type=NodeType.FUNCTION,
+                    file_path="test.py",
+                    line_start=1,
+                    line_end=5,
+                ),
+            )
+        graph.add_edge(CodeEdge(source="A", target="B", edge_type=EdgeType.CALLS))
+        graph.add_edge(CodeEdge(source="B", target="C", edge_type=EdgeType.CALLS))
+
+        analyzer = CodeAnalyzer(graph)
+        flows = analyzer.trace_execution_flows(min_flow_length=2)
+        paths = [f["path"] for f in flows]
+        assert ["A", "B"] not in paths  # prefix should be removed
+        assert ["A", "B", "C"] in paths
+
+    def test_trace_flows_empty_graph(self) -> None:
+        """Empty graph produces no flows."""
+        graph = CodeGraph()
+        analyzer = CodeAnalyzer(graph)
+        flows = analyzer.trace_execution_flows()
+        assert flows == []
+
+
+class TestBlastRadius:
+    """Tests for blast radius analysis."""
+
+    def test_blast_radius_returns_affected_nodes(self) -> None:
+        """Changing util should affect helper1, helper2, and main (reverse BFS)."""
+        graph = create_sample_graph()
+        analyzer = CodeAnalyzer(graph)
+
+        result = analyzer.blast_radius("util", max_depth=5)
+
+        assert result["node_id"] == "util"
+        assert result["total_affected"] >= 2  # noqa: PLR2004
+        affected_ids = [n["id"] for n in result["affected_nodes"]]
+        assert "helper1" in affected_ids
+        assert "helper2" in affected_ids
+
+    def test_blast_radius_depth_histogram(self) -> None:
+        """Depth histogram stratifies affected nodes by distance."""
+        graph = create_sample_graph()
+        analyzer = CodeAnalyzer(graph)
+
+        result = analyzer.blast_radius("util", max_depth=5)
+
+        histogram = result["depth_histogram"]
+        # helper1/helper2 at distance 1, main at distance 2
+        depth_1 = 1
+        depth_2 = 2
+        assert depth_1 in histogram
+        assert histogram[depth_1] == depth_2  # two helpers at distance 1
+        assert depth_2 in histogram
+        assert histogram[depth_2] == depth_1  # one node (main) at distance 2
+
+    def test_blast_radius_impact_decay(self) -> None:
+        """Impact decays as 1/(2^distance): distance-1 nodes have higher impact than distance-2."""
+        graph = create_sample_graph()
+        analyzer = CodeAnalyzer(graph)
+
+        result = analyzer.blast_radius("util", max_depth=5)
+
+        affected = {n["id"]: n for n in result["affected_nodes"]}
+        # Distance-1 node should have higher impact than distance-2
+        assert affected["helper1"]["impact"] > affected["main"]["impact"]
+
+    def test_blast_radius_respects_confidence(self) -> None:
+        """Edge confidence is factored into impact calculation."""
+        graph = CodeGraph()
+        for name in ["core", "caller"]:
+            graph.add_node(
+                CodeNode(
+                    id=name,
+                    name=name,
+                    node_type=NodeType.FUNCTION,
+                    file_path="test.py",
+                    line_start=1,
+                    line_end=5,
+                ),
+            )
+        # Low-confidence edge
+        graph.add_edge(CodeEdge(source="caller", target="core", edge_type=EdgeType.CALLS, confidence=0.5))
+
+        analyzer = CodeAnalyzer(graph)
+        result = analyzer.blast_radius("core", max_depth=5)
+
+        affected = {n["id"]: n for n in result["affected_nodes"]}
+        # Impact = 0.5 (confidence) / 2^1 (distance) = 0.25
+        assert affected["caller"]["impact"] == 0.25  # noqa: PLR2004
+
+    def test_blast_radius_unknown_node(self) -> None:
+        """Blast radius for a non-existent node returns an error."""
+        graph = CodeGraph()
+        analyzer = CodeAnalyzer(graph)
+
+        result = analyzer.blast_radius("nonexistent")
+
+        assert "error" in result
+
+
+class TestDiffImpact:
+    """Tests for diff_impact analysis."""
+
+    def test_maps_changed_lines_to_nodes(self) -> None:
+        """Changed lines within a node's range produce directly_changed entries."""
+        graph = create_sample_graph()
+        analyzer = CodeAnalyzer(graph)
+
+        # Change line 3 of /main.py — overlaps "main" node (lines 1-10)
+        result = analyzer.diff_impact([{"file_path": "/main.py", "lines": [3]}])
+
+        changed_ids = [n["id"] for n in result["directly_changed"]]
+        assert "main" in changed_ids
+
+    def test_merges_blast_radius_across_nodes(self) -> None:
+        """When multiple nodes change, their blast radii are merged by max impact."""
+        graph = create_sample_graph()
+        analyzer = CodeAnalyzer(graph)
+
+        # Change both helpers (line 5 in /helpers.py overlaps helper1 lines 1-10)
+        result = analyzer.diff_impact([{"file_path": "/helpers.py", "lines": [5, 20]}])
+
+        # helper1 (1-10) and helper2 (15-25) should be directly changed
+        changed_ids = [n["id"] for n in result["directly_changed"]]
+        assert "helper1" in changed_ids
+        assert "helper2" in changed_ids
+        # Blast radius of both helpers should include "main" as affected
+        affected_ids = [n["id"] for n in result["affected_nodes"]]
+        assert "main" in affected_ids
+
+    def test_suggests_test_files(self) -> None:
+        """TESTS edges produce suggested_tests for affected nodes."""
+        graph = create_sample_graph()
+        # Add test mapping: tests/test_main.py TESTS main
+        graph.add_node(
+            CodeNode(
+                id="tests/test_main.py",
+                name="test_main.py",
+                node_type=NodeType.FILE,
+                file_path="tests/test_main.py",
+                line_start=0,
+                line_end=50,
+            ),
+        )
+        graph.add_edge(
+            CodeEdge(
+                source="tests/test_main.py",
+                target="main",
+                edge_type=EdgeType.TESTS,
+                confidence=0.70,
+            ),
+        )
+
+        analyzer = CodeAnalyzer(graph)
+        # Change util — blast radius reaches main via helpers
+        result = analyzer.diff_impact([{"file_path": "/utils.py", "lines": [3]}])
+
+        assert "tests/test_main.py" in result["suggested_tests"]
+
+    def test_empty_input_returns_empty(self) -> None:
+        """Empty changed_files returns zero-impact result."""
+        graph = create_sample_graph()
+        analyzer = CodeAnalyzer(graph)
+
+        result = analyzer.diff_impact([])
+
+        assert result["directly_changed"] == []
+        assert result["total_affected"] == 0
+        assert result["aggregate_risk"] == 0.0
+        assert result["affected_nodes"] == []
+        assert result["suggested_tests"] == []
