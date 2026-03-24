@@ -1,22 +1,23 @@
 # code-context-agent
 
 AI-powered CLI tool that analyzes codebases and produces structured context
-documentation for AI coding assistants. v7.0.0.
+documentation for AI coding assistants. v8.0.0.
 
 ## Architecture
 
-Single Strands Agent (Claude Opus 4.6 on Bedrock) with 50+ tools, AG-UI
-event streaming, and Pydantic structured output (`AnalysisResult`).
-Includes a deterministic indexer, multi-repo registry, BM25 search,
-optional KuzuDB persistent graph backend, and D3.js web visualization.
+Three-stage pipeline: deterministic index → Strands Swarm (4 specialist agents) → structured output.
+Hook-driven display (Rich TUI or JSON logs). No AG-UI dependency.
 
 ```
-CLI (cyclopts) → run_analysis() → Strands Agent (Opus 4.6)
-                                      ├── 50+ @tool functions
-                                      ├── BM25 ranked text search
-                                      ├── context7 MCP (library docs)
-                                      ├── AG-UI event stream → Rich TUI
-                                      └── AnalysisResult (structured output)
+CLI (cyclopts) → index (deterministic, ~30s)
+                    ├── LSP + AST-grep + git + framework detection
+                    └── code_graph.json (6K+ nodes)
+
+              → analyze (Swarm, ~5-10 min)
+                    ├── structure_analyst → history_analyst → code_reader → synthesizer
+                    ├── Pre-loaded index graph shared via _graphs["main"]
+                    ├── HookProvider-driven display (TUI or JSON logs)
+                    └── AnalysisResult (structured output from synthesizer)
 
 Deterministic Indexer (code-context-agent index)
     ├── LSP + AST-grep + git analysis (no LLM)
@@ -46,8 +47,11 @@ Web Visualization (code-context-agent viz)
 |------|------|
 | `src/code_context_agent/cli.py` | CLI entry point: `analyze`, `serve`, `viz` commands |
 | `src/code_context_agent/config.py` | Settings via pydantic-settings, `CODE_CONTEXT_` prefix |
-| `src/code_context_agent/agent/factory.py` | Agent creation: tools, model, hooks, context7 MCP |
-| `src/code_context_agent/agent/runner.py` | Analysis runner with AG-UI event streaming |
+| `src/code_context_agent/agent/factory.py` | Single-agent creation: tools, model, hooks, context7 MCP |
+| `src/code_context_agent/agent/swarm.py` | Swarm factory: 4-node specialist pipeline with graph preloading |
+| `src/code_context_agent/agent/runner.py` | Analysis runner with Swarm execution + hook-based display |
+| `src/code_context_agent/agent/analysts.py` | Specialist prompts (Agents-as-Tools + Swarm handoff variants) |
+| `src/code_context_agent/agent/hooks.py` | HookProviders: reasoning checkpoints, display, JSON logging |
 | `src/code_context_agent/agent/prompts.py` | Jinja2 template rendering |
 | `src/code_context_agent/mcp/server.py` | FastMCP v3 server (MCP tools + resources) |
 | `src/code_context_agent/tools/discovery.py` | ripgrep, repomix tools |
