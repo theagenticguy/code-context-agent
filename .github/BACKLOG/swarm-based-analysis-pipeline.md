@@ -1,69 +1,125 @@
 ---
-title: "Refactor analysis pipeline to use Strands Swarm with shared context"
+title: "v8: Index-first pipeline with Swarm specialists, kill AG-UI"
 labels: ["enhancement", "architecture"]
 area: "Agent behavior (prompts, calibration, orchestration)"
 ---
 
 ## Problem
 
-The current analysis pipeline runs as a single monolithic agent that calls sub-agents via the Agents-as-Tools pattern (`feat/reasoning-amplification`). While this delivers deeper reasoning per-agent, the sub-agents are fire-and-forget with no shared context between them. The structure analyst's graph findings, the history analyst's coupling map, and the code reader's semantic analysis are passed back to the orchestrator as text — losing structured data along the way.
+The current agentic analysis produces a 62-node graph in 4 minutes. The deterministic indexer produces a 6,751-node graph in 30 seconds. The agent rebuilds what the indexer already computed, then skips the deep reasoning that justifies using an LLM at all.
 
-## Proposed solution
+Manual investigation with 3 parallel specialist agents (124 total tool calls, ~5 min each) produced dramatically richer analysis: exact coupling rates, bus factor risks, per-method invariant analysis, architectural epoch mapping, and actual bugs found in the code.
 
-Replace the Agents-as-Tools pattern in `--full` mode with a **Strands Swarm** (`strands.multiagent.Swarm`). The Swarm provides:
+AG-UI adds complexity for no CI/CD value. The primary use case is `--quiet` with structured logs.
 
-### SharedContext accumulation
-Each analyst agent writes structured findings to `SharedContext`, and the next agent reads them. The code reader gets the actual graph metrics dict, not a text summary.
+## Proposed Architecture: Three-Stage Pipeline
+
+### Stage 1: `index` (deterministic, no LLM, ~30s)
+Already implemented. LSP + AST-grep + git + framework detection → rich graph (6K+ nodes, 3K+ edges). Cacheable, CI-friendly.
+
+### Stage 2: `analyze` (LLM Swarm, uses index as input, ~5-10 min)
+**Replace the monolithic agent with a Strands Swarm.** Each specialist agent receives the pre-built index graph as context and runs its own deep investigation loop.
 
 ```python
 from strands.multiagent import Swarm
+
+# Load pre-built index
+graph = load_graph(".code-context/code_graph.json")  # 6K+ nodes
+
+# Specialist agents with focused tools + graph context
+structure_analyst = Agent(
+    system_prompt=f"...structural analysis...\nGraph context: {graph.summary()}",
+    tools=[code_graph_analyze, lsp_*, astgrep_*, read_file_bounded],
+)
+history_analyst = Agent(
+    system_prompt="...git history analysis...",
+    tools=[git_hotspots, git_files_changed_together, git_blame_*, read_file_bounded],
+)
+code_reader = Agent(
+    system_prompt="...deep code reading with structural context...",
+    tools=[read_file_bounded, lsp_references, lsp_definition, rg_search],
+)
+synthesizer = Agent(
+    system_prompt="...cross-signal synthesis → AnalysisResult + CONTEXT.md...",
+    tools=[write_file, code_graph_analyze],
+    structured_output_model=AnalysisResult,
+)
 
 swarm = Swarm(
     nodes=[structure_analyst, history_analyst, code_reader, synthesizer],
     entry_point=structure_analyst,
     max_handoffs=10,
-    execution_timeout=3600,  # full mode: 60 min
-    hooks=[ReasoningCheckpointHook(), ...],
+    execution_timeout=600,
+    hooks=[ReasoningCheckpointHook()],
 )
 ```
 
-### Handoff-based coordination
-Each agent calls `handoff_to_agent()` when done, passing context about what the next agent should focus on. The structure analyst hands off to history analyst with a list of hotspot files; the history analyst hands off to code reader with coupling pairs.
+**Why Swarm over Agents-as-Tools:**
+- `SharedContext` passes structured data (not text blobs) between agents
+- Each agent gets its own turn budget (40+ tool calls each)
+- `handoff_to_agent` carries context about what to investigate next
+- `AfterNodeCallEvent` hooks inject synthesis between agents
+- Session persistence for long-running analyses
 
-### Hook events for synthesis injection
-Register `AfterNodeCallEvent` hooks to inject synthesis prompts between agent handoffs. After the structure analyst completes, inject: "Before the next agent runs, synthesize what the structural analysis revealed about architectural risks."
+### Stage 3: Output
+- `AnalysisResult` structured output from synthesizer agent
+- CONTEXT.md, FILE_INDEX.md, business logic files
+- `--quiet` mode: structured logs only (loguru/structlog)
 
-### Event streaming to TUI
-The Swarm's `stream_async()` yields typed events per-node (`MultiAgentNodeStartEvent`, `MultiAgentNodeStreamEvent`, `MultiAgentNodeStopEvent`, `MultiAgentHandoffEvent`). These can be mapped to AG-UI events for the Rich TUI.
+## Kill AG-UI
 
-## Key changes required
+AG-UI (`ag-ui-strands`, `StrandsAgent` wrapper) adds:
+- A monkey-patched `__init__` in runner.py
+- Event type translation overhead
+- A dependency on `ag_ui` package
 
-| File | Change |
-|------|--------|
-| `agent/factory.py` | Create `Swarm` instead of single `Agent` for full mode |
-| `agent/runner.py` | `_execute_analysis_stream()` must handle Swarm's `stream_async()` instead of single agent stream. Map multi-agent events to AG-UI events. |
-| `agent/analysts.py` | Add `handoff_to_agent` awareness to sub-agent prompts. Structure shared context keys. |
-| `agent/hooks.py` | Register `AfterNodeCallEvent` for synthesis injection between swarm nodes |
-| `consumer.py` | Handle multi-agent event types in the TUI (show which sub-agent is running) |
+Replace with:
+- **Interactive mode**: Rich TUI powered by strands `callback_handler` pattern + cyclopts
+- **CI mode** (`--quiet`): Structured JSON logs via loguru/structlog, no TUI
+- **Streaming**: Native strands `stream_async()` events, no AG-UI translation layer
 
-## Swarm hook events available
+## Quality Targets (from manual investigation baseline)
 
-| Event | Fired When | Writable Fields |
-|-------|-----------|-----------------|
-| `MultiAgentInitializedEvent` | Swarm construction complete | None |
-| `BeforeNodeCallEvent` | Before each agent node executes | `cancel_node` (can cancel/interrupt) |
-| `AfterNodeCallEvent` | After each agent node completes | None (read-only) |
-| `BeforeMultiAgentInvocationEvent` | Before swarm execution starts | None |
-| `AfterMultiAgentInvocationEvent` | After swarm execution completes | None |
+| Metric | Current (v7) | Target (v8) |
+|--------|-------------|-------------|
+| Graph input | Built from scratch (62 nodes) | Pre-built index (6K+ nodes) |
+| Files deeply read | ~10 | 25+ |
+| Tool calls total | ~35 | 100+ (across Swarm agents) |
+| Coupling pairs | Mentioned vaguely | 7+ with exact co-change % |
+| Bus factor analysis | None | Per-module ownership heatmap |
+| Architectural timeline | None | Epoch mapping with commit velocity |
+| Duration | 4 min (too fast, too shallow) | 5-10 min (deep, recursive) |
+| Risks found | 5 surface-level | 8+ with root cause chains |
 
-## Alternatives considered
+## Implementation Phases
 
-- **Agents-as-Tools** (current implementation): Simpler, works today, but no shared structured context between sub-agents. Each sub-agent's report is a text blob the orchestrator must re-parse.
-- **GraphBuilder pipeline**: More explicit control flow than Swarm, but agents can't dynamically decide to hand off. The analysis pipeline benefits from some agent autonomy (e.g., the code reader might want to hand back to the structure analyst if it discovers unexpected patterns).
-- **Swarm + GraphBuilder hybrid**: Use GraphBuilder for the fixed pipeline (structure -> history -> code -> synthesis) but allow Swarm-style handoffs within phases. Probably over-engineered for v1.
+### Phase 1: Index → Analyze integration
+- `analyze` loads pre-built graph from `.code-context/code_graph.json`
+- Graph summary injected into agent system prompt
+- Graph query tools operate on the pre-built graph (not a new empty one)
+
+### Phase 2: Swarm replacement
+- Replace monolithic agent + Agents-as-Tools with Strands Swarm
+- 4 specialist nodes with focused prompts and tool subsets
+- SharedContext for structured data passing
+- AfterNodeCallEvent hooks for synthesis injection
+
+### Phase 3: Kill AG-UI
+- Remove `ag_ui` dependency and `StrandsAgent` wrapper
+- Native strands `callback_handler` for Rich TUI rendering
+- Structured loguru/structlog output for `--quiet` mode
+- Clean up runner.py (no more monkey-patching)
+
+### Phase 4: CI/CD optimization
+- `--quiet --json` for structured pipeline output
+- Exit codes based on analysis quality thresholds
+- Cacheable index with TTL-based invalidation
+- GitHub Actions / GitLab CI integration examples
 
 ## Tenet alignment
 
-- **The model picks the depth** — Swarm agents autonomously decide how deep to go and when to hand off
-- **Layer signals, read less** — SharedContext accumulates structured signals across agents
-- **Fail loud, fill gaps** — `BeforeNodeCallEvent` can cancel nodes that depend on failed predecessors
+- **Measure, don't guess** — Start from 6K+ node deterministic index, not LLM guesses
+- **Layer signals, read less** — Swarm agents cross-reference graph + git + code reading
+- **The model picks the depth** — Each Swarm agent decides how deep to go
+- **Machines read it first** — Structured logs for CI/CD, not TUI
+- **Fail loud, fill gaps** — AfterNodeCallEvent hooks catch shallow analysis
