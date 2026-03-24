@@ -81,8 +81,7 @@ class FullModeToolError(RuntimeError):
 class OutputQualityHook(HookProvider):
     """Hook for output quality enforcement.
 
-    Truncates oversized tool results to prevent context window overflow,
-    and logs warnings when outputs are unusually large.
+    Logs warnings when tool outputs are unusually large.
     """
 
     def register_hooks(self, registry: HookRegistry, **kwargs: Any) -> None:
@@ -90,44 +89,84 @@ class OutputQualityHook(HookProvider):
         registry.add_callback(AfterToolCallEvent, self._check_output_quality)
 
     def _check_output_quality(self, event: AfterToolCallEvent, **kwargs: Any) -> None:
-        """Truncate oversized tool results to prevent context window overflow."""
+        """Check tool results for quality issues after execution."""
         tool_name = event.tool_use.get("name", "")
-        result = event.result
-        if not result:
+        result_str = str(event.result) if event.result else ""
+
+        if len(result_str) > _MAX_OUTPUT_SIZE:
+            logger.warning(f"Tool {tool_name} produced oversized output: {len(result_str)} chars")
+
+
+class ConversationCompactionHook(HookProvider):
+    """Strips large toolUse/toolResult payloads from conversation history.
+
+    After the model has seen and reasoned about tool results, the raw
+    payloads are no longer needed — only the model's reasoning matters.
+    Before each model invocation, this hook walks the message history and
+    replaces large tool payloads with stubs, keeping all text/reasoning
+    turns intact.
+
+    This prevents context window overflow from accumulated tool results
+    without ever truncating data the model hasn't seen yet.
+    """
+
+    COMPACTION_THRESHOLD = 2000  # chars — compact payloads larger than this
+    KEEP_RECENT_MESSAGES = 4  # keep last N messages uncompacted (current turn)
+
+    def register_hooks(self, registry: HookRegistry, **kwargs: Any) -> None:
+        """Register conversation compaction callback."""
+        from strands.hooks.events import BeforeInvocationEvent
+
+        registry.add_callback(BeforeInvocationEvent, self._compact_history)
+
+    def _compact_history(self, event: Any, **kwargs: Any) -> None:
+        """Strip large tool payloads from older messages before model invocation."""
+        messages = getattr(event, "messages", None)
+        if not messages:
             return
 
-        content = result.get("content", [])
-        if not content:
-            return
+        # Only compact older messages — keep recent ones intact for current reasoning
+        boundary = max(0, len(messages) - self.KEEP_RECENT_MESSAGES)
+        compacted = 0
 
-        # Measure total text size across all content blocks
-        total_size = sum(len(block.get("text", "")) for block in content if isinstance(block, dict))
-
-        if total_size > _MAX_OUTPUT_SIZE:
-            logger.warning(
-                f"Tool {tool_name} produced oversized output: {total_size} chars, truncating to {_MAX_OUTPUT_SIZE}",
-            )
-            # Truncate text blocks to fit within the limit
-            truncated = False
-            new_content = []
-            remaining = _MAX_OUTPUT_SIZE
+        for i in range(boundary):
+            content = messages[i].get("content")
+            if not isinstance(content, list):
+                continue
             for block in content:
-                if not isinstance(block, dict) or "text" not in block:
-                    new_content.append(block)
+                if not isinstance(block, dict):
                     continue
-                text = block["text"]
-                if remaining <= 0:
-                    continue
-                if len(text) > remaining:
-                    block["text"] = (
-                        text[:remaining] + f"\n\n[TRUNCATED: output was {total_size} chars, "
-                        f"showing first {_MAX_OUTPUT_SIZE}. Use smaller top_k.]"
-                    )
-                    truncated = True
-                remaining -= len(text)
-                new_content.append(block)
-            if truncated:
-                result["content"] = new_content
+                compacted += self._compact_tool_result(block)
+                compacted += self._compact_tool_use(block)
+
+        if compacted:
+            logger.info(f"Compacted {compacted} large tool payloads from conversation history")
+
+    def _compact_tool_result(self, block: dict[str, Any]) -> int:
+        """Replace large toolResult content with a stub. Returns 1 if compacted."""
+        if "toolResult" not in block:
+            return 0
+        tool_result = block["toolResult"]
+        result_content = tool_result.get("content", [])
+        total = sum(len(rc.get("text", "")) for rc in result_content if isinstance(rc, dict))
+        if total <= self.COMPACTION_THRESHOLD:
+            return 0
+        stub = f"[Tool output consumed ({total} chars) — see reasoning above]"
+        tool_result["content"] = [{"text": stub}]
+        logger.debug(f"Compacted toolResult {tool_result.get('toolUseId', '?')}: {total} chars")
+        return 1
+
+    def _compact_tool_use(self, block: dict[str, Any]) -> int:
+        """Replace large toolUse input with a stub. Returns 1 if compacted."""
+        if "toolUse" not in block:
+            return 0
+        tool_use = block["toolUse"]
+        input_str = str(tool_use.get("input", ""))
+        if len(input_str) <= self.COMPACTION_THRESHOLD:
+            return 0
+        tool_use["input"] = {"_compacted": True, "tool": tool_use.get("name", "?")}
+        logger.debug(f"Compacted toolUse input for {tool_use.get('name', '?')}: {len(input_str)} chars")
+        return 1
 
 
 class ToolEfficiencyHook(HookProvider):
@@ -399,6 +438,7 @@ def create_all_hooks(
     """
     # Agent-level hooks (registered on each Agent node)
     agent_hooks: list[HookProvider] = [
+        ConversationCompactionHook(),
         OutputQualityHook(),
         ToolEfficiencyHook(),
         ReasoningCheckpointHook(),

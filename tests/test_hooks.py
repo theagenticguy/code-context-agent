@@ -59,10 +59,10 @@ class TestCreateAllHooks:
         assert isinstance(agent_hooks, list)
         assert isinstance(swarm_hooks, list)
 
-    def test_returns_three_agent_hooks(self) -> None:
-        """Test that create_all_hooks returns 3 agent hook providers by default."""
+    def test_returns_four_agent_hooks(self) -> None:
+        """Test that create_all_hooks returns 4 agent hook providers by default."""
         agent_hooks, swarm_hooks = create_all_hooks()
-        assert len(agent_hooks) == 3
+        assert len(agent_hooks) == 4  # Compaction + OutputQuality + ToolEfficiency + ReasoningCheckpoint
         assert len(swarm_hooks) == 0
 
     def test_contains_expected_types(self) -> None:
@@ -198,14 +198,14 @@ class TestReasoningCheckpointHook:
 
 
 class TestCreateAllHooksWithMode:
-    def test_standard_mode_returns_three_agent_hooks(self):
+    def test_standard_mode_returns_four_agent_hooks(self):
         agent_hooks, swarm_hooks = create_all_hooks()
-        assert len(agent_hooks) == 3
+        assert len(agent_hooks) == 4
         assert len(swarm_hooks) == 0
 
-    def test_full_mode_returns_four_agent_hooks(self):
+    def test_full_mode_returns_five_agent_hooks(self):
         agent_hooks, _ = create_all_hooks(full_mode=True)
-        assert len(agent_hooks) == 4
+        assert len(agent_hooks) == 5
         assert any(isinstance(h, FailFastHook) for h in agent_hooks)
 
     def test_standard_mode_no_failfast(self):
