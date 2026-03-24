@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import tempfile
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -418,55 +419,65 @@ def _ingest_clones(graph: CodeGraph, repo: Path, quiet: bool) -> None:
         logger.warning("npx not found -- skipping clone detection")
         return
 
-    try:
-        result = subprocess.run(
-            [
-                "npx",
-                "-y",
-                "jscpd@4",
-                "--reporters",
-                "json",
-                "--output",
-                "/dev/null",
-                "--format",
-                "python,typescript,javascript",
-                "--silent",
-                str(repo),
-            ],
-            cwd=str(repo),
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-    except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError) as e:
-        logger.warning(f"Clone detection failed: {e}")
-        return
-
-    # jscpd outputs JSON to stdout when using json reporter with /dev/null output
-    # Try to parse the output
-    clones: list[dict[str, Any]] = []
-    try:
-        data = json.loads(result.stdout)
-        duplicates = data.get("duplicates", [])
-        for dup in duplicates:
-            first = dup.get("firstFile", {})
-            second = dup.get("secondFile", {})
-            clones.append(
-                {
-                    "first_file": first.get("name", ""),
-                    "second_file": second.get("name", ""),
-                    "first_start": first.get("startLoc", {}).get("line", 0),
-                    "first_end": first.get("endLoc", {}).get("line", 0),
-                    "second_start": second.get("startLoc", {}).get("line", 0),
-                    "second_end": second.get("endLoc", {}).get("line", 0),
-                    "lines": dup.get("lines", 0),
-                    "tokens": dup.get("tokens", 0),
-                    "fragment": dup.get("fragment", "")[:200],
-                },
+    with tempfile.TemporaryDirectory() as tmpdir:
+        try:
+            result = subprocess.run(
+                [
+                    "npx",
+                    "-y",
+                    "jscpd@4",
+                    "--reporters",
+                    "json",
+                    "--output",
+                    tmpdir,
+                    "--format",
+                    "python,typescript,javascript",
+                    "--gitignore",
+                    "--min-lines",
+                    "10",
+                    "--max-size",
+                    "50kb",
+                    "--silent",
+                    str(repo),
+                ],
+                cwd=str(repo),
+                capture_output=True,
+                text=True,
+                timeout=120,
             )
-    except (json.JSONDecodeError, KeyError, TypeError):
-        logger.debug("Could not parse jscpd output")
-        return
+        except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError) as e:
+            logger.warning(f"Clone detection failed: {e}")
+            return
+
+        # jscpd writes jscpd-report.json to the output directory
+        report_path = Path(tmpdir) / "jscpd-report.json"
+        if not report_path.exists():
+            logger.debug(f"jscpd report not found (exit code {result.returncode})")
+            return
+
+        clones: list[dict[str, Any]] = []
+        try:
+            data = json.loads(report_path.read_text())
+            duplicates = data.get("duplicates", [])
+            for dup in duplicates:
+                first = dup.get("firstFile", {})
+                second = dup.get("secondFile", {})
+                clones.append(
+                    {
+                        "first_file": first.get("name", ""),
+                        "second_file": second.get("name", ""),
+                        "first_start": first.get("startLoc", {}).get("line", 0),
+                        "first_end": first.get("endLoc", {}).get("line", 0),
+                        "second_start": second.get("startLoc", {}).get("line", 0),
+                        "second_end": second.get("endLoc", {}).get("line", 0),
+                        "lines": dup.get("lines", 0),
+                        "tokens": dup.get("tokens", 0),
+                        "fragment": dup.get("fragment", "")[:200],
+                    },
+                )
+        except (json.JSONDecodeError, KeyError, TypeError):
+            logger.debug("Could not parse jscpd output")
+            return
 
     if clones:
         clone_result: dict[str, Any] = {"status": "success", "clones": clones}
