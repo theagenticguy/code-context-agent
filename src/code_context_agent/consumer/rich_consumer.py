@@ -5,10 +5,13 @@ execution status rather than streaming text. The display is fixed-height
 and never grows — it shows what's running, what finished, and progress.
 """
 
+from __future__ import annotations
+
 import time
 from typing import Any
 
 from rich.console import Console, Group, RenderableType
+from rich.layout import Layout
 from rich.live import Live
 from rich.panel import Panel
 from rich.spinner import Spinner
@@ -297,8 +300,11 @@ class RichEventConsumer(EventConsumer):
             t.append("\n")
         return t
 
-    def _build_display(self) -> RenderableType:
-        """Build the fixed-height dashboard display."""
+    def _build_single_agent_display(self) -> RenderableType:
+        """Build the fixed-height single-agent dashboard display.
+
+        This is the original layout for non-Swarm (single agent) runs.
+        """
         elements: list[RenderableType] = []
 
         # Timer + progress
@@ -361,6 +367,111 @@ class RichEventConsumer(EventConsumer):
             border_style="cyan",
             padding=(1, 2),
         )
+
+    def _build_swarm_display(self) -> Layout:
+        """Build multi-agent Swarm dashboard layout.
+
+        Layout structure::
+
+            +------------------------------------------------+
+            | Header: Timer + Progress                       |
+            +------------------+-----------------------------+
+            | Agent Status     | Discoveries                 |
+            | - structure_...  | - 6751 nodes in graph       |
+            | - history_an...  | - 42 hotspots found         |
+            | - code_reader    | - 7 coupling pairs          |
+            | - synthesizer    |                             |
+            +------------------------------------------------+
+            | Recent Tools: [agent] tool_name -> status       |
+            +------------------------------------------------+
+        """
+        layout = Layout()
+        layout.split_column(
+            Layout(name="header", size=3),
+            Layout(name="body", ratio=1),
+            Layout(name="footer", size=10),
+        )
+        layout["body"].split_row(
+            Layout(name="agents", minimum_size=30, ratio=1),
+            Layout(name="discoveries", ratio=2),
+        )
+
+        # Header: timer + overall progress
+        elapsed = self.state.get_elapsed_seconds()
+        done_count = sum(1 for a in self.state.agents if a.status == "done")
+        total = len(self.state.agents)
+        layout["header"].update(
+            Panel(
+                Text.assemble(
+                    ("Time: ", "dim"),
+                    (f"{self._format_time(elapsed)} ", "bold cyan"),
+                    ("Agents: ", "dim"),
+                    (f"{done_count}/{total} ", "bold"),
+                    ("Tools: ", "dim"),
+                    (f"{len(self.state.completed_tools)}", "bold green"),
+                ),
+                border_style="cyan",
+            ),
+        )
+
+        # Agent status table
+        agent_table = Table(show_header=False, expand=True, box=None, padding=(0, 1))
+        agent_table.add_column("status", width=3)
+        agent_table.add_column("name", ratio=2)
+        agent_table.add_column("info", ratio=1, justify="right")
+
+        for agent in self.state.agents:
+            if agent.status == "running":
+                icon: RenderableType = Spinner("dots", style="yellow")
+                info = agent.current_tool if agent.current_tool else f"{agent.tool_count} tools"
+            elif agent.status == "done":
+                icon = Text("\u2713", style="bold green")
+                info = f"{agent.tool_count} tools, {agent.duration_seconds:.0f}s"
+            else:
+                icon = Text("\u00b7", style="dim")
+                info = ""
+            name_style = "bold" if agent.status == "running" else "dim"
+            agent_table.add_row(icon, Text(agent.name, style=name_style), info)
+
+        layout["agents"].update(
+            Panel(agent_table, title="Swarm Agents", border_style="magenta"),
+        )
+
+        # Discoveries panel
+        disc_text = Text()
+        for disc in self.state.discoveries[-15:]:
+            disc_text.append(f"  {disc.summary}\n")
+        layout["discoveries"].update(
+            Panel(
+                disc_text or Text("Waiting...", style="dim"),
+                title="Findings",
+                border_style="green",
+            ),
+        )
+
+        # Footer: recent tools
+        tool_table = Table(show_header=False, expand=True, box=None, padding=(0, 1))
+        tool_table.add_column("icon", width=3)
+        tool_table.add_column("agent", width=18)
+        tool_table.add_column("tool", ratio=2)
+        recent = self.state.get_recent_tools(8)
+        for tool in recent:
+            is_error = tool.status == "error" or (isinstance(tool.result, str) and '"status": "error"' in tool.result)
+            status_icon = "[red]err[/]" if is_error else "[green]ok[/]"
+            agent_name = self.state.active_agent_name or ""
+            tool_table.add_row(status_icon, f"[dim]{agent_name}[/]", f"[bold]{tool.tool_name}[/]")
+
+        layout["footer"].update(
+            Panel(tool_table, title="Recent Tools", border_style="dim"),
+        )
+
+        return layout
+
+    def _build_display(self) -> RenderableType:
+        """Build the dashboard display, dispatching to Swarm or single-agent layout."""
+        if self.state.agents:
+            return self._build_swarm_display()
+        return self._build_single_agent_display()
 
     async def start(self) -> None:
         """Start the dashboard display."""

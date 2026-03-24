@@ -231,15 +231,15 @@ def create_agent(mode: str = "standard") -> Agent:
         tools.extend(analyst_agents)
         logger.info(f"Added {len(analyst_agents)} specialist sub-agents for deep analysis")
 
-    hooks = create_all_hooks(full_mode=full_mode)
+    agent_hooks, _swarm_hooks = create_all_hooks(full_mode=full_mode)
 
-    logger.info(f"Agent configured with {len(tools)} tools, {len(hooks)} hooks, mode={mode}")
+    logger.info(f"Agent configured with {len(tools)} tools, {len(agent_hooks)} hooks, mode={mode}")
 
     return Agent(
         model=model,
         tools=tools,
         system_prompt=system_prompt,
         structured_output_model=AnalysisResult,
-        hooks=hooks,
+        hooks=agent_hooks,
         callback_handler=None,
     )

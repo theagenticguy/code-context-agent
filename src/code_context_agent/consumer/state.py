@@ -4,12 +4,39 @@ This module provides Pydantic models for tracking the current state of agent
 execution, used by consumers to render live updates.
 """
 
+from __future__ import annotations
+
 import time
 from typing import Any
 
 from pydantic import ConfigDict, Field
 
 from ..models.base import StrictModel
+
+
+class SwarmAgentState(StrictModel):
+    """State for a single Swarm specialist agent.
+
+    Tracks lifecycle, tool usage, and timing for one agent within a
+    multi-agent Swarm run.
+
+    Attributes:
+        name: Display name of the specialist agent.
+        status: Current lifecycle status ("waiting", "running", "done").
+        tool_count: Number of tool calls completed by this agent.
+        duration_seconds: Total wall-clock seconds for this agent (set on completion).
+        current_tool: Name of the tool currently being executed, if any.
+        started_at: Monotonic timestamp when the agent started running.
+        findings: Summary strings of notable findings from this agent.
+    """
+
+    name: str
+    status: str = "waiting"  # "waiting", "running", "done"
+    tool_count: int = 0
+    duration_seconds: float = 0.0
+    current_tool: str | None = None
+    started_at: float | None = None
+    findings: list[str] = Field(default_factory=list)
 
 
 class ToolCallState(StrictModel):
@@ -95,6 +122,10 @@ class AgentDisplayState(StrictModel):
     current_phase_index: int = -1
     discoveries: list[Any] = Field(default_factory=list)  # list[DiscoveryEvent]
     max_discoveries: int = 50
+
+    # Multi-agent tracking (Swarm)
+    agents: list[SwarmAgentState] = Field(default_factory=list)
+    active_agent_name: str | None = None
 
     def clear_text_buffer(self) -> str:
         """Clear and return the text buffer.
@@ -213,6 +244,56 @@ class AgentDisplayState(StrictModel):
         while len(self.discoveries) > self.max_discoveries:
             self.discoveries.pop(0)
 
+    def init_swarm_agents(self, agent_names: list[str]) -> None:
+        """Initialize Swarm agent state for tracking.
+
+        Args:
+            agent_names: Ordered list of specialist agent names.
+        """
+        self.agents = [SwarmAgentState(name=name) for name in agent_names]
+
+    def set_active_agent(self, name: str) -> None:
+        """Mark an agent as active/running.
+
+        Args:
+            name: Name of the agent to activate.
+        """
+        self.active_agent_name = name
+        for agent in self.agents:
+            if agent.name == name:
+                agent.status = "running"
+                agent.started_at = time.monotonic()
+                break
+
+    def complete_agent(self, name: str) -> None:
+        """Mark an agent as done and record its duration.
+
+        Args:
+            name: Name of the agent to complete.
+        """
+        for agent in self.agents:
+            if agent.name == name:
+                agent.status = "done"
+                if agent.started_at:
+                    agent.duration_seconds = time.monotonic() - agent.started_at
+                break
+        # Clear active if it was this agent
+        if self.active_agent_name == name:
+            self.active_agent_name = None
+
+    def increment_agent_tool_count(self, agent_name: str | None = None) -> None:
+        """Increment tool count for the specified or active agent.
+
+        Args:
+            agent_name: Agent to increment for. Falls back to active_agent_name.
+        """
+        name = agent_name or self.active_agent_name
+        if name:
+            for agent in self.agents:
+                if agent.name == name:
+                    agent.tool_count += 1
+                    break
+
     def reset(self) -> None:
         """Reset state for a new run."""
         self.current_phase = ""
@@ -232,3 +313,6 @@ class AgentDisplayState(StrictModel):
         self.phases = []
         self.current_phase_index = -1
         self.discoveries = []
+        # Reset multi-agent tracking (Swarm)
+        self.agents = []
+        self.active_agent_name = None

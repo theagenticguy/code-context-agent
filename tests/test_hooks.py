@@ -7,8 +7,12 @@ import pytest
 from code_context_agent.agent.hooks import (
     FailFastHook,
     FullModeToolError,
+    JsonLogHook,
+    JsonLogSwarmHook,
     OutputQualityHook,
     ReasoningCheckpointHook,
+    SwarmDisplayHook,
+    ToolDisplayHook,
     ToolEfficiencyHook,
     create_all_hooks,
 )
@@ -46,20 +50,25 @@ class TestToolEfficiencyHook:
 class TestCreateAllHooks:
     """Tests for create_all_hooks factory."""
 
-    def test_returns_list(self) -> None:
-        """Test that create_all_hooks returns a list."""
-        hooks = create_all_hooks()
-        assert isinstance(hooks, list)
+    def test_returns_tuple(self) -> None:
+        """Test that create_all_hooks returns a tuple of two lists."""
+        result = create_all_hooks()
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+        agent_hooks, swarm_hooks = result
+        assert isinstance(agent_hooks, list)
+        assert isinstance(swarm_hooks, list)
 
-    def test_returns_three_hooks(self) -> None:
-        """Test that create_all_hooks returns 3 hook providers."""
-        hooks = create_all_hooks()
-        assert len(hooks) == 3  # noqa: PLR2004
+    def test_returns_three_agent_hooks(self) -> None:
+        """Test that create_all_hooks returns 3 agent hook providers by default."""
+        agent_hooks, swarm_hooks = create_all_hooks()
+        assert len(agent_hooks) == 3
+        assert len(swarm_hooks) == 0
 
     def test_contains_expected_types(self) -> None:
-        """Test that the hooks are the expected types."""
-        hooks = create_all_hooks()
-        types = {type(h) for h in hooks}
+        """Test that the agent hooks are the expected types."""
+        agent_hooks, _ = create_all_hooks()
+        types = {type(h) for h in agent_hooks}
         assert OutputQualityHook in types
         assert ToolEfficiencyHook in types
         assert ReasoningCheckpointHook in types
@@ -150,7 +159,7 @@ class TestReasoningCheckpointHook:
         )
         hook._inject_reasoning_prompt(event)
         # Should have appended a reasoning checkpoint text block
-        assert len(event.result["content"]) == 2  # noqa: PLR2004
+        assert len(event.result["content"]) == 2
         assert "REASONING CHECKPOINT" in event.result["content"][1]["text"]
 
     def test_injects_prompt_for_git_hotspots(self):
@@ -160,7 +169,7 @@ class TestReasoningCheckpointHook:
             {"status": "success", "content": [{"text": "some hotspot data here, enough length to pass"}]},
         )
         hook._inject_reasoning_prompt(event)
-        assert len(event.result["content"]) == 2  # noqa: PLR2004
+        assert len(event.result["content"]) == 2
         assert "REASONING CHECKPOINT" in event.result["content"][1]["text"]
 
     def test_no_prompt_for_untracked_tool(self):
@@ -189,21 +198,44 @@ class TestReasoningCheckpointHook:
 
 
 class TestCreateAllHooksWithMode:
-    def test_standard_mode_returns_three_hooks(self):
-        hooks = create_all_hooks()
-        assert len(hooks) == 3  # noqa: PLR2004
+    def test_standard_mode_returns_three_agent_hooks(self):
+        agent_hooks, swarm_hooks = create_all_hooks()
+        assert len(agent_hooks) == 3
+        assert len(swarm_hooks) == 0
 
-    def test_full_mode_returns_four_hooks(self):
-        hooks = create_all_hooks(full_mode=True)
-        assert len(hooks) == 4  # noqa: PLR2004
-        assert any(isinstance(h, FailFastHook) for h in hooks)
+    def test_full_mode_returns_four_agent_hooks(self):
+        agent_hooks, _ = create_all_hooks(full_mode=True)
+        assert len(agent_hooks) == 4
+        assert any(isinstance(h, FailFastHook) for h in agent_hooks)
 
     def test_standard_mode_no_failfast(self):
-        hooks = create_all_hooks(full_mode=False)
-        assert not any(isinstance(h, FailFastHook) for h in hooks)
+        agent_hooks, _ = create_all_hooks(full_mode=False)
+        assert not any(isinstance(h, FailFastHook) for h in agent_hooks)
 
     def test_always_has_reasoning_checkpoint(self):
-        hooks_standard = create_all_hooks(full_mode=False)
-        hooks_full = create_all_hooks(full_mode=True)
-        assert any(isinstance(h, ReasoningCheckpointHook) for h in hooks_standard)
-        assert any(isinstance(h, ReasoningCheckpointHook) for h in hooks_full)
+        agent_hooks_standard, _ = create_all_hooks(full_mode=False)
+        agent_hooks_full, _ = create_all_hooks(full_mode=True)
+        assert any(isinstance(h, ReasoningCheckpointHook) for h in agent_hooks_standard)
+        assert any(isinstance(h, ReasoningCheckpointHook) for h in agent_hooks_full)
+
+    def test_quiet_mode_adds_json_log_hooks(self):
+        agent_hooks, swarm_hooks = create_all_hooks(quiet=True)
+        assert any(isinstance(h, JsonLogHook) for h in agent_hooks)
+        assert any(isinstance(h, JsonLogSwarmHook) for h in swarm_hooks)
+
+    def test_state_mode_adds_display_hooks(self):
+        from code_context_agent.consumer.state import AgentDisplayState
+
+        state = AgentDisplayState()
+        agent_hooks, swarm_hooks = create_all_hooks(state=state)
+        assert any(isinstance(h, ToolDisplayHook) for h in agent_hooks)
+        assert any(isinstance(h, SwarmDisplayHook) for h in swarm_hooks)
+
+    def test_quiet_overrides_state(self):
+        """Quiet mode uses JSON hooks even if state is provided."""
+        from code_context_agent.consumer.state import AgentDisplayState
+
+        state = AgentDisplayState()
+        agent_hooks, _swarm_hooks = create_all_hooks(quiet=True, state=state)
+        assert any(isinstance(h, JsonLogHook) for h in agent_hooks)
+        assert not any(isinstance(h, ToolDisplayHook) for h in agent_hooks)
