@@ -189,11 +189,14 @@ work more effectively in this codebase."""
 
 def _create_model() -> BedrockModel:
     """Create a BedrockModel configured for Swarm node agents."""
+    from botocore.config import Config as BotoConfig
+
     settings = get_settings()
     return BedrockModel(
         model_id=settings.model_id,
         region_name=settings.region,
         temperature=settings.temperature,
+        boto_client_config=BotoConfig(read_timeout=600, retries={"max_attempts": 3, "mode": "adaptive"}),
         additional_request_fields={
             "thinking": {"type": "adaptive"},
             "output_config": {"effort": settings.full_reasoning_effort},
