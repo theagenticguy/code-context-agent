@@ -2,6 +2,9 @@
 title: "v8: Index-first pipeline with Swarm specialists, kill AG-UI"
 labels: ["enhancement", "architecture"]
 area: "Agent behavior (prompts, calibration, orchestration)"
+status: shipped
+shipped_in: "PR #12 (feat/reasoning-amplification)"
+shipped_date: 2026-03-24
 ---
 
 ## Problem
