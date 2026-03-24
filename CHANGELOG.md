@@ -1,3 +1,9 @@
+## v8.0.0 (2026-03-24)
+
+### Feat
+
+- v8 index-first pipeline with Strands Swarm, kill AG-UI (#12)
+
 ## v7.2.0 (2026-03-22)
 
 ### Feat
