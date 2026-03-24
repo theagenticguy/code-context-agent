@@ -63,6 +63,7 @@ jobs:
   gitleaks:
     runs-on: ubuntu-latest
     permissions:
+      security-events: write
       contents: read
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -71,6 +72,14 @@ jobs:
       - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_SARIF: true
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@b1bff81932f5cdfc8695c7752dcee935dcd061c8 # v4
+        with:
+          sarif_file: results.sarif
+          category: gitleaks
+        continue-on-error: true
 
   osv-scanner:
     runs-on: ubuntu-latest
@@ -80,7 +89,9 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - name: OSV Scanner
+        id: scan
         uses: google/osv-scanner-action/osv-scanner-action@c5996e0193a3df57d695c1b8a1dec2a4c62e8730 # v2.3.3
+        continue-on-error: true # findings are surfaced via SARIF + step summary, not CI failure
         with:
           scan-args: --lockfile uv.lock
       - name: Upload SARIF
@@ -90,6 +101,26 @@ jobs:
           sarif_file: results.sarif
           category: osv-scanner
         continue-on-error: true
+      - name: Summarize findings
+        if: always() && steps.scan.outcome == 'failure'
+        run: |
+          echo "### :shield: OSV Scanner — dependency vulnerabilities detected" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f results.sarif ]; then
+            echo "| Package | Severity | Advisory |" >> "$GITHUB_STEP_SUMMARY"
+            echo "|---------|----------|----------|" >> "$GITHUB_STEP_SUMMARY"
+            jq -r '
+              .runs[].results[] |
+              .message.text as $msg |
+              .ruleId as $id |
+              ($msg | capture("Package: (?<pkg>[^ ]+)") // {pkg: "unknown"}) |
+              "| \(.pkg) | \($id | split("-")[0] // "unknown") | [\($id)](https://osv.dev/\($id)) |"
+            ' results.sarif >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || \
+            jq -r '.runs[].results[] | "- **\(.ruleId)**: \(.message.text | .[0:120])"' results.sarif >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || \
+            echo "See [Code Scanning alerts](/${{ github.repository }}/security/code-scanning?query=tool:osv-scanner) for details." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "> Findings are informational. Fix by upgrading affected packages when patches become available." >> "$GITHUB_STEP_SUMMARY"
 
   trivy:
     runs-on: ubuntu-latest
