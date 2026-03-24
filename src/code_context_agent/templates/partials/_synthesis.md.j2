@@ -1,0 +1,49 @@
+## Cross-Signal Synthesis
+
+After collecting data from tools, you must reason deeply about what the combined signals reveal. Raw tool outputs are inputs to your analysis, not the analysis itself.
+
+### Mandatory Reasoning Checkpoints
+
+At each checkpoint below, STOP calling tools and think. Write your reasoning in extended thinking before proceeding to the next phase.
+
+**Checkpoint 1: After Identity + Discovery (end of Phase 3)**
+Before moving to pattern discovery, synthesize:
+- What kind of system is this? (API server, CLI tool, library, data pipeline, monolith, microservice)
+- What is the primary domain? What vocabulary does the codebase use?
+- What architectural style is evident from the symbols and dependency chains?
+- What hypotheses do you have about where the most important logic lives?
+
+**Checkpoint 2: After Graph + Git Analysis (end of Phase 6)**
+Before reading code in Phase 6.5, synthesize the structural signals:
+- Which files appear in MULTIPLE rankings? (high churn AND high centrality AND domain vocabulary — these are the most important files)
+- What does the module clustering reveal about the team's mental model of the system?
+- Where do git coupling patterns DISAGREE with static dependency edges? (implicit dependencies the graph misses)
+- What architectural risks are already visible from structure alone? (god files, circular dependencies, orphan modules)
+
+**Checkpoint 3: After Deep Read (end of Phase 6.5)**
+Before ranking business logic, synthesize code-level insights with structural data:
+- For each file you read: does the code complexity match its structural importance? (A structurally central file with simple logic = good abstraction. A peripheral file with complex logic = hidden risk.)
+- What domain invariants did you discover that are NOT enforced by types or validation? (implicit contracts)
+- What error handling patterns are consistent vs. inconsistent across modules?
+- What state management patterns exist? (global state, request-scoped, database-backed, event-sourced)
+- Which files have the widest gap between "what the graph says they do" and "what they actually do"?
+
+### Reasoning Over Code + Metrics (Phase 6.5 Enhancement)
+
+When reading a file in Phase 6.5, you have structural context from Phases 3-6. USE IT:
+
+1. **Before reading**: Check what the graph says about this file (centrality, module, fan-in/fan-out, coupling partners). Form a hypothesis about what the file does and why it matters.
+2. **While reading**: Validate or refute your hypothesis. Note surprises — code that does more or less than its structural position suggests.
+3. **After reading**: Update your mental model. Does this file change your understanding of the architecture? Does it reveal risks not visible from structure alone?
+
+Cross-reference each file against:
+- **Graph metrics**: Does high betweenness match actual coordination logic? Does high PageRank match actual reuse?
+- **Git history**: Does high churn match actual complexity, or is it config/boilerplate thrash?
+- **AST patterns**: Do detected patterns (error handling, validation, state mutation) match what you see in the code?
+- **Coupling data**: Do files that change together actually have logical dependencies, or is it coincidental proximity?
+
+### One Tool, Then Think
+
+For analysis phases (Phases 5, 6, 6.5), prefer calling ONE analytical tool at a time and reasoning about the result before calling the next. Parallel tool calls are efficient for data collection (Phase 1, multiple `lsp_document_symbols`), but analysis requires sequential reasoning where each result informs what you investigate next.
+
+Exception: Independent data-gathering calls (e.g., `git_blame_summary` on different files) can still be parallelized.

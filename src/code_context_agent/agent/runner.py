@@ -1,7 +1,7 @@
-"""Agent runner with event streaming and display.
+"""Agent runner with Swarm-based analysis pipeline.
 
-This module provides functions to run the analysis agent and stream
-events to consumers for display or further processing.
+This module provides functions to run the multi-agent analysis Swarm and
+stream events to display hooks for rendering.
 """
 
 from __future__ import annotations
@@ -10,37 +10,21 @@ import asyncio
 import os
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-from ag_ui.core import EventType, RunAgentInput, UserMessage
-from ag_ui_strands import StrandsAgent
 from loguru import logger
 from pydantic import BaseModel
+from rich.live import Live
 
 from ..config import DEFAULT_OUTPUT_DIR, get_settings
-from ..consumer import EventConsumer, QuietConsumer, RichEventConsumer
-from .factory import create_agent
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
+from ..consumer import RichEventConsumer
+from ..consumer.state import AgentDisplayState
+from .hooks import create_all_hooks
+from .swarm import create_analysis_swarm
 
 # Disable shell tool approval prompts and console output - we're running non-interactively
 os.environ.setdefault("BYPASS_TOOL_CONSENT", "true")
 os.environ.setdefault("STRANDS_NON_INTERACTIVE", "true")
-
-# Monkey-patch StrandsAgent to preserve callback_handler from original agent
-# This prevents duplicate output from PrintingCallbackHandler
-_original_strands_agent_init = StrandsAgent.__init__
-
-
-def _patched_strands_agent_init(self, agent, name, description="", config=None):
-    """Patched init that captures callback_handler from the original agent."""
-    _original_strands_agent_init(self, agent, name, description, config)
-    # Add callback_handler to _agent_kwargs so per-thread agents inherit it
-    self._agent_kwargs["callback_handler"] = getattr(agent, "callback_handler", None)
-
-
-StrandsAgent.__init__ = _patched_strands_agent_init  # type: ignore[assignment]
 
 
 class AnalysisContext(BaseModel):
@@ -50,10 +34,10 @@ class AnalysisContext(BaseModel):
 
     repo: Path
     output: Path
-    agui_agent: Any  # StrandsAgent instance
-    consumer: EventConsumer
-    max_turns: int
-    max_duration: int
+    swarm: Any  # Swarm instance
+    state: AgentDisplayState | None = None  # None for quiet mode
+    live: Any = None  # Rich Live instance, None for quiet mode
+    max_duration: int = 1200
     mode: str = "standard"
 
 
@@ -61,10 +45,11 @@ class StreamResult(BaseModel):
     """Result of streaming analysis execution."""
 
     status: str  # "completed", "error", "stopped"
-    turn_count: int
-    duration_seconds: float
+    turn_count: int = 0
+    duration_seconds: float = 0.0
     error_message: str | None = None
     exceeded_limit: str | None = None
+    structured_output: Any = None  # AnalysisResult or None
 
 
 def _build_analysis_prompt(
@@ -158,7 +143,6 @@ graph and context are assumed correct for unchanged files.
 def _setup_analysis_context(
     repo_path: str | Path,
     output_dir: str | Path | None,
-    consumer: EventConsumer | None,
     quiet: bool,
     *,
     mode: str = "standard",
@@ -168,7 +152,6 @@ def _setup_analysis_context(
     Args:
         repo_path: Path to repository
         output_dir: Optional output directory
-        consumer: Optional event consumer
         quiet: Quiet mode flag
         mode: Analysis mode string
 
@@ -188,7 +171,8 @@ def _setup_analysis_context(
     settings = get_settings()
 
     # Override execution bounds for full mode
-    if mode in ("full", "full+focus"):
+    full_mode = mode in ("full", "full+focus")
+    if full_mode:
         settings = settings.model_copy(
             update={
                 "agent_max_duration": settings.full_max_duration,
@@ -197,98 +181,109 @@ def _setup_analysis_context(
             },
         )
 
-    max_turns = settings.agent_max_turns
     max_duration = settings.agent_max_duration
 
-    # Create consumer if not provided
-    if consumer is None:
-        consumer = QuietConsumer() if quiet else RichEventConsumer(mode=mode)
+    # Create display state (None for quiet mode)
+    state = None if quiet else AgentDisplayState()
+    if state:
+        state.max_duration = max_duration
+        state.init_swarm_agents(["structure_analyst", "history_analyst", "code_reader", "synthesizer"])
 
-    # Create the strands agent
-    strands_agent = create_agent(mode=mode)
-
-    # Wrap with ag-ui-strands for typed event streaming
-    agui_agent = StrandsAgent(
-        agent=strands_agent,
-        name="code_context_agent",
-        description="Code context analysis agent",
+    # Create hooks — agent_hooks go on each node, swarm_hooks go on the Swarm
+    agent_hooks, swarm_hooks = create_all_hooks(
+        full_mode=full_mode,
+        state=state,
+        quiet=quiet,
     )
+
+    # Check for pre-built index graph
+    graph_path = output / "code_graph.json"
+    if not graph_path.exists():
+        graph_path = None
+
+    # Create the Swarm
+    swarm = create_analysis_swarm(
+        mode=mode,
+        graph_path=graph_path,
+        hooks=swarm_hooks,
+    )
+
+    # Apply agent_hooks to each node in the swarm
+    # swarm.nodes is a dict[str, SwarmNode]; each SwarmNode has .executor (the Agent)
+    for node in swarm.nodes.values():
+        for hook in agent_hooks:
+            node.executor.hooks.add_hook(hook)
+
+    # Start Rich Live display if not quiet
+    live = None
+    if state is not None:
+        consumer = RichEventConsumer(mode=mode)
+        consumer.state = state  # Share our state with the consumer
+        live = Live(
+            consumer._build_display(),
+            console=consumer.console,
+            refresh_per_second=2,
+            transient=True,
+            vertical_overflow="ellipsis",
+        )
+        # Rich auto-refresh calls get_renderable — point it at our builder
+        # so the dashboard always shows fresh state (timer, tool elapsed, etc.)
+        live.get_renderable = consumer._build_display  # type: ignore[assignment]
 
     return AnalysisContext(
         repo=repo,
         output=output,
-        agui_agent=agui_agent,
-        consumer=consumer,
-        max_turns=max_turns,
+        swarm=swarm,
+        state=state,
+        live=live,
         max_duration=max_duration,
         mode=mode,
     )
 
 
-async def _execute_analysis_stream(
+async def _execute_analysis(
     context: AnalysisContext,
     prompt: str,
 ) -> StreamResult:
-    """Run the agent and process event stream.
+    """Run the Swarm and process results.
 
     Args:
-        context: Analysis context with agent and configuration
+        context: Analysis context with Swarm and configuration
         prompt: Analysis prompt
 
     Returns:
         StreamResult with execution details
     """
-    # Build input for ag-ui
-    input_data = RunAgentInput(
-        thread_id="analysis-thread",
-        run_id="analysis-run",
-        messages=[UserMessage(id="msg-1", role="user", content=prompt)],
-        state={},
-        tools=[],
-        context=[],
-        forwarded_props={},
-    )
-
-    # Start consumer display and pass limits to state
-    await context.consumer.start()
-    if hasattr(context.consumer, "state"):
-        context.consumer.state.max_turns = context.max_turns  # type: ignore[union-attr]
-        context.consumer.state.max_duration = context.max_duration  # type: ignore[union-attr]
-
     start_time = time.monotonic()
-    turn_count = 0
-    exceeded_limit: str | None = None
     error_message: str | None = None
+    structured_output = None
+
+    # Set state start time
+    if context.state:
+        context.state.start_time = start_time
 
     try:
-        # Stream events from ag-ui-strands
-        async for event in context.agui_agent.run(input_data):
-            elapsed = time.monotonic() - start_time
+        # Run the Swarm — hooks handle display updates
+        result = await context.swarm.invoke_async(prompt)
 
-            # Count actual turns (completed assistant messages)
-            if hasattr(event, "type") and event.type == EventType.TEXT_MESSAGE_END:
-                turn_count += 1
+        # Extract structured output from synthesizer (final node)
+        synthesizer_result = result.results.get("synthesizer")
+        if synthesizer_result and hasattr(synthesizer_result, "result"):
+            agent_result = synthesizer_result.result
+            if hasattr(agent_result, "structured_output"):
+                structured_output = agent_result.structured_output
 
-                # Check turn limit only on actual turns
-                if turn_count > context.max_turns:
-                    logger.warning(f"Agent exceeded {context.max_turns} turns, stopping")
-                    exceeded_limit = f"max_turns ({context.max_turns})"
-                    break
-
-            # Check time limit on every event
-            if elapsed > context.max_duration:
-                logger.warning(
-                    f"Agent exceeded {context.max_duration}s duration, stopping",
-                )
-                exceeded_limit = f"max_duration ({context.max_duration}s)"
-                break
-
-            await _dispatch_event(event, context.consumer)
-
-            # Check for error
-            if hasattr(event, "type") and event.type == EventType.RUN_ERROR:
-                error_message = getattr(event, "message", "Unknown error")
-                break
+        # Check completion status
+        status_name = result.status.name if hasattr(result.status, "name") else str(result.status)
+        if status_name == "COMPLETED":
+            status = "completed"
+        elif status_name == "FAILED":
+            status = "error"
+            error_message = "Swarm execution failed"
+        elif status_name == "INTERRUPTED":
+            status = "stopped"
+        else:
+            status = "completed"
 
     except Exception as e:  # noqa: BLE001
         import traceback
@@ -296,30 +291,26 @@ async def _execute_analysis_stream(
         tb = traceback.format_exc()
         logger.error(f"Analysis error: {e}\n{tb}")
         error_message = str(e) if str(e) else f"{type(e).__name__}: {tb}"
-        await context.consumer.on_error(error_message)
+        status = "error"
 
     final_duration = time.monotonic() - start_time
 
-    # Determine status
-    if error_message:
-        status = "error"
-    elif exceeded_limit:
-        status = "stopped"
-    else:
-        status = "completed"
-
     return StreamResult(
         status=status,
-        turn_count=turn_count,
         duration_seconds=final_duration,
         error_message=error_message,
-        exceeded_limit=exceeded_limit,
+        structured_output=structured_output,
     )
 
 
 async def _cleanup_context(context: AnalysisContext) -> None:
     """Cleanup resources after analysis."""
-    await context.consumer.stop()
+    # Stop Rich Live display
+    if context.live is not None:
+        try:
+            context.live.stop()
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"Error stopping Rich Live display: {e}")
 
     # Cleanup LSP sessions with a timeout to prevent hanging on unresponsive servers.
     # Each LSP shutdown can block up to 30s (request_timeout) if the server is unresponsive,
@@ -336,7 +327,7 @@ async def run_analysis(
     repo_path: str | Path,
     output_dir: str | Path | None = None,
     focus: str | None = None,
-    consumer: EventConsumer | None = None,
+    consumer: Any = None,  # noqa: ARG001  # Kept for backward compat, ignored
     quiet: bool = False,
     issue_context: str | None = None,
     since_context: str | None = None,
@@ -345,33 +336,37 @@ async def run_analysis(
     """Run code context analysis on a repository.
 
     This function orchestrates the analysis by:
-    1. Creating an agent with tools, prompt, hooks, and structured output
-    2. Wrapping it with ag-ui-strands for typed event streaming
-    3. Streaming events to the consumer for display
+    1. Creating a Swarm with specialist agents and hook-based display
+    2. Loading pre-built index graph if available
+    3. Running the Swarm pipeline (structure -> history -> code -> synthesis)
     4. Returning analysis results
 
     Args:
         repo_path: Path to the repository to analyze.
         output_dir: Output directory for context files. Defaults to repo/.code-context
-        focus: Optional focus area to steer analysis (e.g., "authentication", "API layer").
-        consumer: Event consumer for display. Defaults to RichEventConsumer.
-        quiet: If True and no consumer, use QuietConsumer.
-        issue_context: Optional XML-wrapped issue context for issue-focused analysis.
-        since_context: Optional XML-wrapped incremental analysis context from --since.
+        focus: Optional focus area to steer analysis.
+        consumer: Deprecated, ignored. Display is handled by hooks.
+        quiet: If True, use JSON log hooks instead of Rich TUI.
+        issue_context: Optional XML-wrapped issue context.
+        since_context: Optional XML-wrapped incremental analysis context.
         mode: Analysis mode ("standard", "full", "full+focus", "focus", "incremental").
 
     Returns:
         Dict with analysis status and output paths.
     """
     # Setup phase
-    context = _setup_analysis_context(repo_path, output_dir, consumer, quiet, mode=mode)
+    context = _setup_analysis_context(repo_path, output_dir, quiet, mode=mode)
 
     # Build prompt
     prompt = _build_analysis_prompt(context.repo, context.output, focus, issue_context, since_context)
 
+    # Start Rich Live display
+    if context.live is not None:
+        context.live.start()
+
     # Execution phase
     try:
-        stream_result = await _execute_analysis_stream(context, prompt)
+        stream_result = await _execute_analysis(context, prompt)
     finally:
         await _cleanup_context(context)
 
@@ -387,110 +382,8 @@ async def run_analysis(
         "repo_path": str(context.repo),
         "output_dir": str(context.output),
         "context_path": str(context_path) if context_path.exists() else None,
+        "structured_output": stream_result.structured_output,
     }
-
-
-# Event handler registry for dispatch pattern
-_EVENT_HANDLERS: dict[EventType, Callable] = {}
-
-
-def _register_handler(event_type: EventType):
-    """Decorator to register event handlers."""
-
-    def decorator(func: Callable):
-        _EVENT_HANDLERS[event_type] = func
-        return func
-
-    return decorator
-
-
-@_register_handler(EventType.RUN_STARTED)
-async def _handle_run_started(event: Any, consumer: EventConsumer) -> None:
-    await consumer.on_run_started(
-        getattr(event, "thread_id", ""),
-        getattr(event, "run_id", ""),
-    )
-
-
-@_register_handler(EventType.TEXT_MESSAGE_START)
-async def _handle_text_start(event: Any, consumer: EventConsumer) -> None:
-    await consumer.on_text_start(
-        getattr(event, "message_id", ""),
-        getattr(event, "role", "assistant"),
-    )
-
-
-@_register_handler(EventType.TEXT_MESSAGE_CONTENT)
-async def _handle_text_content(event: Any, consumer: EventConsumer) -> None:
-    await consumer.on_text_content(
-        getattr(event, "message_id", ""),
-        getattr(event, "delta", ""),
-    )
-
-
-@_register_handler(EventType.TEXT_MESSAGE_END)
-async def _handle_text_end(event: Any, consumer: EventConsumer) -> None:
-    await consumer.on_text_end(getattr(event, "message_id", ""))
-
-
-@_register_handler(EventType.TOOL_CALL_START)
-async def _handle_tool_start(event: Any, consumer: EventConsumer) -> None:
-    await consumer.on_tool_start(
-        getattr(event, "tool_call_id", ""),
-        getattr(event, "tool_call_name", ""),
-    )
-
-
-@_register_handler(EventType.TOOL_CALL_ARGS)
-async def _handle_tool_args(event: Any, consumer: EventConsumer) -> None:
-    await consumer.on_tool_args(
-        getattr(event, "tool_call_id", ""),
-        getattr(event, "delta", ""),
-    )
-
-
-@_register_handler(EventType.TOOL_CALL_RESULT)
-async def _handle_tool_result(event: Any, consumer: EventConsumer) -> None:
-    await consumer.on_tool_result(
-        getattr(event, "tool_call_id", ""),
-        getattr(event, "content", None),
-    )
-
-
-@_register_handler(EventType.TOOL_CALL_END)
-async def _handle_tool_end(event: Any, consumer: EventConsumer) -> None:
-    await consumer.on_tool_end(getattr(event, "tool_call_id", ""))
-
-
-@_register_handler(EventType.STATE_SNAPSHOT)
-async def _handle_state_snapshot(event: Any, consumer: EventConsumer) -> None:
-    await consumer.on_state_snapshot(getattr(event, "snapshot", {}))
-
-
-@_register_handler(EventType.RUN_FINISHED)
-async def _handle_run_finished(event: Any, consumer: EventConsumer) -> None:
-    await consumer.on_run_finished(
-        getattr(event, "thread_id", ""),
-        getattr(event, "run_id", ""),
-    )
-
-
-@_register_handler(EventType.RUN_ERROR)
-async def _handle_run_error(event: Any, consumer: EventConsumer) -> None:
-    await consumer.on_error(
-        getattr(event, "message", "Unknown error"),
-        getattr(event, "code", None),
-    )
-
-
-async def _dispatch_event(event: Any, consumer: EventConsumer) -> None:
-    """Dispatch an AG-UI event to the appropriate consumer method."""
-    if not hasattr(event, "type"):
-        return
-
-    handler = _EVENT_HANDLERS.get(event.type)
-    if handler:
-        await handler(event, consumer)
 
 
 def run_analysis_sync(

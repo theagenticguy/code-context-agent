@@ -2,7 +2,7 @@
 
 **Date**: 2025-03-01
 
-**Status**: accepted
+**Status**: Superseded — AG-UI dependencies removed in v8; the agent now uses native Strands callback hooks for event streaming.
 
 ## Context
 

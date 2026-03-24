@@ -8,7 +8,10 @@ Uses stable strands.agent.hooks API (not experimental steering).
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
+
+if TYPE_CHECKING:
+    from ..consumer.state import AgentDisplayState
 
 from loguru import logger
 from strands.hooks import (
@@ -17,8 +20,54 @@ from strands.hooks import (
     HookProvider,
     HookRegistry,
 )
+from strands.hooks.events import (
+    AfterNodeCallEvent,
+    BeforeNodeCallEvent,
+)
 
 _MAX_OUTPUT_SIZE = 100_000
+
+
+def _is_error_result(result: Any) -> bool:
+    """Check if a tool result indicates an error."""
+    if not result:
+        return False
+    result_str = str(result)
+    return '"status": "error"' in result_str or '"status":"error"' in result_str
+
+
+# Reasoning prompts injected after key analysis tools to force LLM interpretation
+_REASONING_PROMPTS: dict[str, str] = {
+    "code_graph_analyze": (
+        "[REASONING CHECKPOINT] Before calling the next tool, interpret these graph results. "
+        "What structural pattern do they reveal? Which files appear as bottlenecks or foundations? "
+        "How does this change your understanding of the architecture?"
+    ),
+    "code_graph_explore": (
+        "[REASONING CHECKPOINT] What does this exploration reveal about the code structure? "
+        "Are there unexpected clusters, isolated components, or surprising dependency directions?"
+    ),
+    "git_hotspots": (
+        "[REASONING CHECKPOINT] Which high-churn files overlap with structurally central files from graph analysis? "
+        "High churn + high centrality = fragile bottleneck. Note any files that are hot but structurally peripheral "
+        "(may indicate config thrash or generated code)."
+    ),
+    "git_files_changed_together": (
+        "[REASONING CHECKPOINT] Do these co-change patterns match the static dependency graph? "
+        "Files that change together WITHOUT a static dependency edge indicate an implicit coupling "
+        "that an AI coding assistant must know about."
+    ),
+    "git_blame_summary": (
+        "[REASONING CHECKPOINT] What does the ownership distribution reveal? "
+        "Single-author files with high centrality = bus factor risk. "
+        "Many-author files with complex logic = coordination risk."
+    ),
+    "read_file_bounded": (
+        "[REASONING CHECKPOINT] Now that you have read this code, compare what you see against "
+        "what the graph metrics predicted. Does the code complexity match its structural importance? "
+        "What domain invariants does this file maintain? What would break if it were changed naively?"
+    ),
+}
 
 
 class FullModeToolError(RuntimeError):
@@ -32,8 +81,7 @@ class FullModeToolError(RuntimeError):
 class OutputQualityHook(HookProvider):
     """Hook for output quality enforcement.
 
-    Checks tool results for size limit violations and logs warnings
-    when outputs are unusually large.
+    Logs warnings when tool outputs are unusually large.
     """
 
     def register_hooks(self, registry: HookRegistry, **kwargs: Any) -> None:
@@ -47,6 +95,78 @@ class OutputQualityHook(HookProvider):
 
         if len(result_str) > _MAX_OUTPUT_SIZE:
             logger.warning(f"Tool {tool_name} produced oversized output: {len(result_str)} chars")
+
+
+class ConversationCompactionHook(HookProvider):
+    """Strips large toolUse/toolResult payloads from conversation history.
+
+    After the model has seen and reasoned about tool results, the raw
+    payloads are no longer needed — only the model's reasoning matters.
+    Before each model invocation, this hook walks the message history and
+    replaces large tool payloads with stubs, keeping all text/reasoning
+    turns intact.
+
+    This prevents context window overflow from accumulated tool results
+    without ever truncating data the model hasn't seen yet.
+    """
+
+    COMPACTION_THRESHOLD = 2000  # chars — compact payloads larger than this
+    KEEP_RECENT_MESSAGES = 4  # keep last N messages uncompacted (current turn)
+
+    def register_hooks(self, registry: HookRegistry, **kwargs: Any) -> None:
+        """Register conversation compaction callback."""
+        from strands.hooks.events import BeforeInvocationEvent
+
+        registry.add_callback(BeforeInvocationEvent, self._compact_history)
+
+    def _compact_history(self, event: Any, **kwargs: Any) -> None:
+        """Strip large tool payloads from older messages before model invocation."""
+        messages = getattr(event, "messages", None)
+        if not messages:
+            return
+
+        # Only compact older messages — keep recent ones intact for current reasoning
+        boundary = max(0, len(messages) - self.KEEP_RECENT_MESSAGES)
+        compacted = 0
+
+        for i in range(boundary):
+            content = messages[i].get("content")
+            if not isinstance(content, list):
+                continue
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                compacted += self._compact_tool_result(block)
+                compacted += self._compact_tool_use(block)
+
+        if compacted:
+            logger.info(f"Compacted {compacted} large tool payloads from conversation history")
+
+    def _compact_tool_result(self, block: dict[str, Any]) -> int:
+        """Replace large toolResult content with a stub. Returns 1 if compacted."""
+        if "toolResult" not in block:
+            return 0
+        tool_result = block["toolResult"]
+        result_content = tool_result.get("content", [])
+        total = sum(len(rc.get("text", "")) for rc in result_content if isinstance(rc, dict))
+        if total <= self.COMPACTION_THRESHOLD:
+            return 0
+        stub = f"[Tool output consumed ({total} chars) — see reasoning above]"
+        tool_result["content"] = [{"text": stub}]
+        logger.debug(f"Compacted toolResult {tool_result.get('toolUseId', '?')}: {total} chars")
+        return 1
+
+    def _compact_tool_use(self, block: dict[str, Any]) -> int:
+        """Replace large toolUse input with a stub. Returns 1 if compacted."""
+        if "toolUse" not in block:
+            return 0
+        tool_use = block["toolUse"]
+        input_str = str(tool_use.get("input", ""))
+        if len(input_str) <= self.COMPACTION_THRESHOLD:
+            return 0
+        tool_use["input"] = {"_compacted": True, "tool": tool_use.get("name", "?")}
+        logger.debug(f"Compacted toolUse input for {tool_use.get('name', '?')}: {len(input_str)} chars")
+        return 1
 
 
 class ToolEfficiencyHook(HookProvider):
@@ -79,6 +199,40 @@ class ToolEfficiencyHook(HookProvider):
                     if pattern in command:
                         logger.info(f"Shell command '{command[:50]}' could use {alternative} instead")
                         break
+
+
+class ReasoningCheckpointHook(HookProvider):
+    """Hook that enriches key tool results with reasoning prompts.
+
+    After analysis tools return results, appends a reasoning checkpoint
+    that asks the model to interpret the data before proceeding. This
+    forces the LLM to reason over combined signals rather than just
+    collecting tool outputs.
+    """
+
+    def register_hooks(self, registry: HookRegistry, **kwargs: Any) -> None:
+        """Register reasoning checkpoint callback."""
+        registry.add_callback(AfterToolCallEvent, self._inject_reasoning_prompt)
+
+    def _inject_reasoning_prompt(self, event: AfterToolCallEvent, **kwargs: Any) -> None:
+        """Append reasoning prompt to tool results for key analysis tools."""
+        tool_name = event.tool_use.get("name", "")
+
+        prompt = _REASONING_PROMPTS.get(tool_name)
+        if not prompt:
+            return
+
+        result = event.result
+        if not result or result.get("status") == "error":
+            return
+
+        content = result.get("content", [])
+        if not content:
+            return
+
+        # Append reasoning checkpoint as additional text content
+        content.append({"text": f"\n\n{prompt}"})
+        logger.debug(f"Reasoning checkpoint injected for {tool_name}")
 
 
 class FailFastHook(HookProvider):
@@ -133,19 +287,176 @@ class FailFastHook(HookProvider):
             raise FullModeToolError(tool_name, str(error_msg))
 
 
-def create_all_hooks(*, full_mode: bool = False) -> list[HookProvider]:
-    """Create all hook providers for agent guidance.
+class SwarmDisplayHook(HookProvider):
+    """Hook that tracks Swarm node transitions for multi-agent TUI display.
+
+    Updates AgentDisplayState when agents start/stop, enabling the Rich
+    dashboard to show which specialist is currently active.
+    """
+
+    def __init__(self, state: AgentDisplayState) -> None:  # noqa: D107
+        self._state = state
+
+    def register_hooks(self, registry: HookRegistry, **kwargs: Any) -> None:
+        """Register Swarm node transition callbacks."""
+        registry.add_callback(BeforeNodeCallEvent, self._on_node_start)
+        registry.add_callback(AfterNodeCallEvent, self._on_node_end)
+
+    def _on_node_start(self, event: BeforeNodeCallEvent, **kwargs: Any) -> None:
+        """Update state when a Swarm agent starts."""
+        logger.info(f"Swarm agent started: {event.node_id}")
+        self._state.set_active_agent(event.node_id)
+
+    def _on_node_end(self, event: AfterNodeCallEvent, **kwargs: Any) -> None:
+        """Update state when a Swarm agent completes."""
+        logger.info(f"Swarm agent completed: {event.node_id}")
+        self._state.complete_agent(event.node_id)
+
+
+class ToolDisplayHook(HookProvider):
+    """Hook that tracks tool calls for TUI display.
+
+    Updates AgentDisplayState with active tool information and extracts
+    discovery events from tool results (file counts, symbols, etc.).
+    """
+
+    def __init__(self, state: AgentDisplayState) -> None:  # noqa: D107
+        self._state = state
+
+    def register_hooks(self, registry: HookRegistry, **kwargs: Any) -> None:
+        """Register tool call display callbacks."""
+        registry.add_callback(BeforeToolCallEvent, self._on_tool_start)
+        registry.add_callback(AfterToolCallEvent, self._on_tool_end)
+
+    def _on_tool_start(self, event: BeforeToolCallEvent, **kwargs: Any) -> None:
+        """Update state when a tool call begins."""
+        import time
+
+        from ..consumer.state import ToolCallState
+
+        tool_name = event.tool_use.get("name", "")
+        tool_id = event.tool_use.get("toolUseId", "")
+        if tool_name:
+            self._state.active_tool = ToolCallState(
+                tool_call_id=tool_id,
+                tool_name=tool_name,
+                args_buffer="",
+                result=None,
+                status="running",
+            )
+            self._state.tool_start_time = time.monotonic()
+
+    def _on_tool_end(self, event: AfterToolCallEvent, **kwargs: Any) -> None:
+        """Update state when a tool call completes."""
+        tool_name = event.tool_use.get("name", "")
+        if not tool_name:
+            return
+
+        is_error = _is_error_result(event.result)
+
+        if self._state.active_tool:
+            self._state.active_tool.status = "error" if is_error else "completed"
+            self._state.active_tool.result = str(event.result)[:200] if event.result else ""
+            self._state.completed_tools.append(self._state.active_tool)
+            self._state.active_tool = None
+            if is_error:
+                self._state.tool_errors += 1
+
+
+class JsonLogHook(HookProvider):
+    """Hook that emits structured JSON log lines for CI/CD --quiet mode.
+
+    Outputs one JSON line per significant event (tool start/end).
+    Uses loguru's serialize mode for consistent formatting.
+    """
+
+    def __init__(self) -> None:  # noqa: D107
+        self._json_logger = logger.bind(output="json")
+
+    def register_hooks(self, registry: HookRegistry, **kwargs: Any) -> None:
+        """Register JSON log callbacks for tool events."""
+        registry.add_callback(BeforeToolCallEvent, self._on_tool_start)
+        registry.add_callback(AfterToolCallEvent, self._on_tool_end)
+
+    def _on_tool_start(self, event: BeforeToolCallEvent, **kwargs: Any) -> None:
+        """Emit JSON log line when a tool call begins."""
+        tool_name = event.tool_use.get("name", "")
+        if tool_name:
+            self._json_logger.info("tool_start", tool=tool_name)
+
+    def _on_tool_end(self, event: AfterToolCallEvent, **kwargs: Any) -> None:
+        """Emit JSON log line when a tool call completes."""
+        tool_name = event.tool_use.get("name", "")
+        is_error = _is_error_result(event.result)
+        if tool_name:
+            self._json_logger.info(
+                "tool_end",
+                tool=tool_name,
+                status="error" if is_error else "ok",
+            )
+
+
+class JsonLogSwarmHook(HookProvider):
+    """Hook that emits JSON log lines for Swarm agent transitions."""
+
+    def __init__(self) -> None:  # noqa: D107
+        self._json_logger = logger.bind(output="json")
+
+    def register_hooks(self, registry: HookRegistry, **kwargs: Any) -> None:
+        """Register JSON log callbacks for Swarm node events."""
+        registry.add_callback(BeforeNodeCallEvent, self._on_node_start)
+        registry.add_callback(AfterNodeCallEvent, self._on_node_end)
+
+    def _on_node_start(self, event: BeforeNodeCallEvent, **kwargs: Any) -> None:
+        """Emit JSON log line when a Swarm agent starts."""
+        self._json_logger.info("agent_start", agent=event.node_id)
+
+    def _on_node_end(self, event: AfterNodeCallEvent, **kwargs: Any) -> None:
+        """Emit JSON log line when a Swarm agent completes."""
+        self._json_logger.info("agent_end", agent=event.node_id)
+
+
+def create_all_hooks(
+    *,
+    full_mode: bool = False,
+    state: Any | None = None,
+    quiet: bool = False,
+) -> tuple[list[HookProvider], list[HookProvider]]:
+    """Create all hook providers for agent guidance and display.
+
+    Returns a tuple of (agent_hooks, swarm_hooks).
+    Agent hooks are registered on each Agent node.
+    Swarm hooks are registered on the Swarm itself.
 
     Args:
-        full_mode: If True, include FailFastHook for strict error handling.
+        full_mode: If True, include FailFastHook.
+        state: AgentDisplayState for TUI display. None if quiet mode.
+        quiet: If True, use JsonLogHook instead of display hooks.
 
     Returns:
-        List of HookProvider instances.
+        Tuple of (agent_hooks, swarm_hooks).
     """
-    hooks: list[HookProvider] = [
+    # Agent-level hooks (registered on each Agent node)
+    agent_hooks: list[HookProvider] = [
+        ConversationCompactionHook(),
         OutputQualityHook(),
         ToolEfficiencyHook(),
+        ReasoningCheckpointHook(),
     ]
     if full_mode:
-        hooks.append(FailFastHook())
-    return hooks
+        agent_hooks.append(FailFastHook())
+
+    # Display hooks
+    if quiet:
+        agent_hooks.append(JsonLogHook())
+    elif state is not None:
+        agent_hooks.append(ToolDisplayHook(state))
+
+    # Swarm-level hooks (registered on the Swarm)
+    swarm_hooks: list[HookProvider] = []
+    if quiet:
+        swarm_hooks.append(JsonLogSwarmHook())
+    elif state is not None:
+        swarm_hooks.append(SwarmDisplayHook(state))
+
+    return agent_hooks, swarm_hooks

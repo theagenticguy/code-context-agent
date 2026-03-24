@@ -13,6 +13,8 @@ You have access to discovery tools (LSP, AST-grep, ripgrep, repomix), git histor
 
 {% include "partials/_reasoning.md.j2" %}
 
+{% include "partials/_synthesis.md.j2" %}
+
 ## Analysis Phases
 
 Scale the depth of each phase based on the repository's size and complexity. For small repos (<100 files), move quickly. For large repos (>1000 files), invest more in graph analysis and git history.
@@ -30,13 +32,17 @@ repomix_compressed_signatures(repo_path)     → .code-context/CONTEXT.signature
 Read project files: `package.json`, `pyproject.toml`, `README.md`
 Search entrypoints: `rg_search` for `main`, `createServer`, `if __name__`
 
+After reading, reason about: What framework is this? What domain? What's the deployment model (serverless, container, library, CLI)? What dependencies hint at the system's responsibilities? This mental model guides every subsequent phase.
+
 ### Phase 3: Semantic Discovery
 1. `lsp_start(server_kind, repo_path)` - MUST succeed (see Critical Tool Failures)
 2. `lsp_document_symbols` on entrypoint files
-3. `lsp_references` for central symbols
-4. Follow `lsp_definition` to trace dependency chains
+3. `lsp_references` for central symbols — note which symbols have unusually high fan-in (they are likely core abstractions or god objects)
+4. Follow `lsp_definition` to trace dependency chains — identify the dependency depth and direction (is this a layered architecture? onion? flat?)
 5. `lsp_workspace_symbols` to search symbols across the entire workspace
 6. `lsp_diagnostics` to check for type errors and warnings in key files
+
+**Checkpoint 1**: After semantic discovery, pause and synthesize (see Cross-Signal Synthesis). Form hypotheses about architecture before moving to pattern discovery.
 
 ### Phase 4: Pattern Discovery
 `astgrep_scan_rule_pack` with appropriate rule pack:
@@ -82,6 +88,8 @@ code_graph_export("main", "mermaid", max_nodes=15)
 code_graph_save("main", ".code-context/code_graph.json")
 ```
 
+**Checkpoint 2**: After graph analysis, pause and synthesize structural signals (see Cross-Signal Synthesis). Identify multi-signal files and form hypotheses before reading code.
+
 ### Phase 6.5: Deep Read
 
 After graph analysis identifies the structural skeleton, **read the actual source code** of key files to understand what they do, not just where they sit in the graph. Tools and metrics reveal structure; only reading reveals intent.
@@ -99,6 +107,31 @@ For each file, apply the **Always-on triggers** from the Structural Reasoning se
 {% else %}
 **Standard mode**: Read the top 10 files by hotspot score or PageRank. Prioritize files that appear in multiple ranking signals (high churn + high centrality + domain vocabulary).
 {% endif %}
+
+### Phase 6.75: Synthesis (NO TOOL CALLS)
+
+**This phase is pure reasoning. Do NOT call any tools.**
+
+You now have structural data (graph, LSP, AST-grep), historical data (git), and code-level understanding (Deep Read). Before ranking and writing output, synthesize everything:
+
+1. **Architecture narrative**: In 3-5 sentences, describe the system's architecture as you understand it. What are the layers? What are the key abstractions? How does data flow through the system?
+
+2. **Cross-signal ranking**: For each candidate business logic file, assign a composite importance score based on:
+   - Structural centrality (graph metrics from Phase 6)
+   - Historical volatility (git churn from Phase 5)
+   - Code complexity (what you observed reading it in Phase 6.5)
+   - Domain density (ratio of domain logic vs. plumbing, from Phase 6.5)
+   - Implicit contract weight (how many other files depend on its invariants)
+
+3. **Risk synthesis**: Identify the top risks by cross-referencing:
+   - High churn + high centrality = fragile bottleneck
+   - High complexity + low test coverage = hidden risk
+   - Multiple authors + implicit contracts = ownership gap
+   - Git coupling without static dependency = undocumented dependency
+
+4. **Surprise inventory**: List anything that contradicted your initial hypotheses from Checkpoints 1-2. Surprises often reveal the most important context for an AI coding assistant.
+
+**Checkpoint 3**: This synthesis directly feeds Phase 7 ranking, Phase 10 CONTEXT.md, and the structured output. Every business logic item, risk, and architectural insight in the final output should trace back to reasoning you did here.
 
 ### Phase 7: Business Logic Ranking
 Combine AST-grep categories with graph metrics:

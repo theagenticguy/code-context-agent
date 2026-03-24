@@ -38,7 +38,7 @@ We follow [Michael Nygard's ADR format](https://cognitect.com/blog/2011/11/15/do
 |---|---|---|
 | [0001](0001-strands-agents-framework.md) | Use Strands Agents as the agent framework | accepted |
 | [0002](0002-networkx-multi-layer-code-graph.md) | NetworkX multi-layer code graph | accepted |
-| [0003](0003-ag-ui-event-streaming.md) | AG-UI event streaming protocol | accepted |
+| [0003](0003-ag-ui-event-streaming.md) | AG-UI event streaming protocol | superseded |
 | [0004](0004-fastmcp-v3-server.md) | FastMCP v3 for MCP server | accepted |
 | [0005](0005-lsp-fallback-chains.md) | LSP fallback chains | accepted |
 | [0006](0006-security-hardened-shell.md) | Security-hardened shell with allowlist | accepted |
