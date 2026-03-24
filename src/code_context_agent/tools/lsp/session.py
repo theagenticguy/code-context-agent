@@ -7,6 +7,8 @@ initialization), so we reuse them.
 
 from __future__ import annotations
 
+import shutil
+from pathlib import Path
 from typing import Any, ClassVar
 
 from loguru import logger
@@ -120,7 +122,7 @@ class LspSessionManager:
         if kind == "ts":
             # TypeScript language server configuration
             # Uses the VS Code-style settings format
-            return {
+            config: dict[str, Any] = {
                 "typescript": {
                     "preferences": {
                         "excludeLibrarySymbolsInNavTo": True,
@@ -133,7 +135,44 @@ class LspSessionManager:
                 },
             }
 
+            # Auto-detect tsserver path when TypeScript is installed outside
+            # the workspace (e.g., via mise, volta, or global npm).
+            # typescript-language-server only checks workspace node_modules by
+            # default and needs an explicit tsserver.path otherwise.
+            tsserver_lib = self._find_tsserver_lib()
+            if tsserver_lib:
+                config["tsserver"] = {"path": tsserver_lib}
+                logger.debug(f"Auto-detected tsserver.path: {tsserver_lib}")
+
+            return config
+
         # Unknown languages: no special config needed
+        return None
+
+    @staticmethod
+    def _find_tsserver_lib() -> str | None:
+        """Auto-detect the TypeScript lib directory containing tsserver.js.
+
+        Resolves the ``tsserver`` binary on PATH (following symlinks) and walks
+        up to the TypeScript package root to locate ``lib/tsserver.js``.
+
+        Returns:
+            Absolute path to the TypeScript ``lib/`` directory, or None.
+        """
+        tsserver_bin = shutil.which("tsserver")
+        if not tsserver_bin:
+            return None
+
+        try:
+            resolved = Path(tsserver_bin).resolve()
+            # tsserver binary is at <typescript>/bin/tsserver
+            # We need <typescript>/lib/ which contains tsserver.js
+            ts_lib = resolved.parent.parent / "lib"
+            if (ts_lib / "tsserver.js").exists():
+                return str(ts_lib)
+        except (OSError, ValueError):
+            pass
+
         return None
 
     def _get_workspace_settings(self, server_kind: str) -> dict[str, Any] | None:
