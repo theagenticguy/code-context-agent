@@ -309,8 +309,8 @@ async def _cleanup_context(context: AnalysisContext) -> None:
     if context.live is not None:
         try:
             context.live.stop()
-        except Exception:  # noqa: BLE001, S110
-            pass
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"Error stopping Rich Live display: {e}")
 
     # Cleanup LSP sessions with a timeout to prevent hanging on unresponsive servers.
     # Each LSP shutdown can block up to 30s (request_timeout) if the server is unresponsive,
