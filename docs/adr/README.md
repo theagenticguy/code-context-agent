@@ -43,3 +43,8 @@ We follow [Michael Nygard's ADR format](https://cognitect.com/blog/2011/11/15/do
 | [0005](0005-lsp-fallback-chains.md) | LSP fallback chains | accepted |
 | [0006](0006-security-hardened-shell.md) | Security-hardened shell with allowlist | accepted |
 | [0007](0007-openspec-spec-driven-development.md) | Adopt OpenSpec for spec-driven development | accepted |
+| [0008](0008-bm25-ranked-text-search.md) | BM25 ranked text search | accepted |
+| [0009](0009-kuzudb-persistent-graph-backend.md) | KuzuDB persistent graph backend | accepted |
+| [0010](0010-multi-repo-registry.md) | Multi-repo registry | accepted |
+| [0011](0011-deterministic-indexer.md) | Deterministic indexer pipeline | accepted |
+| [0012](0012-strands-swarm-multi-agent.md) | Strands Swarm multi-agent pipeline | accepted |

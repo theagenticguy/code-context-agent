@@ -26,10 +26,14 @@ Use FastMCP v3 (`fastmcp>=3.0.2,<4`) with a deliberate tool selection strategy: 
 
 The server is implemented in `src/code_context_agent/mcp/server.py` and exposes:
 
-**Tools (4):**
+**Tools (8):**
 - `start_analysis` / `check_analysis`: Kickoff/poll pattern for long-running analysis. Jobs are tracked in a module-level `_jobs` dict with `asyncio.create_task` for background execution.
-- `query_code_graph`: Dispatch-based router to 10 graph algorithms (hotspots, foundations, trust, modules, entry_points, coupling, similar, dependencies, category, triangles)
+- `query_code_graph`: Dispatch-based router to 12 graph algorithms (hotspots, foundations, trust, modules, entry_points, coupling, similar, dependencies, category, triangles, flows, blast_radius)
 - `explore_code_graph`: Progressive disclosure with 6 actions (overview, expand_node, expand_module, path, category, status)
+- `get_graph_stats`: Quick graph composition summary (node/edge counts, types, metrics)
+- `list_repos`: Discover all analyzed repositories from the multi-repo registry (`~/.code-context/registry.json`)
+- `diff_impact`: Map git diff hunks to affected graph symbols, propagate blast radius, and suggest tests
+- `execute_cypher`: Run read-only Cypher queries against the KuzuDB persistent graph backend
 
 **Resources (6):**
 - `analysis://{repo_path}/context` through `analysis://{repo_path}/result` for reading CONTEXT.md, code_graph.json, files.all.txt, signatures, bundle, and analysis_result.json
@@ -47,7 +51,7 @@ Commodity tools (ripgrep search, LSP symbols, git history, AST-grep patterns, sh
 
 **Negative:**
 
-- Only 4 tools exposed means assistants must use other MCP servers (or built-in tools) for commodity operations like file search and git history
+- Only 8 tools exposed means assistants must use other MCP servers (or built-in tools) for commodity operations like file search and git history
 - Module-level `_jobs` dict means job state is lost on server restart; no persistence layer
 - The `_load_graph()` helper reads and deserializes the full JSON graph on every tool call (no caching at the MCP layer)
 

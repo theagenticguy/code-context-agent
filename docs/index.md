@@ -2,7 +2,7 @@
 
 **AI-powered CLI tool for automated codebase analysis and context generation.**
 
-`code-context-agent` uses Claude Opus 4.6 (via Amazon Bedrock) with 50+ tools to analyze unfamiliar codebases and produce structured context documentation for AI coding assistants. It combines semantic analysis (LSP), structural pattern matching (ast-grep), graph algorithms (NetworkX/KuzuDB), BM25 ranked search, git history analysis, and intelligent code bundling (repomix) to generate narrated markdown that helps developers and AI assistants understand a codebase's architecture and business logic.
+`code-context-agent` uses Claude Opus 4.6 (via Amazon Bedrock) with 49 tools to analyze unfamiliar codebases and produce structured context documentation for AI coding assistants. It combines semantic analysis (LSP), structural pattern matching (ast-grep), graph algorithms (NetworkX/KuzuDB), BM25 ranked search, git history analysis, and intelligent code bundling (repomix) to generate narrated markdown that helps developers and AI assistants understand a codebase's architecture and business logic.
 
 !!! warning "Autonomous Agent"
     This CLI runs a **fully autonomous AI agent loop**. The agent decides which tools to invoke, what files to read, and what shell commands to run. While shell commands are restricted to a read-only allowlist and all inputs are validated, the agent makes its own decisions within those bounds. **Review all generated output before using it in production.**
@@ -19,7 +19,7 @@
 
 | Capability | Description |
 |------------|-------------|
-| **50+ analysis tools** | LSP, ast-grep, ripgrep, BM25 search, repomix, git history, NetworkX/KuzuDB graph |
+| **49 analysis tools** | LSP, ast-grep, ripgrep, BM25 search, repomix, git history, NetworkX/KuzuDB graph |
 | **Multi-language LSP** | Python (ty), TypeScript, Rust, Go, Java with ordered fallback chains |
 | **Graph-based insights** | Hotspots, foundations (PageRank/TrustRank), modules (Louvain/Leiden), blast radius, execution flows, diff impact, framework detection |
 | **BM25 ranked search** | Concept-level search with TF-IDF-like relevance scoring |
@@ -42,22 +42,17 @@ flowchart TD
     A[CLI: cyclopts] --> B[run_analysis]
     A --> IDX[index command]
     A --> VIZ[viz command]
-    B --> C[create_agent]
+    B --> SW[create_analysis_swarm]
     IDX --> IDXP[Deterministic Indexer]
     VIZ --> VIZS[Web Visualizer / D3.js]
-    C --> D[Strands Agent<br/>Opus 4.6 + adaptive thinking]
-    D --> E[Jinja2 System Prompt]
-    D --> F[HookProviders<br/>quality + efficiency + fail-fast]
-    D --> G[AnalysisResult<br/>structured output]
-    D --> H[Tool Execution]
-    H --> I[Discovery<br/>ripgrep, repomix]
-    H --> S[Search<br/>BM25 ranked]
-    H --> J[LSP<br/>ty, ts-server, rust-analyzer]
-    H --> K[AST<br/>ast-grep patterns]
-    H --> L[Graph<br/>NetworkX / KuzuDB]
-    H --> M[Git<br/>coupling, churn, blame]
-    H --> N[Shell<br/>bounded execution]
-    H --> O[Output Files<br/>.code-context/ directory]
+    SW --> SA[structure_analyst<br/>Graph + LSP + AST tools]
+    SA --> HA[history_analyst<br/>Git history tools]
+    HA --> CR[code_reader<br/>Deep file reading + LSP]
+    CR --> SY[synthesizer<br/>Cross-reference + AnalysisResult]
+    SY --> G[AnalysisResult<br/>structured output]
+    G --> O[Output Files<br/>.code-context/ directory]
+    SW -.-> F[HookProviders<br/>quality + efficiency + fail-fast]
+    SW -.-> GP[Pre-loaded Graph<br/>from index]
 ```
 
 ---

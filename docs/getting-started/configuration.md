@@ -19,6 +19,13 @@ All configuration uses environment variables with the `CODE_CONTEXT_` prefix.
 | `CODE_CONTEXT_LSP_TIMEOUT` | `30` | LSP operation timeout in seconds (5-300) |
 | `CODE_CONTEXT_LSP_STARTUP_TIMEOUT` | `30` | Max seconds to wait for LSP server init (5-120) |
 | `CODE_CONTEXT_LSP_MAX_FILES` | `5000` | Max files before LSP analysis is skipped (100-50000) |
+| `CODE_CONTEXT_APP_NAME` | `code-context-agent` | Application name for identification and logging |
+| `CODE_CONTEXT_DEBUG` | `false` | Enable debug mode for verbose output and additional diagnostics |
+| `CODE_CONTEXT_LOG_LEVEL` | `INFO` | Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL) |
+| `CODE_CONTEXT_OUTPUT_FORMAT` | `rich` | Output format: `rich` (TUI), `json`, or `plain` |
+| `CODE_CONTEXT_GRAPH_BACKEND` | `networkx` | Graph storage backend: `networkx` (in-memory) or `kuzu` (persistent KuzuDB) |
+| `CODE_CONTEXT_REASONING_EFFORT` | `high` | Reasoning effort level for standard mode |
+| `CODE_CONTEXT_FULL_REASONING_EFFORT` | `max` | Reasoning effort level for `--full` mode (Opus 4.6 only) |
 
 ## LSP Server Registry
 
@@ -74,3 +81,18 @@ When `--full` is passed to the `analyze` command, the agent overrides several se
 These overrides are applied via `Settings.model_copy()` at runtime. The original settings are not modified.
 
 See [Full Mode](full-mode.md) for complete details on exhaustive analysis.
+
+## Graph Backend Configuration
+
+The `CODE_CONTEXT_GRAPH_BACKEND` variable selects the graph storage backend:
+
+- **`networkx`** (default): In-memory graph using NetworkX. Fast, zero setup, but graph is lost when the process exits (unless saved to `code_graph.json`).
+- **`kuzu`**: Persistent graph backed by [KuzuDB](https://kuzudb.com/). Stores the graph on disk for cross-session reuse and supports Cypher queries via the `execute_cypher` MCP tool.
+
+```bash
+# Use KuzuDB persistent backend
+export CODE_CONTEXT_GRAPH_BACKEND=kuzu
+code-context-agent index .
+```
+
+See [Graph Storage](../tools/storage.md) for implementation details.

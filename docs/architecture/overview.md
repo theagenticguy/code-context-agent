@@ -4,29 +4,39 @@
 
 ```mermaid
 flowchart TD
-    A[CLI: cyclopts] --> B[run_analysis]
-    A --> IDX[index command]
-    A --> VIZ[viz command]
-    B --> C[create_agent]
+    A[CLI: cyclopts] --> AN[analyze]
+    A --> IDX[index]
+    A --> VIZ[viz]
+    A --> SRV[serve]
+
     IDX --> IDXP[Deterministic Indexer<br/>LSP + AST-grep + git]
+    IDXP --> GJ[code_graph.json]
     VIZ --> VIZS[Web Visualizer<br/>D3.js force-directed graph]
-    C --> D[Strands Agent<br/>Opus 4.6 + adaptive thinking]
-    D --> E[Jinja2 System Prompt]
-    D --> F[HookProviders<br/>quality + efficiency + fail-fast]
-    D --> G[AnalysisResult<br/>structured output]
-    D --> H[Tool Execution]
-    H --> I[Discovery<br/>ripgrep, repomix]
-    H --> S[Search<br/>BM25 ranked search]
-    H --> J[LSP<br/>ty, ts-server, rust-analyzer]
-    H --> K[AST<br/>ast-grep patterns]
-    H --> L[Graph<br/>NetworkX / KuzuDB]
-    H --> M[Git<br/>coupling, churn, blame]
-    H --> N[Shell<br/>bounded execution]
-    H --> O[Output Files<br/>.code-context/ directory]
-    H --> P[context7 MCP<br/>library docs]
-    D -.-> Q[FastMCP Server<br/>MCP protocol]
+
+    AN --> SW[create_analysis_swarm]
+    GJ -.->|"pre-loaded into _graphs['main']"| SW
+    SW --> S1[structure_analyst<br/>Discovery, Search, LSP,<br/>AST, Graph tools]
+    S1 --> S2[history_analyst<br/>Git, Graph, Search tools]
+    S2 --> S3[code_reader<br/>Discovery, LSP,<br/>Search tools]
+    S3 --> S4[synthesizer<br/>Discovery, Graph tools]
+    S4 --> OUT[AnalysisResult<br/>.code-context/ output]
+
+    SW -.-> HK[HookProviders<br/>quality + efficiency +<br/>reasoning + compaction]
+
+    SRV --> Q[FastMCP Server<br/>MCP protocol]
     Q --> REG[Multi-Repo Registry<br/>~/.code-context/registry.json]
     Q --> R[Claude Code / Cursor<br/>MCP clients]
+
+    subgraph tools [Shared Tool Categories]
+        I[Discovery<br/>ripgrep, repomix]
+        SR[Search<br/>BM25 ranked search]
+        J[LSP<br/>ty, ts-server, rust-analyzer]
+        K[AST<br/>ast-grep patterns]
+        L[Graph<br/>NetworkX / KuzuDB]
+        M[Git<br/>coupling, churn, blame]
+        N[Shell<br/>bounded execution]
+        P[context7 MCP<br/>library docs]
+    end
 ```
 
 ## Component Layout
@@ -37,10 +47,12 @@ src/code_context_agent/
 ├── config.py           # Configuration (pydantic-settings)
 ├── indexer.py          # Deterministic indexer (LLM-free graph builder)
 ├── agent/              # Agent orchestration
-│   ├── factory.py      # Agent creation with tools + structured output
-│   ├── runner.py       # Analysis runner with event streaming
+│   ├── factory.py      # Single-agent creation (used by indexer)
+│   ├── swarm.py        # Swarm factory: 4-node specialist pipeline
+│   ├── analysts.py     # Specialist system prompts (Swarm + legacy)
+│   ├── runner.py       # Analysis runner with Swarm execution
 │   ├── prompts.py      # Jinja2 template rendering
-│   └── hooks.py        # HookProviders: quality, efficiency, fail-fast (full mode)
+│   └── hooks.py        # HookProviders: quality, efficiency, reasoning, compaction, display
 ├── templates/          # Jinja2 prompt templates
 │   ├── system.md.j2    # Unified system prompt
 │   ├── partials/       # Composable prompt sections
@@ -54,10 +66,10 @@ src/code_context_agent/
 │   └── registry.py     # Multi-repo registry (~/.code-context/registry.json)
 ├── consumer/           # Event display (Rich TUI)
 │   ├── base.py         # EventConsumer ABC
-│   ├── phases.py       # 10-phase detection, discovery events (v7)
+│   ├── phases.py       # 10-phase detection, discovery events
 │   ├── rich_consumer.py # Dashboard with phase indicator + discovery feed
 │   └── state.py        # AgentDisplayState with phase/discovery tracking
-├── tools/              # Analysis tools (50+)
+├── tools/              # Analysis tools (49)
 │   ├── discovery.py    # ripgrep, repomix, write_file (11 tools)
 │   ├── search/         # BM25 ranked search (1 tool)
 │   │   ├── bm25.py     # BM25Index with rank_bm25 backend
@@ -91,8 +103,9 @@ The agent uses [Strands Agents SDK](https://github.com/strands-agents/sdk-python
 
 - Tool registration and dispatch
 - Structured output via Pydantic models
-- Event streaming for phase-aware progress display (10 phases + discovery feed)
-- HookProviders for quality and efficiency guardrails
+- Multi-agent Swarm orchestration (4-node specialist pipeline)
+- HookProviders for quality, efficiency, reasoning checkpoints, and conversation compaction
+- Hook-driven display (Rich TUI updates via `SwarmDisplayHook` + `ToolDisplayHook`)
 
 ### Prompt Architecture: Jinja2 Templates
 
@@ -165,21 +178,27 @@ The `viz/` package provides a D3.js-based interactive visualization served local
 
 The analysis agent loads [context7](https://context7.com) documentation tools via `strands.tools.mcp.MCPClient`, enabling library documentation lookup during analysis. This is controlled by `CODE_CONTEXT_CONTEXT7_ENABLED` (default: true) and requires `npx`.
 
-### Mode-Aware Pipeline (v7)
+### Mode-Aware Pipeline
 
 The `--full` flag triggers exhaustive analysis. The mode is threaded through the entire pipeline:
 
 ```
-CLI (--full) → _derive_mode() → run_analysis(mode=) → create_agent(mode=)
-                                      ↓                       ↓
-                              RichEventConsumer(mode=)   get_prompt(mode=)
-                              (phase indicator,          create_all_hooks(full_mode=)
-                               discovery feed,           (+ FailFastHook)
-                               mode badge)
+CLI (--full) → _derive_mode() → run_analysis(mode=)
+                                      ↓
+                              _setup_analysis_context()
+                                      ↓
+                              create_analysis_swarm(mode=, graph_path=, hooks=)
+                                      ↓
+                              swarm.invoke_async(initial_prompt)
+                                      ↓
+                              create_all_hooks(full_mode=, state=, quiet=)
+                              → (agent_hooks, swarm_hooks)
 ```
 
-- **FailFastHook** raises `FullModeToolError` when non-exempt tools return errors in full mode
-- **Phase detection** maps tool calls to 10 analysis phases for TUI progress display
+- **`create_all_hooks()`** returns an `(agent_hooks, swarm_hooks)` tuple
+- **Agent hooks**: `ConversationCompactionHook`, `OutputQualityHook`, `ToolEfficiencyHook`, `ReasoningCheckpointHook`, `FailFastHook` (full mode only), plus display hooks (`ToolDisplayHook` or `JsonLogHook`)
+- **Swarm hooks**: `SwarmDisplayHook` or `JsonLogSwarmHook` for agent transitions
+- **Phase detection** still maps tool calls to 10 analysis phases for TUI display
 - **Discovery feed** extracts notable findings from tool results (file counts, symbol counts, hotspots)
 - **Mode-aware prompt** switches between size-limited (`_size_limits.md.j2`) and exhaustive (`_full_mode.md.j2`) steering directives
 

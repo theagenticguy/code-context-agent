@@ -110,7 +110,7 @@ The `--since` flag produces a delta analysis (changes since a ref), which is fun
 !!! tip "Use full mode when..."
     - You need complete coverage of a large or complex codebase
     - You want per-module documentation (`CONTEXT.modules/`)
-    - You need all 8 graph algorithms for thorough architectural analysis
+    - You need all 12 graph algorithms for thorough architectural analysis
     - You want context7 to look up documentation for ALL detected dependencies
 
 !!! warning "Cost and time"
