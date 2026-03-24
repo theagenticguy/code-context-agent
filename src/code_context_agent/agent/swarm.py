@@ -68,12 +68,20 @@ pattern matching. You produce a detailed analysis and then hand off.
 
 1. If a graph already exists (check graph stats above), use it directly.
    Otherwise create and populate one.
-2. Run ALL relevant graph algorithms: hotspots, foundations, trust, modules,
-   coupling, entry_points, triangles, similar, dependencies.
+2. Run graph algorithms ONE AT A TIME with top_k=10 to keep results manageable:
+   - `code_graph_analyze("main", "hotspots", top_k=10)`
+   - `code_graph_analyze("main", "foundations", top_k=10)`
+   - `code_graph_analyze("main", "entry_points", top_k=10)`
+   - `code_graph_analyze("main", "modules")`
+   - `code_graph_analyze("main", "trust", top_k=10)`
+   NEVER run all algorithms in a single call. Run them individually.
 3. Use LSP tools to trace dependency chains for the top hotspots and foundations.
 4. Use AST-grep to scan for business logic patterns AND code smells.
 5. Cross-reference: which files appear in MULTIPLE rankings?
    (high centrality AND high fan-in AND domain vocabulary = most important)
+
+**IMPORTANT**: Always use top_k=10 for graph queries. Large graphs (6K+ nodes) produce
+massive outputs that overflow context windows if you don't limit results.
 
 ## What to report
 

@@ -81,8 +81,8 @@ class FullModeToolError(RuntimeError):
 class OutputQualityHook(HookProvider):
     """Hook for output quality enforcement.
 
-    Checks tool results for size limit violations and logs warnings
-    when outputs are unusually large.
+    Truncates oversized tool results to prevent context window overflow,
+    and logs warnings when outputs are unusually large.
     """
 
     def register_hooks(self, registry: HookRegistry, **kwargs: Any) -> None:
@@ -90,12 +90,44 @@ class OutputQualityHook(HookProvider):
         registry.add_callback(AfterToolCallEvent, self._check_output_quality)
 
     def _check_output_quality(self, event: AfterToolCallEvent, **kwargs: Any) -> None:
-        """Check tool results for quality issues after execution."""
+        """Truncate oversized tool results to prevent context window overflow."""
         tool_name = event.tool_use.get("name", "")
-        result_str = str(event.result) if event.result else ""
+        result = event.result
+        if not result:
+            return
 
-        if len(result_str) > _MAX_OUTPUT_SIZE:
-            logger.warning(f"Tool {tool_name} produced oversized output: {len(result_str)} chars")
+        content = result.get("content", [])
+        if not content:
+            return
+
+        # Measure total text size across all content blocks
+        total_size = sum(len(block.get("text", "")) for block in content if isinstance(block, dict))
+
+        if total_size > _MAX_OUTPUT_SIZE:
+            logger.warning(
+                f"Tool {tool_name} produced oversized output: {total_size} chars, truncating to {_MAX_OUTPUT_SIZE}",
+            )
+            # Truncate text blocks to fit within the limit
+            truncated = False
+            new_content = []
+            remaining = _MAX_OUTPUT_SIZE
+            for block in content:
+                if not isinstance(block, dict) or "text" not in block:
+                    new_content.append(block)
+                    continue
+                text = block["text"]
+                if remaining <= 0:
+                    continue
+                if len(text) > remaining:
+                    block["text"] = (
+                        text[:remaining] + f"\n\n[TRUNCATED: output was {total_size} chars, "
+                        f"showing first {_MAX_OUTPUT_SIZE}. Use smaller top_k.]"
+                    )
+                    truncated = True
+                remaining -= len(text)
+                new_content.append(block)
+            if truncated:
+                result["content"] = new_content
 
 
 class ToolEfficiencyHook(HookProvider):
