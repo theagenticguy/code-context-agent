@@ -1,6 +1,6 @@
 # Tools Overview
 
-code-context-agent ships with 50+ analysis tools organized into several categories. The Strands agent selects and orchestrates these tools automatically based on the codebase being analyzed.
+code-context-agent ships with 49 analysis tools organized into several categories. The Strands agent selects and orchestrates these tools automatically based on the codebase being analyzed.
 
 ## Tool Categories
 

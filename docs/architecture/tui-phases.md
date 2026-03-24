@@ -74,9 +74,10 @@ The dashboard panel displays the following sections from top to bottom:
 7. **Mode badge** -- panel title shows `Code Context Agent [FULL]` when in full mode
 
 !!! info "Dashboard updates"
-    The dashboard refreshes on every AG-UI event from the Strands agent. Phase
-    transitions and discovery events are processed inline as tool-start and
-    tool-end events arrive.
+    The dashboard uses Rich `Live` with a 2fps refresh rate. `ToolDisplayHook`
+    updates `AgentDisplayState` on tool start/end events, while `SwarmDisplayHook`
+    tracks agent transitions. Phase detection and discovery extraction happen
+    within these hook callbacks.
 
 ---
 
@@ -87,7 +88,9 @@ The dashboard panel displays the following sections from top to bottom:
 | Phase model | `consumer/phases.py` | `AnalysisPhase(IntEnum)`, `TOOL_PHASE_MAP`, `resolve_phase()` |
 | Discovery events | `consumer/phases.py` | `DiscoveryEvent(FrozenModel)`, `DiscoveryEventKind(StrEnum)` |
 | Phase state | `consumer/state.py` | `AgentDisplayState.advance_phase()`, `add_discovery()` |
-| TUI rendering | `consumer/rich_consumer.py` | `_detect_phase()`, `_extract_discovery()`, `_build_phase_indicator()`, `_build_discovery_feed()` |
+| Tool display hook | `agent/hooks.py` | `ToolDisplayHook` -- updates `AgentDisplayState` on tool start/end |
+| Swarm display hook | `agent/hooks.py` | `SwarmDisplayHook` -- tracks Swarm node transitions for active agent display |
+| TUI rendering | `consumer/rich_consumer.py` | Reads from `AgentDisplayState` (which hooks update); `_build_phase_indicator()`, `_build_discovery_feed()` |
 
 ### Adding a New Phase
 

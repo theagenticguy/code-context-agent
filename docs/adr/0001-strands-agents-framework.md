@@ -46,7 +46,7 @@ All tools use the `@tool` decorator from `strands` and return JSON strings. The 
 **Negative:**
 
 - Coupled to the AWS/Bedrock ecosystem; switching to OpenAI or Anthropic direct API would require replacing `BedrockModel`
-- Monkey-patching required for `StrandsAgent.__init__` to preserve `callback_handler` (see `runner.py` lines 33-43)
+- ~~Monkey-patching required for `StrandsAgent.__init__`~~ (resolved in v8 — Swarm uses `callback_handler=None` on all nodes; see [ADR-0012](0012-strands-swarm-multi-agent.md))
 - Fewer community examples and plugins compared to LangChain
 
 **Neutral:**

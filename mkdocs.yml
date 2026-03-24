@@ -109,7 +109,9 @@ plugins:
           - getting-started/viz.md
         Architecture:
           - architecture/overview.md
+          - architecture/swarm.md
           - architecture/tenets.md
+          - architecture/hooks.md
           - architecture/tui-phases.md
         Tools:
           - tools/overview.md
@@ -127,6 +129,9 @@ plugins:
           - tools/storage.md
         Security:
           - security/overview.md
+        Support:
+          - troubleshooting.md
+          - faq.md
         Development:
           - development/guide.md
           - development/testing.md
@@ -184,7 +189,9 @@ nav:
       - Visualization: getting-started/viz.md
   - Architecture:
       - Overview: architecture/overview.md
+      - Swarm Pipeline: architecture/swarm.md
       - Tenets: architecture/tenets.md
+      - Hook System: architecture/hooks.md
       - TUI & Phases: architecture/tui-phases.md
   - Tools:
       - Overview: tools/overview.md
@@ -202,6 +209,22 @@ nav:
       - Graph Storage: tools/storage.md
   - Security:
       - Overview: security/overview.md
+  - Troubleshooting: troubleshooting.md
+  - FAQ: faq.md
+  - ADRs:
+      - Overview: adr/README.md
+      - "0001: Strands Agents": adr/0001-strands-agents-framework.md
+      - "0002: NetworkX Code Graph": adr/0002-networkx-multi-layer-code-graph.md
+      - "0003: AG-UI (superseded)": adr/0003-ag-ui-event-streaming.md
+      - "0004: FastMCP Server": adr/0004-fastmcp-v3-server.md
+      - "0005: LSP Fallback Chains": adr/0005-lsp-fallback-chains.md
+      - "0006: Security Shell": adr/0006-security-hardened-shell.md
+      - "0007: OpenSpec": adr/0007-openspec-spec-driven-development.md
+      - "0008: BM25 Search": adr/0008-bm25-ranked-text-search.md
+      - "0009: KuzuDB Backend": adr/0009-kuzudb-persistent-graph-backend.md
+      - "0010: Multi-Repo Registry": adr/0010-multi-repo-registry.md
+      - "0011: Deterministic Indexer": adr/0011-deterministic-indexer.md
+      - "0012: Swarm Pipeline": adr/0012-strands-swarm-multi-agent.md
   - Code Reference: reference/
   - Development:
       - Contributing: development/guide.md

@@ -26,33 +26,42 @@ uv run pytest --cov=src/code_context_agent
 
 ```
 tests/
-├── test_hooks.py                  # HookProvider tests (incl. FailFastHook)
-├── test_prompts.py                # Prompt rendering tests
-├── test_prompts_mode.py           # Mode-aware prompt tests (v7)
-├── test_config_mode.py            # AnalysisMode + full settings tests (v7)
-├── test_cli.py                    # CLI helper function tests
-├── test_cli_full.py               # --full mode CLI tests (v7)
+├── test_hooks.py                     # HookProvider tests (incl. FailFastHook, SwarmDisplayHook)
+├── test_prompts.py                   # Prompt rendering tests
+├── test_prompts_mode.py              # Mode-aware prompt tests
+├── test_config_mode.py               # AnalysisMode + full settings tests
+├── test_cli.py                       # CLI helper function tests
+├── test_cli_full.py                  # --full mode CLI tests
+├── test_indexer.py                   # Deterministic indexer pipeline tests
+├── test_viz.py                       # Web visualization tests
 ├── agent/
-│   └── test_runner.py             # Analysis runner tests
+│   └── test_runner.py                # Analysis runner tests (Swarm execution)
 ├── consumer/
-│   ├── test_phases.py             # Phase detection tests (v7)
-│   ├── test_discovery.py          # Discovery event tests (v7)
-│   ├── test_state_v7.py           # Phase/discovery state tests (v7)
-│   └── test_rich_consumer.py      # Rich consumer TUI tests (v7)
+│   ├── test_phases.py                # Phase detection tests
+│   ├── test_discovery.py             # Discovery event tests
+│   ├── test_state_v7.py              # Phase/discovery state tests
+│   └── test_rich_consumer.py         # Rich consumer TUI tests
+├── mcp/
+│   ├── test_hints.py                 # MCP tool next-step hints tests
+│   └── test_registry.py              # Multi-repo registry tests
 ├── models/
-│   └── test_output.py             # Output model tests (incl. PhaseTimingItem)
+│   └── test_output.py                # Output model tests
 └── tools/
-    ├── test_discovery.py          # Discovery tool tests
-    ├── test_git.py                # Git tool tests
-    ├── test_shell_security.py     # Shell security enforcement tests
-    └── graph/
-        ├── test_adapters.py       # Graph adapter tests
-        ├── test_analysis.py       # Graph analysis tests
-        ├── test_model.py          # Graph model tests
-        └── test_tools.py          # Graph tool tests
+    ├── test_discovery.py             # Discovery tool tests
+    ├── test_git.py                   # Git tool tests
+    ├── test_shell_security.py        # Shell security enforcement tests
+    ├── graph/
+    │   ├── test_adapters.py          # Graph adapter tests
+    │   ├── test_analysis.py          # Graph analysis tests (blast radius, diff impact)
+    │   ├── test_frameworks.py        # Framework detection tests
+    │   ├── test_model.py             # Graph model tests
+    │   ├── test_storage.py           # KuzuDB storage backend tests
+    │   └── test_tools.py             # Graph tool tests
+    └── search/
+        └── test_bm25.py             # BM25 ranked search tests
 ```
 
-The test suite covers models, tools, graph analysis, prompt rendering, phase detection, TUI rendering, CLI flags, and security enforcement. Run `uv run pytest` to see the current count (285 as of v7.0.0).
+The test suite covers models, tools, graph analysis, prompt rendering, phase detection, TUI rendering, CLI flags, and security enforcement. Run `uv run pytest` to see the current count (373 as of v8.0.0).
 
 ## Configuration
 
