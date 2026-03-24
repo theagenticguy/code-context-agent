@@ -1,3 +1,9 @@
+## v8.0.1 (2026-03-24)
+
+### Fix
+
+- auto-detect tsserver path and fix jscpd clone detection (#16)
+
 ## v8.0.0 (2026-03-24)
 
 ### Feat
