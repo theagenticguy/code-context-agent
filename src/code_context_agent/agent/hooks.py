@@ -20,6 +20,39 @@ from strands.hooks import (
 
 _MAX_OUTPUT_SIZE = 100_000
 
+# Reasoning prompts injected after key analysis tools to force LLM interpretation
+_REASONING_PROMPTS: dict[str, str] = {
+    "code_graph_analyze": (
+        "[REASONING CHECKPOINT] Before calling the next tool, interpret these graph results. "
+        "What structural pattern do they reveal? Which files appear as bottlenecks or foundations? "
+        "How does this change your understanding of the architecture?"
+    ),
+    "code_graph_explore": (
+        "[REASONING CHECKPOINT] What does this exploration reveal about the code structure? "
+        "Are there unexpected clusters, isolated components, or surprising dependency directions?"
+    ),
+    "git_hotspots": (
+        "[REASONING CHECKPOINT] Which high-churn files overlap with structurally central files from graph analysis? "
+        "High churn + high centrality = fragile bottleneck. Note any files that are hot but structurally peripheral "
+        "(may indicate config thrash or generated code)."
+    ),
+    "git_files_changed_together": (
+        "[REASONING CHECKPOINT] Do these co-change patterns match the static dependency graph? "
+        "Files that change together WITHOUT a static dependency edge indicate an implicit coupling "
+        "that an AI coding assistant must know about."
+    ),
+    "git_blame_summary": (
+        "[REASONING CHECKPOINT] What does the ownership distribution reveal? "
+        "Single-author files with high centrality = bus factor risk. "
+        "Many-author files with complex logic = coordination risk."
+    ),
+    "read_file_bounded": (
+        "[REASONING CHECKPOINT] Now that you have read this code, compare what you see against "
+        "what the graph metrics predicted. Does the code complexity match its structural importance? "
+        "What domain invariants does this file maintain? What would break if it were changed naively?"
+    ),
+}
+
 
 class FullModeToolError(RuntimeError):
     """Raised by FailFastHook when a critical tool returns an error in full mode."""
@@ -79,6 +112,40 @@ class ToolEfficiencyHook(HookProvider):
                     if pattern in command:
                         logger.info(f"Shell command '{command[:50]}' could use {alternative} instead")
                         break
+
+
+class ReasoningCheckpointHook(HookProvider):
+    """Hook that enriches key tool results with reasoning prompts.
+
+    After analysis tools return results, appends a reasoning checkpoint
+    that asks the model to interpret the data before proceeding. This
+    forces the LLM to reason over combined signals rather than just
+    collecting tool outputs.
+    """
+
+    def register_hooks(self, registry: HookRegistry, **kwargs: Any) -> None:
+        """Register reasoning checkpoint callback."""
+        registry.add_callback(AfterToolCallEvent, self._inject_reasoning_prompt)
+
+    def _inject_reasoning_prompt(self, event: AfterToolCallEvent, **kwargs: Any) -> None:
+        """Append reasoning prompt to tool results for key analysis tools."""
+        tool_name = event.tool_use.get("name", "")
+
+        prompt = _REASONING_PROMPTS.get(tool_name)
+        if not prompt:
+            return
+
+        result = event.result
+        if not result or result.get("status") == "error":
+            return
+
+        content = result.get("content", [])
+        if not content:
+            return
+
+        # Append reasoning checkpoint as additional text content
+        content.append({"text": f"\n\n{prompt}"})
+        logger.debug(f"Reasoning checkpoint injected for {tool_name}")
 
 
 class FailFastHook(HookProvider):
@@ -145,6 +212,7 @@ def create_all_hooks(*, full_mode: bool = False) -> list[HookProvider]:
     hooks: list[HookProvider] = [
         OutputQualityHook(),
         ToolEfficiencyHook(),
+        ReasoningCheckpointHook(),
     ]
     if full_mode:
         hooks.append(FailFastHook())

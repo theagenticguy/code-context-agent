@@ -164,6 +164,16 @@ class Settings(BaseSettings):
         description="Enable context7 MCP server for library documentation lookup during analysis",
     )
 
+    # Reasoning effort level for the analysis agent
+    reasoning_effort: Literal["low", "medium", "high", "max"] = Field(
+        default="high",
+        description="Reasoning effort level: 'high' (default standard), 'max' (full mode default, Opus only)",
+    )
+    full_reasoning_effort: Literal["low", "medium", "high", "max"] = Field(
+        default="max",
+        description="Reasoning effort level for --full mode (default: 'max', Opus 4.6 only)",
+    )
+
     # Graph storage backend
     graph_backend: str = Field(
         default="networkx",

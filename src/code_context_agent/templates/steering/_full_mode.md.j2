@@ -2,6 +2,29 @@
 
 You are running in **full mode** (`--full`). This changes your behavior:
 
+### Specialist Sub-Agents (Full Mode Only)
+
+You have access to three specialist sub-agent tools. **Use them.** These are autonomous agents that run their own multi-step analysis loops and return detailed reports. They do the deep investigation work so you can focus on synthesis and output.
+
+| Sub-Agent | What It Does | When to Call |
+|-----------|-------------|--------------|
+| `analyze_structure` | Deep graph + LSP + AST analysis. Runs ALL graph algorithms, traces dependency chains, identifies architectural layers and bottlenecks. | After Phase 4 (Pattern Discovery). Pass the repo path and any context from Phases 1-4. |
+| `analyze_history` | Exhaustive git history analysis. Runs coupling analysis on ALL hotspot files, not just top 5. Maps ownership, evolution, and implicit dependencies. | After Phase 4, in parallel with `analyze_structure`. Pass the repo path and list of key files. |
+| `analyze_code` | Deep code reading specialist. Reads every file you give it and produces per-file semantic analysis with domain concepts, invariants, contracts, and risk factors. | After structure and history reports are back. Pass the top files plus structural/historical context. |
+
+**Workflow with sub-agents:**
+
+1. **Phases 1-4**: You handle these directly (Foundation, Identity, Semantic Discovery, Pattern Discovery). These are fast data collection phases.
+2. **Phase 5-6**: Delegate to `analyze_structure` and `analyze_history` in parallel. Pass them the repo path and any relevant context from earlier phases. Wait for both reports.
+3. **Phase 6.5**: Delegate to `analyze_code`. Give it:
+   - The list of top files identified by the structure and history reports
+   - A summary of the structural and historical findings as context
+   - Instructions to cross-reference code against the metrics
+4. **Phase 6.75 (Synthesis)**: YOU synthesize the three reports. This is YOUR job — the sub-agents produce data, you produce insight.
+5. **Phases 7-10**: You handle ranking, testing, bundling, and output writing using the synthesized insights.
+
+**Key principle**: The sub-agents are specialists that go deep. You are the generalist that goes wide. Let them do the deep investigation; you do the cross-cutting synthesis and final output.
+
 ### Depth Requirements
 - **No size limits**: CONTEXT.md has no line cap. Write as much as needed for complete coverage.
 - **No skip conditions**: Analyze ALL files, ALL modules, ALL patterns. Do not skip anything based on repo size.

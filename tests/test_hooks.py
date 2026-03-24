@@ -8,6 +8,7 @@ from code_context_agent.agent.hooks import (
     FailFastHook,
     FullModeToolError,
     OutputQualityHook,
+    ReasoningCheckpointHook,
     ToolEfficiencyHook,
     create_all_hooks,
 )
@@ -50,10 +51,10 @@ class TestCreateAllHooks:
         hooks = create_all_hooks()
         assert isinstance(hooks, list)
 
-    def test_returns_two_hooks(self) -> None:
-        """Test that create_all_hooks returns 2 hook providers."""
+    def test_returns_three_hooks(self) -> None:
+        """Test that create_all_hooks returns 3 hook providers."""
         hooks = create_all_hooks()
-        assert len(hooks) == 2  # noqa: PLR2004
+        assert len(hooks) == 3  # noqa: PLR2004
 
     def test_contains_expected_types(self) -> None:
         """Test that the hooks are the expected types."""
@@ -61,17 +62,18 @@ class TestCreateAllHooks:
         types = {type(h) for h in hooks}
         assert OutputQualityHook in types
         assert ToolEfficiencyHook in types
+        assert ReasoningCheckpointHook in types
 
 
-def _make_after_event(tool_name: str, result_str: str):
+def _make_after_event(tool_name: str, result: str | dict):
     """Create a minimal AfterToolCallEvent-like object for testing."""
 
     class FakeEvent:
-        def __init__(self, tool_name, result_str):
+        def __init__(self, tool_name, result):
             self.tool_use = {"name": tool_name}
-            self.result = result_str
+            self.result = result
 
-    return FakeEvent(tool_name, result_str)
+    return FakeEvent(tool_name, result)
 
 
 class TestFullModeToolError:
@@ -129,16 +131,79 @@ class TestFailFastHook:
         hook._check_for_error(event)  # Should not raise
 
 
-class TestCreateAllHooksWithMode:
-    def test_standard_mode_returns_two_hooks(self):
-        hooks = create_all_hooks()
-        assert len(hooks) == 2  # noqa: PLR2004
+class TestReasoningCheckpointHook:
+    """Tests for ReasoningCheckpointHook."""
 
-    def test_full_mode_returns_three_hooks(self):
-        hooks = create_all_hooks(full_mode=True)
+    def test_instantiates(self):
+        hook = ReasoningCheckpointHook()
+        assert hook is not None
+
+    def test_has_register_hooks(self):
+        hook = ReasoningCheckpointHook()
+        assert hasattr(hook, "register_hooks")
+
+    def test_injects_prompt_for_graph_analyze(self):
+        hook = ReasoningCheckpointHook()
+        event = _make_after_event(
+            "code_graph_analyze",
+            {"status": "success", "content": [{"text": json.dumps({"hotspots": [{"name": "foo"}]})}]},
+        )
+        hook._inject_reasoning_prompt(event)
+        # Should have appended a reasoning checkpoint text block
+        assert len(event.result["content"]) == 2  # noqa: PLR2004
+        assert "REASONING CHECKPOINT" in event.result["content"][1]["text"]
+
+    def test_injects_prompt_for_git_hotspots(self):
+        hook = ReasoningCheckpointHook()
+        event = _make_after_event(
+            "git_hotspots",
+            {"status": "success", "content": [{"text": "some hotspot data here, enough length to pass"}]},
+        )
+        hook._inject_reasoning_prompt(event)
+        assert len(event.result["content"]) == 2  # noqa: PLR2004
+        assert "REASONING CHECKPOINT" in event.result["content"][1]["text"]
+
+    def test_no_prompt_for_untracked_tool(self):
+        hook = ReasoningCheckpointHook()
+        event = _make_after_event(
+            "create_file_manifest",
+            {"status": "success", "content": [{"text": "some data"}]},
+        )
+        hook._inject_reasoning_prompt(event)
+        assert len(event.result["content"]) == 1
+
+    def test_no_prompt_for_error_result(self):
+        hook = ReasoningCheckpointHook()
+        event = _make_after_event(
+            "code_graph_analyze",
+            {"status": "error", "content": [{"text": "failed"}]},
+        )
+        hook._inject_reasoning_prompt(event)
+        assert len(event.result["content"]) == 1
+
+    def test_no_prompt_for_empty_content(self):
+        hook = ReasoningCheckpointHook()
+        event = _make_after_event("code_graph_analyze", {"status": "success", "content": []})
+        hook._inject_reasoning_prompt(event)
+        assert len(event.result["content"]) == 0
+
+
+class TestCreateAllHooksWithMode:
+    def test_standard_mode_returns_three_hooks(self):
+        hooks = create_all_hooks()
         assert len(hooks) == 3  # noqa: PLR2004
+
+    def test_full_mode_returns_four_hooks(self):
+        hooks = create_all_hooks(full_mode=True)
+        assert len(hooks) == 4  # noqa: PLR2004
         assert any(isinstance(h, FailFastHook) for h in hooks)
 
     def test_standard_mode_no_failfast(self):
         hooks = create_all_hooks(full_mode=False)
         assert not any(isinstance(h, FailFastHook) for h in hooks)
+
+    def test_always_has_reasoning_checkpoint(self):
+        hooks_standard = create_all_hooks(full_mode=False)
+        hooks_full = create_all_hooks(full_mode=True)
+        assert any(isinstance(h, ReasoningCheckpointHook) for h in hooks_standard)
+        assert any(isinstance(h, ReasoningCheckpointHook) for h in hooks_full)
