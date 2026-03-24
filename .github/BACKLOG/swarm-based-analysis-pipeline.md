@@ -11,7 +11,7 @@ shipped_date: 2026-03-24
 
 The current agentic analysis produces a 62-node graph in 4 minutes. The deterministic indexer produces a 6,751-node graph in 30 seconds. The agent rebuilds what the indexer already computed, then skips the deep reasoning that justifies using an LLM at all.
 
-Manual investigation with 3 parallel specialist agents (124 total tool calls, ~5 min each) produced dramatically richer analysis: exact coupling rates, bus factor risks, per-method invariant analysis, architectural epoch mapping, and actual bugs found in the code.
+Manual investigation with 3 parallel specialist agents (124 total tool calls, ~5 min each) produced richer analysis: exact coupling rates, bus factor risks, per-method invariant analysis, architectural epoch mapping, and actual bugs found in the code.
 
 AG-UI adds complexity for no CI/CD value. The primary use case is `--quiet` with structured logs.
 
