@@ -1,3 +1,9 @@
+## v8.1.0 (2026-03-26)
+
+### Feat
+
+- **ui**: Pure HTML/CSS/JS visualizer with neobrutalism design (#18)
+
 ## v8.0.1 (2026-03-24)
 
 ### Fix
