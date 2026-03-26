@@ -403,7 +403,7 @@ wheels = [
 
 [[package]]
 name = "code-context-agent"
-version = "8.0.1"
+version = "8.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "cyclopts" },
