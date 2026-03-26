@@ -8,6 +8,7 @@ import { showTooltip, hideTooltip } from '../components/tooltip.js';
 import { edgeColor, nodeColor } from '../colors.js';
 import { getDependencyChain, shortPath } from '../graph-utils.js';
 import { DEPENDENCY_EDGE_TYPES } from '../colors.js';
+import { escapeHtml } from '../escape.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -215,8 +216,8 @@ export function render(container, appStore) {
                        flex items-center gap-2 border-b border-border/20 last:border-b-0
                        transition-colors">
           <span class="w-2 h-2 rounded-full flex-shrink-0" style="background: ${nodeColor(n.node_type)}"></span>
-          <span class="font-heading truncate-line">${n.name}</span>
-          <span class="text-fg/40 ml-auto truncate-line max-w-[200px]">${shortPath(n.file_path)}</span>
+          <span class="font-heading truncate-line">${escapeHtml(n.name)}</span>
+          <span class="text-fg/40 ml-auto truncate-line max-w-[200px]">${escapeHtml(shortPath(n.file_path))}</span>
         </button>`
       )
       .join('');

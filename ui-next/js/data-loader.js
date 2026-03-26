@@ -271,43 +271,51 @@ export function loadDemoData() {
     links,
   };
 
-  // --- Minimal AnalysisResult ---
+  // --- Minimal AnalysisResult (matches models/output.py schema) ---
   const analysisResult = {
     status: 'completed',
     summary: 'Demo analysis of a small web application with authentication and database layers.',
     total_files_analyzed: 4,
     business_logic_items: [
-      { name: 'User Authentication', description: 'Login flow validates credentials and creates sessions.', file_path: 'app/auth/auth.py', confidence: 0.92 },
-      { name: 'Data Persistence', description: 'User model manages saving and validation against the database.', file_path: 'app/models.py', confidence: 0.88 },
-      { name: 'Session Management', description: 'Sessions are refreshed on activity and tied to user accounts.', file_path: 'app/models.py', confidence: 0.80 },
+      { rank: 1, name: 'AuthProvider.login', role: 'Validates user credentials and creates authenticated sessions', location: 'app/auth/auth.py:15', score: 0.92, category: 'auth' },
+      { rank: 2, name: 'User.save', role: 'Persists user records to the database with validation', location: 'app/models.py:30', score: 0.88, category: 'db' },
+      { rank: 3, name: 'User.validate', role: 'Enforces data integrity rules before persistence', location: 'app/models.py:20', score: 0.84, category: 'validation' },
+      { rank: 4, name: 'Session.refresh', role: 'Extends session lifetime on user activity', location: 'app/models.py:55', score: 0.80, category: 'workflows' },
+      { rank: 5, name: 'create_app', role: 'Application factory wiring auth and DB providers', location: 'app/main.py:38', score: 0.75, category: 'workflows' },
     ],
     risks: [
-      { title: 'Singleton DB Connection', description: 'get_db uses a module-level singleton that may cause connection pool exhaustion under concurrency.', severity: 'high', file_path: 'app/db/db.py', line: 8 },
-      { title: 'Hardcoded Secret Key', description: 'SECRET_KEY is defined as a variable instead of being loaded from environment.', severity: 'critical', file_path: 'app/auth/auth.py', line: 3 },
+      { description: 'get_db uses a module-level singleton that may cause connection pool exhaustion under concurrency.', severity: 'high', location: 'app/db/db.py:8', mitigation: 'Use a connection pool with per-request scoping instead of a module-level singleton.' },
+      { description: 'SECRET_KEY is hardcoded as a module variable instead of being loaded from environment or secrets manager.', severity: 'critical', location: 'app/auth/auth.py:3', mitigation: 'Load SECRET_KEY from environment variables or AWS Secrets Manager at startup.' },
+      { description: 'No rate limiting on the login endpoint allows brute-force credential attacks.', severity: 'medium', location: 'app/auth/auth.py:15', mitigation: 'Add exponential backoff or token-bucket rate limiting to AuthProvider.login.' },
     ],
     generated_files: [
-      { name: 'CONTEXT.md', description: 'Narrative context document' },
-      { name: 'CONTEXT.bundle.md', description: 'Bundled context for LLMs' },
+      { path: 'CONTEXT.md', line_count: 142, description: 'Narrative context document' },
+      { path: 'CONTEXT.bundle.md', line_count: 310, description: 'Bundled context for LLMs' },
+      { path: 'CONTEXT.signatures.md', line_count: 48, description: 'Public API signatures' },
     ],
     graph_stats: {
-      total_nodes: nodes.length,
-      total_edges: links.length,
-      connected_components: 1,
+      node_count: nodes.length,
+      edge_count: links.length,
+      module_count: 3,
+      hotspot_count: 2,
     },
     refactoring_candidates: [
-      { name: 'Extract DB configuration', description: 'Move DB_URL and connection setup to a dedicated config module.', file_path: 'app/db/db.py', priority: 'medium' },
-      { name: 'AuthProvider method size', description: 'AuthProvider.login is 25 lines and handles validation, session creation, and logging. Split into smaller methods.', file_path: 'app/auth/auth.py', priority: 'low' },
+      { type: 'extract_helper', pattern: 'DB connection setup duplicated across get_db and migrate', files: ['app/db/db.py:8', 'app/db/db.py:22'], occurrence_count: 2, duplicated_lines: 6, score: 7.5 },
+      { type: 'code_smell', pattern: 'AuthProvider.login handles validation, session creation, and logging in a single method', files: ['app/auth/auth.py:15'], occurrence_count: 1, duplicated_lines: 0, score: 5.2 },
+      { type: 'dead_code', pattern: 'Unused import of os.path in db module', files: ['app/db/db.py:1'], occurrence_count: 1, duplicated_lines: 0, score: 1.0 },
     ],
     code_health: {
-      overall_score: 72,
-      maintainability: 68,
-      complexity: 45,
-      test_coverage: null,
+      duplication_percentage: 8.3,
+      total_clone_groups: 2,
+      unused_symbol_count: 1,
+      code_smell_count: 3,
     },
     analysis_mode: 'demo',
     phase_timings: [
-      { phase: 'graph_construction', duration_ms: 0 },
-      { phase: 'analysis', duration_ms: 0 },
+      { phase: 1, name: 'Structure Analysis', duration_seconds: 12.4, tool_count: 18 },
+      { phase: 2, name: 'History Analysis', duration_seconds: 8.7, tool_count: 11 },
+      { phase: 3, name: 'Code Reading', duration_seconds: 45.2, tool_count: 37 },
+      { phase: 4, name: 'Synthesis', duration_seconds: 22.1, tool_count: 9 },
     ],
   };
 

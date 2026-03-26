@@ -3,6 +3,7 @@
 
 import { store } from '../store.js';
 import { renderMarkdownWithIds, extractTOC } from '../markdown.js';
+import { escapeHtml } from '../escape.js';
 
 /**
  * Render the narrative view into the given container.
@@ -325,13 +326,3 @@ export function render(container, _store) {
   };
 }
 
-/**
- * Escape HTML entities in a string.
- * @param {string} str
- * @returns {string}
- */
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-}

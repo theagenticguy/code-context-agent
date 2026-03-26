@@ -5,6 +5,7 @@ import { statCard } from '../components/stat-card.js';
 import { barChart } from '../components/bar-chart.js';
 import { NODE_COLORS, nodeColor } from '../colors.js';
 import { computeDegreeCentrality, findEntryPoints, shortPath } from '../graph-utils.js';
+import { escapeHtml } from '../escape.js';
 
 /**
  * Render the hotspots / centrality analysis view.
@@ -285,10 +286,10 @@ export function render(container, store) {
     .map(
       (f) => `
       <tr class="border-b border-border/30 hover:bg-main/5">
-        <td class="py-1.5 pr-4 truncate-line max-w-xs" title="${f.filePath}">${shortPath(f.filePath)}</td>
+        <td class="py-1.5 pr-4 truncate-line max-w-xs" title="${escapeHtml(f.filePath)}">${escapeHtml(shortPath(f.filePath))}</td>
         <td class="py-1.5 pr-4 text-right font-heading">${f.symbolCount}</td>
         <td class="py-1.5 pr-4 text-right">${f.avgDegree}</td>
-        <td class="py-1.5 text-fg/70">${f.topSymbol}</td>
+        <td class="py-1.5 text-fg/70">${escapeHtml(f.topSymbol)}</td>
       </tr>`
     )
     .join('');

@@ -1,6 +1,8 @@
 // stat-card.js — Statistic card with optional trend badge and sparkline
 // Returns an HTML string. Caller inserts via innerHTML.
 
+import { escapeHtml } from '../escape.js';
+
 /**
  * Build an inline SVG sparkline from an array of numbers.
  * @param {number[]} data
@@ -67,10 +69,10 @@ export function statCard({ title, value, subtitle, color, trend, sparkData }) {
   return `
     <div class="rounded-base border-2 border-border shadow-neo bg-bg2 p-4 font-base">
       <div class="flex items-center justify-between">
-        <span class="text-xs text-fg/60 uppercase tracking-wide">${title}</span>
+        <span class="text-xs text-fg/60 uppercase tracking-wide">${escapeHtml(title)}</span>
         ${trendBadge}
       </div>
-      <div class="text-2xl font-heading mt-1"${color ? ` style="color: ${color}"` : ''}>${value}</div>
+      <div class="text-2xl font-heading mt-1"${color ? ` style="color: ${color}"` : ''}>${escapeHtml(String(value))}</div>
       ${subtitleHtml}
       ${sparkHtml}
     </div>`;

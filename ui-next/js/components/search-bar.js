@@ -1,6 +1,9 @@
 // search-bar.js — Debounced search input with keyboard hint
 // Returns an HTML string. Use attachSearchListeners() to wire up interactivity.
 
+let cmdKRegistered = false;
+let debounceTimer = null;
+
 /**
  * Render a search bar input.
  *
@@ -36,11 +39,9 @@ export function attachSearchListeners(containerId, onSearch) {
   const input = container.querySelector('[data-search-input]');
   if (!input) return;
 
-  let timer = null;
-
   input.addEventListener('input', () => {
-    clearTimeout(timer);
-    timer = setTimeout(() => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
       onSearch(input.value.trim());
     }, 200);
   });
@@ -49,18 +50,21 @@ export function attachSearchListeners(containerId, onSearch) {
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       input.value = '';
-      clearTimeout(timer);
+      clearTimeout(debounceTimer);
       onSearch('');
       input.blur();
     }
   });
 
-  // Global Cmd+K / Ctrl+K focuses the search bar
-  document.addEventListener('keydown', (e) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-      e.preventDefault();
-      input.focus();
-      input.select();
-    }
-  });
+  // Global Cmd+K / Ctrl+K focuses the search bar (register only once)
+  if (!cmdKRegistered) {
+    document.addEventListener('keydown', (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        input.focus();
+        input.select();
+      }
+    });
+    cmdKRegistered = true;
+  }
 }

@@ -4,17 +4,7 @@
 
 import { store } from '../store.js';
 import { renderMarkdownWithIds, extractTOC } from '../markdown.js';
-
-/**
- * Escape HTML entities in a string.
- * @param {string} str
- * @returns {string}
- */
-function escapeHtml(str) {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-}
+import { escapeHtml } from '../escape.js';
 
 /**
  * Render the bundles view into the given container.

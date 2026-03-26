@@ -1,6 +1,8 @@
 // bar-chart.js — Horizontal bar chart using pure HTML/CSS
 // Returns an HTML string. No D3 or SVG required.
 
+import { escapeHtml } from '../escape.js';
+
 /**
  * Render a horizontal bar chart.
  *
@@ -34,7 +36,7 @@ export function barChart({ data, labelKey, valueKey, colorFn, maxBars = 10, heig
 
       return `
         <div class="flex items-center gap-2 text-xs">
-          <span class="w-28 truncate-line text-fg/70 font-base" title="${label}">${label}</span>
+          <span class="w-28 truncate-line text-fg/70 font-base" title="${escapeHtml(label)}">${escapeHtml(label)}</span>
           <div class="flex-1 h-5 rounded-base border border-border/30 bg-bg overflow-hidden">
             <div class="h-full rounded-base transition-all duration-300" style="width: ${pct.toFixed(1)}%; background: ${color}"></div>
           </div>

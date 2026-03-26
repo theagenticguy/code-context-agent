@@ -5,6 +5,7 @@ import { store } from '../store.js';
 import { statCard } from '../components/stat-card.js';
 import { gaugeChart } from '../components/gauge.js';
 import { SEVERITY_COLORS } from '../colors.js';
+import { escapeHtml } from '../escape.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -63,7 +64,7 @@ function renderSummary(result) {
     : result.status === 'partial' ? '#fbbf24'
     : '#f87171';
 
-  const statusLabel = result.status.charAt(0).toUpperCase() + result.status.slice(1);
+  const statusLabel = (result.status || 'unknown').charAt(0).toUpperCase() + (result.status || 'unknown').slice(1);
 
   const modeLabel = (result.analysis_mode || 'standard').charAt(0).toUpperCase()
     + (result.analysis_mode || 'standard').slice(1);
@@ -77,7 +78,7 @@ function renderSummary(result) {
           ${badge(modeLabel, 'var(--main)', 'var(--main-foreground)')}
           ${badge(result.total_files_analyzed + ' files', '#e2e8f0', '#1e293b')}
         </div>
-        <p class="text-sm text-fg/80 leading-relaxed font-base">${result.summary || 'No summary available.'}</p>
+        <p class="text-sm text-fg/80 leading-relaxed font-base">${escapeHtml(result.summary || 'No summary available.')}</p>
       </div>
     </section>`;
 }
@@ -99,7 +100,7 @@ function renderCandidate(candidate, maxScore) {
 
   const fileList = (candidate.files || [])
     .slice(0, 5)
-    .map((f) => `<span class="text-xs text-fg/60 font-mono truncate-line block" title="${f}">${truncatePath(f)}</span>`)
+    .map((f) => `<span class="text-xs text-fg/60 font-mono truncate-line block" title="${escapeHtml(f)}">${escapeHtml(truncatePath(f))}</span>`)
     .join('');
 
   const moreFiles = (candidate.files || []).length > 5
@@ -110,9 +111,9 @@ function renderCandidate(candidate, maxScore) {
     <div class="rounded-base border-2 border-border shadow-neo bg-bg2 p-4 hover:translate-x-shadow-x hover:translate-y-shadow-y hover:shadow-none transition-all duration-100">
       <div class="flex items-center gap-2 mb-2 flex-wrap">
         ${badge(label, color)}
-        <span class="text-xs text-fg/50 ml-auto font-heading">score: ${candidate.score.toFixed(1)}</span>
+        <span class="text-xs text-fg/50 ml-auto font-heading">score: ${(candidate.score ?? 0).toFixed(1)}</span>
       </div>
-      <p class="text-sm font-base text-fg/90 mb-2">${candidate.pattern}</p>
+      <p class="text-sm font-base text-fg/90 mb-2">${escapeHtml(candidate.pattern)}</p>
       <div class="mb-3">
         <div class="h-3 rounded-base border border-border/30 bg-bg overflow-hidden">
           <div class="h-full rounded-base transition-all duration-300" style="width: ${barPct.toFixed(1)}%; background: ${color}"></div>

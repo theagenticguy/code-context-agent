@@ -8,6 +8,7 @@ import { searchBar, attachSearchListeners } from '../components/search-bar.js';
 import { showTooltip, hideTooltip } from '../components/tooltip.js';
 import { NODE_COLORS, EDGE_COLORS, nodeColor, edgeColor, NODE_TYPE_LABELS } from '../colors.js';
 import { filterGraph, shortPath } from '../graph-utils.js';
+import { escapeHtml } from '../escape.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -473,7 +474,7 @@ export function render(container, _store) {
     const edgeListItem = (nodeId, edgeType) => {
       const n = currentNodeMap.get(nodeId);
       const name = n ? n.name : nodeId;
-      return `<li class="flex items-center gap-1.5 text-xs text-fg/70 truncate-line" title="${name}">${edgeBadge(edgeType)} ${name}</li>`;
+      return `<li class="flex items-center gap-1.5 text-xs text-fg/70 truncate-line" title="${escapeHtml(name)}">${edgeBadge(edgeType)} ${escapeHtml(name)}</li>`;
     };
 
     const incomingHtml = incoming.map((l) => {
@@ -495,11 +496,11 @@ export function render(container, _store) {
       <div class="space-y-3">
         <div>
           <button id="graph-detail-close" class="float-right text-xs text-fg/40 hover:text-fg cursor-pointer p-1" title="Close">&times;</button>
-          <h3 class="font-heading text-sm text-fg leading-tight pr-6">${d.name}</h3>
+          <h3 class="font-heading text-sm text-fg leading-tight pr-6">${escapeHtml(d.name)}</h3>
           <span class="inline-block mt-1 text-xs px-1.5 py-0.5 rounded-base border border-border" style="color:${nodeColor(d.node_type)}">
-            ${NODE_TYPE_LABELS[d.node_type] || d.node_type}
+            ${escapeHtml(NODE_TYPE_LABELS[d.node_type] || d.node_type)}
           </span>
-          ${d.file_path ? `<p class="text-xs text-fg/60 mt-2 break-all">${d.file_path}${lineRange ? ':' + lineRange : ''}</p>` : ''}
+          ${d.file_path ? `<p class="text-xs text-fg/60 mt-2 break-all">${escapeHtml(d.file_path)}${lineRange ? ':' + lineRange : ''}</p>` : ''}
         </div>
 
         <div>

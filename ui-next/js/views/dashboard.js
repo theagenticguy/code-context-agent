@@ -8,6 +8,7 @@ import { barChart } from '../components/bar-chart.js';
 import { gaugeChart } from '../components/gauge.js';
 import { NODE_COLORS, EDGE_COLORS, SEVERITY_COLORS, NODE_TYPE_LABELS } from '../colors.js';
 import { shortPath } from '../graph-utils.js';
+import { escapeHtml } from '../escape.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -214,7 +215,7 @@ function riskSummarySection(risks) {
       (risk) => `
       <div class="flex items-start gap-2 py-2 border-b border-border/20 last:border-b-0">
         ${severityBadge(risk.severity || 'low')}
-        <p class="text-xs text-fg/80 font-base leading-relaxed">${risk.description || 'No description'}</p>
+        <p class="text-xs text-fg/80 font-base leading-relaxed">${escapeHtml(risk.description || 'No description')}</p>
       </div>`
     )
     .join('');
@@ -241,9 +242,9 @@ function businessLogicTable(items) {
       (item) => `
       <tr class="border-b border-border/20 hover:bg-bg/50 transition-colors">
         <td class="py-2 px-3 text-xs font-heading text-fg/70 text-center">${item.rank ?? '--'}</td>
-        <td class="py-2 px-3 text-xs font-heading text-fg">${item.name || '--'}</td>
-        <td class="py-2 px-3 text-xs font-base text-fg/70">${item.role || '--'}</td>
-        <td class="py-2 px-3 text-xs font-base text-fg/50" title="${item.location || ''}">${shortPath(item.location || '')}</td>
+        <td class="py-2 px-3 text-xs font-heading text-fg">${escapeHtml(item.name || '--')}</td>
+        <td class="py-2 px-3 text-xs font-base text-fg/70">${escapeHtml(item.role || '--')}</td>
+        <td class="py-2 px-3 text-xs font-base text-fg/50" title="${escapeHtml(item.location || '')}">${escapeHtml(shortPath(item.location || ''))}</td>
         <td class="py-2 px-3 text-xs" style="min-width: 100px;">${scoreBar(item.score ?? 0)}</td>
         <td class="py-2 px-3">${categoryBadge(item.category)}</td>
       </tr>`
