@@ -220,10 +220,6 @@ def viz(  # noqa: C901, PLR0915
         bool,
         Parameter(help="Don't auto-open the browser."),
     ] = False,
-    legacy_viz: Annotated[
-        bool,
-        Parameter(help="Use the legacy single-page D3.js visualizer instead of the default multi-view UI."),
-    ] = False,
 ) -> None:
     """Launch an interactive visualization of analysis results.
 
@@ -235,7 +231,6 @@ def viz(  # noqa: C901, PLR0915
     Example:
         $ code-context-agent viz /path/to/repo
         $ code-context-agent viz . --port 9000
-        $ code-context-agent viz . --legacy-viz  # old single-page visualizer
     """
     import http.server
     import socketserver
@@ -250,15 +245,11 @@ def viz(  # noqa: C901, PLR0915
         console.print("Run [cyan]code-context-agent analyze[/cyan] first.")
         raise SystemExit(1)
 
-    # Resolve viz directory — ui-next is the default, legacy is opt-in
-    if legacy_viz:
-        viz_dir = Path(__file__).parent / "viz"
-    else:
-        # ui-next lives at the repo root (sibling to src/)
-        viz_dir = Path(__file__).parent.parent.parent / "ui-next"
-        if not viz_dir.exists():
-            # Fallback: check relative to CWD
-            viz_dir = repo_path / "ui-next"
+    # Resolve viz directory — ui-next lives at the repo root (sibling to src/)
+    viz_dir = Path(__file__).parent.parent.parent / "ui-next"
+    if not viz_dir.exists():
+        # Fallback: check relative to CWD
+        viz_dir = repo_path / "ui-next"
     if not viz_dir.exists():
         console.print("[red]Error:[/red] Visualization files not found.")
         raise SystemExit(1)

@@ -64,7 +64,7 @@ Web Visualization (code-context-agent viz)
 | `src/code_context_agent/tools/graph/frameworks.py` | Framework detection patterns |
 | `src/code_context_agent/indexer.py` | Deterministic index pipeline (no LLM) |
 | `src/code_context_agent/mcp/registry.py` | Multi-repo registry with lazy graph cache |
-| `src/code_context_agent/viz/index.html` | D3.js interactive graph visualization |
+| `ui-next/` | Multi-view web visualizer (10 views, D3.js + Tailwind CSS) |
 | `src/code_context_agent/templates/` | Jinja2 system prompt (system.md.j2 + partials/ + steering/) |
 | `src/code_context_agent/models/output.py` | AnalysisResult, BusinessLogicItem, ArchitecturalRisk |
 

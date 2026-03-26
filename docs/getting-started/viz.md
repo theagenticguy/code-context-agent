@@ -17,8 +17,6 @@ code-context-agent viz . --port 9000
 # Don't auto-open browser
 code-context-agent viz . --no-open
 
-# Use the legacy single-page D3.js visualizer
-code-context-agent viz . --legacy-viz
 ```
 
 ## Views
@@ -82,6 +80,3 @@ The visualizer reads these files from `.code-context/`:
 | `CONTEXT.signatures.md` | Signatures view |
 | `analysis_result.json` | Dashboard statistics, insights |
 
-## Legacy Visualizer
-
-The original single-page D3.js visualizer is still available via `--legacy-viz`. It provides a force-directed graph with hotspot highlighting, module coloring, and a narrative panel. This visualizer is deprecated and will be removed in a future version.
