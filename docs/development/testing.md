@@ -61,7 +61,7 @@ tests/
         └── test_bm25.py             # BM25 ranked search tests
 ```
 
-The test suite covers models, tools, graph analysis, prompt rendering, phase detection, TUI rendering, CLI flags, and security enforcement. Run `uv run pytest` to see the current count (373 as of v8.0.0).
+The test suite covers models, tools, graph analysis, prompt rendering, phase detection, TUI rendering, CLI flags, and security enforcement. Run `uv run pytest` to see the current count.
 
 ## Configuration
 

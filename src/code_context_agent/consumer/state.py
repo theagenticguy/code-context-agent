@@ -45,6 +45,7 @@ class ToolCallState(StrictModel):
     Attributes:
         tool_call_id: Unique identifier for the tool call.
         tool_name: Name of the tool being executed.
+        agent_name: Name of the swarm agent that invoked this tool.
         args_buffer: Accumulated tool arguments (streaming).
         result: Tool execution result (when complete).
         status: Current status ("running", "completed", "error").
@@ -60,6 +61,7 @@ class ToolCallState(StrictModel):
 
     tool_call_id: str
     tool_name: str
+    agent_name: str = ""
     args_buffer: str = ""
     result: Any = None
     status: str = "running"

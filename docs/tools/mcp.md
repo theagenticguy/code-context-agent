@@ -17,10 +17,18 @@ Commodity tools (ripgrep search, LSP symbols, git history, ast-grep) are intenti
 === "HTTP"
 
     ```bash
-    code-context-agent serve --transport http --port 8000
+    code-context-agent serve --transport http --host 0.0.0.0 --port 8000
     ```
 
     Used for networked access by remote MCP clients.
+
+=== "SSE (legacy)"
+
+    ```bash
+    code-context-agent serve --transport sse --port 8000
+    ```
+
+    Legacy transport for older MCP clients.
 
 ## Tools
 
@@ -62,6 +70,8 @@ Runs graph algorithms on a pre-built code graph. Requires `.code-context/code_gr
 | `dependencies` | BFS traversal of transitive dependencies | `node_a` |
 | `triangles` | Tightly-coupled triads | -- |
 | `category` | Nodes in a business logic category | `category` |
+| `flows` | Trace execution flows through the graph | -- |
+| `blast_radius` | BFS blast radius from a node | `node_a` |
 
 ### `explore_code_graph`
 

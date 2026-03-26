@@ -23,6 +23,10 @@ All configuration uses environment variables with the `CODE_CONTEXT_` prefix.
 | `CODE_CONTEXT_DEBUG` | `false` | Enable debug mode for verbose output and additional diagnostics |
 | `CODE_CONTEXT_LOG_LEVEL` | `INFO` | Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL) |
 | `CODE_CONTEXT_OUTPUT_FORMAT` | `rich` | Output format: `rich` (TUI), `json`, or `plain` |
+
+!!! note
+    The `plain` format applies only to the root command output. The `analyze` subcommand accepts `rich` or `json` only.
+
 | `CODE_CONTEXT_GRAPH_BACKEND` | `networkx` | Graph storage backend: `networkx` (in-memory) or `kuzu` (persistent KuzuDB) |
 | `CODE_CONTEXT_REASONING_EFFORT` | `high` | Reasoning effort level for standard mode |
 | `CODE_CONTEXT_FULL_REASONING_EFFORT` | `max` | Reasoning effort level for `--full` mode (Opus 4.6 only) |

@@ -220,17 +220,13 @@ def viz(  # noqa: C901, PLR0915
         bool,
         Parameter(help="Don't auto-open the browser."),
     ] = False,
-    next_ui: Annotated[
-        bool,
-        Parameter(help="Use the next-gen ui-next visualizer instead of the legacy viz."),
-    ] = False,
 ) -> None:
     """Launch an interactive visualization of analysis results.
 
-    Serves a local web UI that displays the code graph, modules,
-    hotspots, dependency chains, and the CONTEXT.md narrative.
+    Serves a local web UI with 10 views: dashboard, graph, modules, hotspots,
+    dependencies, narrative, bundles, insights, signatures, and landing.
 
-    Requires a prior `analyze` run to generate .code-context/ output files.
+    Requires a prior `analyze` or `index` run to generate .code-context/ output files.
 
     Example:
         $ code-context-agent viz /path/to/repo
@@ -249,15 +245,11 @@ def viz(  # noqa: C901, PLR0915
         console.print("Run [cyan]code-context-agent analyze[/cyan] first.")
         raise SystemExit(1)
 
-    # Resolve viz directory
-    if next_ui:
-        # ui-next lives at the repo root (sibling to src/)
-        viz_dir = Path(__file__).parent.parent.parent / "ui-next"
-        if not viz_dir.exists():
-            # Fallback: check relative to CWD
-            viz_dir = repo_path / "ui-next"
-    else:
-        viz_dir = Path(__file__).parent / "viz"
+    # Resolve viz directory — ui-next lives at the repo root (sibling to src/)
+    viz_dir = Path(__file__).parent.parent.parent / "ui-next"
+    if not viz_dir.exists():
+        # Fallback: check relative to CWD
+        viz_dir = repo_path / "ui-next"
     if not viz_dir.exists():
         console.print("[red]Error:[/red] Visualization files not found.")
         raise SystemExit(1)

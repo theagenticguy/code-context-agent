@@ -1,7 +1,7 @@
 # code-context-agent
 
 AI-powered CLI tool that analyzes codebases and produces structured context
-documentation for AI coding assistants. v8.0.0.
+documentation for AI coding assistants. v8.0.1.
 
 ## Architecture
 
@@ -64,7 +64,7 @@ Web Visualization (code-context-agent viz)
 | `src/code_context_agent/tools/graph/frameworks.py` | Framework detection patterns |
 | `src/code_context_agent/indexer.py` | Deterministic index pipeline (no LLM) |
 | `src/code_context_agent/mcp/registry.py` | Multi-repo registry with lazy graph cache |
-| `src/code_context_agent/viz/index.html` | D3.js interactive graph visualization |
+| `ui-next/` | Multi-view web visualizer (10 views, D3.js + Tailwind CSS) |
 | `src/code_context_agent/templates/` | Jinja2 system prompt (system.md.j2 + partials/ + steering/) |
 | `src/code_context_agent/models/output.py` | AnalysisResult, BusinessLogicItem, ArchitecturalRisk |
 
@@ -73,7 +73,7 @@ Web Visualization (code-context-agent viz)
 - **Discovery** (9): `create_file_manifest`, `repomix_*`, `rg_search`, `read_file_bounded`, `write_file_list`
 - **Search** (1): `bm25_search` (BM25 ranked text search via rank_bm25)
 - **LSP** (8): `lsp_start`, `lsp_document_symbols`, `lsp_references`, `lsp_definition`, `lsp_hover`, `lsp_workspace_symbols`, `lsp_diagnostics`, `lsp_shutdown`
-- **Graph** (15): `code_graph_create`, `code_graph_ingest_*`, `code_graph_analyze` (incl. `blast_radius`, `flows`, `diff_impact`), `code_graph_explore`, `code_graph_export`, `code_graph_save/load`, `code_graph_stats`. Includes framework detection (8 frameworks) for entry point scoring and edge confidence scoring (0.60-0.95 per source).
+- **Graph** (14): `code_graph_create`, `code_graph_ingest_*`, `code_graph_analyze` (incl. `blast_radius`, `flows`, `diff_impact`), `code_graph_explore`, `code_graph_export`, `code_graph_save/load`, `code_graph_stats`. Includes framework detection (8 frameworks) for entry point scoring and edge confidence scoring (0.60-0.95 per source).
 - **Git** (7): `git_hotspots`, `git_files_changed_together`, `git_blame_summary`, `git_file_history`, `git_contributors`, `git_recent_commits`, `git_diff_file`
 - **AST** (3): `astgrep_scan`, `astgrep_scan_rule_pack`, `astgrep_inline_rule`
 - **Shell** (1): `shell`

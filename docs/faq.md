@@ -117,7 +117,7 @@ The MCP (Model Context Protocol) server exposes code-context-agent's unique capa
 Through the MCP server, an AI assistant can:
 
 - **Start and poll analysis** (`start_analysis`, `check_analysis`)
-- **Query the code graph** with 13 graph algorithms including blast radius, flow analysis, and diff impact (`query_code_graph`)
+- **Query the code graph** with 12 graph algorithms including blast radius, flow analysis, and diff impact (`query_code_graph`)
 - **Explore the graph progressively** with guided next-step hints (`explore_code_graph`)
 - **Run Cypher queries** against the graph (`execute_cypher`)
 - **List registered repos** across the multi-repo registry (`list_repos`)
