@@ -43,7 +43,7 @@ export function parseGraph(raw) {
     ...(n.lsp_kind !== undefined ? { lsp_kind: n.lsp_kind } : {}),
   }));
 
-  const links = (raw.links || []).map((e) => ({
+  const links = (raw.links || raw.edges || []).map((e) => ({
     source: String(e.source),
     target: String(e.target),
     edge_type: e.edge_type || e.key || 'unknown',
