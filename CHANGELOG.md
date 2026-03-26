@@ -1,3 +1,18 @@
+## v9.0.0 (2026-03-26)
+
+### BREAKING CHANGE
+
+- `--next-ui` flag removed from `viz` command. The multi-view
+ui-next visualizer is now the default. Use `--legacy-viz` for the old
+single-page D3.js visualizer.
+- The `src/code_context_agent/viz/` directory and
+`--legacy-viz` flag are removed. The ui-next multi-view visualizer
+is now the sole visualization option.
+
+### Feat
+
+- fix TUI swarm tool counter, remediate docs drift, default to ui-next viz (#19)
+
 ## v8.1.0 (2026-03-26)
 
 ### Feat
