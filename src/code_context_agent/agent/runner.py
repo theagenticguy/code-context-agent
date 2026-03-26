@@ -354,6 +354,17 @@ async def run_analysis(
     Returns:
         Dict with analysis status and output paths.
     """
+    # Auto-index if no pre-built graph exists (deterministic, ~30s, no LLM)
+    repo = Path(repo_path).resolve()
+    output = Path(output_dir).resolve() if output_dir else repo / DEFAULT_OUTPUT_DIR
+    graph_file = output / "code_graph.json"
+    if not graph_file.exists():
+        from ..indexer import build_index
+
+        logger.info("No pre-built index found, running deterministic indexer")
+        output.mkdir(parents=True, exist_ok=True)
+        await build_index(repo, output, quiet=True)
+
     # Setup phase
     context = _setup_analysis_context(repo_path, output_dir, quiet, mode=mode)
 
@@ -369,6 +380,22 @@ async def run_analysis(
         stream_result = await _execute_analysis(context, prompt)
     finally:
         await _cleanup_context(context)
+
+    # Persist analysis_result.json if structured output was produced
+    if stream_result.structured_output is not None:
+        import json as _json
+
+        result_path = context.output / "analysis_result.json"
+        try:
+            # Handle both Pydantic models and plain dicts
+            if hasattr(stream_result.structured_output, "model_dump"):
+                result_data = stream_result.structured_output.model_dump(mode="json")
+            else:
+                result_data = stream_result.structured_output
+            result_path.write_text(_json.dumps(result_data, indent=2, default=str))
+            logger.info(f"Wrote analysis_result.json to {result_path}")
+        except (OSError, TypeError, ValueError) as e:
+            logger.warning(f"Failed to write analysis_result.json: {e}")
 
     # Build final result
     context_path = context.output / "CONTEXT.md"
