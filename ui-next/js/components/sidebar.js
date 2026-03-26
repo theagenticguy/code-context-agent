@@ -34,7 +34,7 @@ function navItem(item, isActive) {
        class="flex items-center gap-2.5 px-2.5 py-1.5 rounded-base text-sm font-base transition-all ${activeClasses}">
       <span class="w-5 text-center text-base leading-none">${item.icon}</span>
       <span class="flex-1 truncate-line">${item.label}</span>
-      <kbd class="text-[10px] min-w-[18px] text-center px-1 py-0.5 rounded border border-border/40 bg-bg/50 font-mono leading-none ${isActive ? 'border-main-fg/40 bg-main-fg/10' : ''}">${item.key}</kbd>
+      <kbd class="text-[10px] min-w-[18px] h-[18px] inline-flex items-center justify-center px-1 rounded border border-border/40 bg-bg/50 font-mono leading-none ${isActive ? 'border-main-fg/40 bg-main-fg/10' : ''}">${item.key}</kbd>
     </a>`;
 }
 
