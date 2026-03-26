@@ -340,11 +340,18 @@ class ToolDisplayHook(HookProvider):
             self._state.active_tool = ToolCallState(
                 tool_call_id=tool_id,
                 tool_name=tool_name,
+                agent_name=self._state.active_agent_name or "",
                 args_buffer="",
                 result=None,
                 status="running",
             )
             self._state.tool_start_time = time.monotonic()
+            # Track current tool on the active swarm agent
+            if self._state.active_agent_name:
+                for agent in self._state.agents:
+                    if agent.name == self._state.active_agent_name:
+                        agent.current_tool = tool_name
+                        break
 
     def _on_tool_end(self, event: AfterToolCallEvent, **kwargs: Any) -> None:
         """Update state when a tool call completes."""
@@ -361,6 +368,13 @@ class ToolDisplayHook(HookProvider):
             self._state.active_tool = None
             if is_error:
                 self._state.tool_errors += 1
+            # Increment per-agent tool count and clear current tool
+            self._state.increment_agent_tool_count()
+            if self._state.active_agent_name:
+                for agent in self._state.agents:
+                    if agent.name == self._state.active_agent_name:
+                        agent.current_tool = None
+                        break
 
 
 class JsonLogHook(HookProvider):

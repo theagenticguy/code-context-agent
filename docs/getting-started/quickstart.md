@@ -12,11 +12,14 @@ code-context-agent analyze /path/to/repo
 # Focus on specific area
 code-context-agent analyze . --focus "authentication system"
 
+# GitHub issue-focused analysis
+code-context-agent analyze . --issue "gh:1694"
+
 # Custom output directory
 code-context-agent analyze . --output-dir ./analysis
 
-# Only analyze changes since a date or ref
-code-context-agent analyze . --since "2025-01-01"
+# Only analyze changes since a git ref
+code-context-agent analyze . --since "HEAD~5"
 
 # JSON output format (for programmatic consumption)
 code-context-agent analyze . --output-format json
@@ -102,7 +105,7 @@ code-context-agent viz .
 code-context-agent viz . --port 9000
 ```
 
-This opens a D3.js force-directed graph visualization with hotspot highlighting, module coloring, dependency chains, and the CONTEXT.md narrative. See the [Visualization guide](viz.md) for details.
+This opens a multi-view visualizer with 10 views: dashboard, graph, modules, hotspots, dependencies, narrative, bundles, insights, signatures, and landing. See the [Visualization guide](viz.md) for details.
 
 ## MCP Server
 

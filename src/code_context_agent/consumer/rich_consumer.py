@@ -458,7 +458,7 @@ class RichEventConsumer(EventConsumer):
         for tool in recent:
             is_error = tool.status == "error" or (isinstance(tool.result, str) and '"status": "error"' in tool.result)
             status_icon = "[red]err[/]" if is_error else "[green]ok[/]"
-            agent_name = self.state.active_agent_name or ""
+            agent_name = tool.agent_name or ""
             tool_table.add_row(status_icon, f"[dim]{agent_name}[/]", f"[bold]{tool.tool_name}[/]")
 
         layout["footer"].update(
