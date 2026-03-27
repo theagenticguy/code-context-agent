@@ -1,3 +1,9 @@
+## v9.0.1 (2026-03-27)
+
+### Fix
+
+- add graph mutation tools to Swarm and auto-index before analysis (#20)
+
 ## v9.0.0 (2026-03-26)
 
 ### BREAKING CHANGE
