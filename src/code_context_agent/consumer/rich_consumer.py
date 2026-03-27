@@ -8,7 +8,10 @@ and never grows — it shows what's running, what finished, and progress.
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from rich.console import Console, Group, RenderableType
 from rich.layout import Layout
@@ -24,6 +27,16 @@ from .state import AgentDisplayState, ToolCallState
 _RECENT_TOOLS_SHOWN = 8
 _KB = 1024
 _MB = 1024 * 1024
+
+
+def bind_live_renderable(live: Live, builder: Callable[[], RenderableType]) -> None:
+    """Point Rich Live's auto-refresh at a custom display builder.
+
+    Rich calls ``get_renderable()`` on each refresh tick. Replacing it with
+    *builder* lets the dashboard show fresh state (timer, tool elapsed, etc.)
+    without manually calling ``live.update()`` on every change.
+    """
+    live.get_renderable = builder  # type: ignore[assignment]  # ty: ignore[invalid-assignment]
 
 
 class RichEventConsumer(EventConsumer):
@@ -483,9 +496,7 @@ class RichEventConsumer(EventConsumer):
             transient=True,
             vertical_overflow="ellipsis",
         )
-        # Rich auto-refresh calls get_renderable — point it at our builder
-        # so the dashboard always shows fresh state (timer, tool elapsed, etc.)
-        self._live.get_renderable = self._build_display  # type: ignore[assignment]  # ty: ignore[invalid-assignment]
+        bind_live_renderable(self._live, self._build_display)
         self._live.start()
 
     async def stop(self) -> None:
