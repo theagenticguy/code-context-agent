@@ -247,10 +247,21 @@ def create_analysis_swarm(
     )
     from ..tools.graph import (
         code_graph_analyze,
+        code_graph_create,
         code_graph_explore,
         code_graph_export,
+        code_graph_ingest_astgrep,
+        code_graph_ingest_git,
+        code_graph_ingest_lsp,
         code_graph_load,
+        code_graph_save,
         code_graph_stats,
+    )
+    from ..tools.graph.tools import (
+        code_graph_ingest_clones,
+        code_graph_ingest_inheritance,
+        code_graph_ingest_rg,
+        code_graph_ingest_tests,
     )
     from ..tools.lsp import (
         lsp_definition,
@@ -313,11 +324,20 @@ def create_analysis_swarm(
         system_prompt=structure_prompt,
         model=model,
         tools=[
+            code_graph_create,
+            code_graph_load,
+            code_graph_save,
+            code_graph_ingest_lsp,
+            code_graph_ingest_astgrep,
+            code_graph_ingest_rg,
+            code_graph_ingest_inheritance,
+            code_graph_ingest_tests,
+            code_graph_ingest_git,
+            code_graph_ingest_clones,
             code_graph_analyze,
             code_graph_explore,
             code_graph_export,
             code_graph_stats,
-            code_graph_load,
             lsp_start,
             lsp_document_symbols,
             lsp_references,
@@ -381,6 +401,7 @@ def create_analysis_swarm(
         tools=[
             write_file,
             code_graph_analyze,
+            code_graph_save,
             code_graph_stats,
             read_file_bounded,
         ],
