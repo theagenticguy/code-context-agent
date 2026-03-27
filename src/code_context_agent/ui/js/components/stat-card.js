@@ -61,7 +61,7 @@ export function statCard({ title, value, subtitle, color, trend, sparkData }) {
     : '';
 
   const subtitleHtml = subtitle
-    ? `<p class="text-xs text-fg/50 mt-1">${subtitle}</p>`
+    ? `<p class="text-xs text-fg/50 mt-1">${escapeHtml(subtitle)}</p>`
     : '';
 
   const sparkHtml = sparkData ? sparkline(sparkData, color || '#60a5fa') : '';

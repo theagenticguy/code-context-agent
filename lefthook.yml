@@ -41,5 +41,4 @@ pre-push:
       run: gitleaks detect --source . --no-banner
 
     - name: semgrep
-      # ui/ is static JS/CSS/HTML served on localhost only; innerHTML findings are false positives
-      run: semgrep scan --config auto --config p/owasp-top-ten --exclude-rule python.flask.security.xss.audit.direct-use-of-jinja2.direct-use-of-jinja2 --exclude src/code_context_agent/ui --error --quiet src/
+      run: semgrep scan --config auto --config p/owasp-top-ten --exclude-rule python.flask.security.xss.audit.direct-use-of-jinja2.direct-use-of-jinja2 --error --quiet src/

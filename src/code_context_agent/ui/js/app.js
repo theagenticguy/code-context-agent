@@ -56,8 +56,12 @@ async function renderView(viewId) {
       currentCleanup = result; // view returns cleanup function
     }
   } catch (e) {
-    content.innerHTML = `<div class="p-8 text-red-500">Error loading view: ${e.message}</div>`;
-    console.error(`[app] Error loading view "${viewId}":`, e);
+    content.textContent = '';
+    const errDiv = document.createElement('div');
+    errDiv.className = 'p-8 text-red-500';
+    errDiv.textContent = 'Error loading view: ' + e.message;
+    content.appendChild(errDiv);
+    console.error('[app] Error loading view:', viewId, e);
   }
 }
 

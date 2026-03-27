@@ -8,7 +8,7 @@ import { searchBar, attachSearchListeners } from '../components/search-bar.js';
 import { showTooltip, hideTooltip } from '../components/tooltip.js';
 import { NODE_COLORS, EDGE_COLORS, nodeColor, edgeColor, NODE_TYPE_LABELS } from '../colors.js';
 import { filterGraph, shortPath } from '../graph-utils.js';
-import { escapeHtml } from '../escape.js';
+import { escapeHtml, safeHtml, rawHtml } from '../escape.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -104,6 +104,8 @@ export function render(container, _store) {
 
   // -- Empty state -----------------------------------------------------------
   if (!graph || !graph.nodes || graph.nodes.length === 0) {
+    // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method
+    // Static HTML with no interpolated data values.
     container.innerHTML = `
       <div class="view-enter h-full flex items-center justify-center bg-bg">
         <div class="text-center max-w-md px-6">
@@ -136,14 +138,14 @@ export function render(container, _store) {
   const signal = ac.signal;
 
   // -- Build HTML ------------------------------------------------------------
-  container.innerHTML = `
+  container.innerHTML = safeHtml` // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method
     <div class="view-enter h-full flex flex-col bg-bg overflow-hidden">
 
       <!-- Toolbar -->
       <div class="flex-shrink-0 border-b-2 border-border bg-bg2 px-4 py-3 space-y-2">
         <!-- Row 1: Search + Node limit + Reset zoom -->
         <div class="flex items-center gap-3 flex-wrap">
-          <div id="graph-search" class="w-64">${searchBar({ placeholder: 'Search nodes...', onSearch: () => {} })}</div>
+          <div id="graph-search" class="w-64">${rawHtml(searchBar({ placeholder: 'Search nodes...', onSearch: () => {} }))}</div>
 
           <div class="flex items-center gap-2 text-xs font-base text-fg/70">
             <label for="graph-node-limit">Node limit:</label>
@@ -163,12 +165,12 @@ export function render(container, _store) {
         <div class="flex items-center gap-2 flex-wrap">
           <span class="text-xs font-heading text-fg/50 w-14 flex-shrink-0">Nodes</span>
           <div id="graph-node-chips">
-            ${filterChips({
+            ${rawHtml(filterChips({
               items: nodeTypes,
               activeSet: activeNodeTypes,
               colorMap: NODE_COLORS,
               onChange: () => {},
-            })}
+            }))}
           </div>
         </div>
 
@@ -176,12 +178,12 @@ export function render(container, _store) {
         <div class="flex items-center gap-2 flex-wrap">
           <span class="text-xs font-heading text-fg/50 w-14 flex-shrink-0">Edges</span>
           <div id="graph-edge-chips">
-            ${filterChips({
+            ${rawHtml(filterChips({
               items: edgeTypes,
               activeSet: activeEdgeTypes,
               colorMap: EDGE_COLORS,
               onChange: () => {},
-            })}
+            }))}
           </div>
         </div>
       </div>
@@ -414,10 +416,10 @@ export function render(container, _store) {
       .on('mouseover', (event, d) => {
         const deg = currentDegrees.get(d.id) || { in: 0, out: 0, total: 0 };
         showTooltip(
-          `<div class="space-y-0.5">
+          safeHtml`<div class="space-y-0.5">
             <div class="font-heading text-sm">${d.name}</div>
-            <div class="text-xs" style="color:${nodeColor(d.node_type)}">${NODE_TYPE_LABELS[d.node_type] || d.node_type}</div>
-            ${d.file_path ? `<div class="text-xs text-fg/60">${shortPath(d.file_path)}</div>` : ''}
+            <div class="text-xs" style="color:${rawHtml(nodeColor(d.node_type))}">${NODE_TYPE_LABELS[d.node_type] || d.node_type}</div>
+            ${rawHtml(d.file_path ? `<div class="text-xs text-fg/60">${escapeHtml(shortPath(d.file_path))}</div>` : '')}
             <div class="text-xs text-fg/50">in:${deg.in} out:${deg.out} total:${deg.total}</div>
           </div>`,
           event.clientX,
@@ -469,7 +471,7 @@ export function render(container, _store) {
     });
 
     const edgeBadge = (type) =>
-      `<span class="text-[10px] px-1 py-0.5 rounded-base border border-border/40" style="color:${edgeColor(type)}">${type}</span>`;
+      `<span class="text-[10px] px-1 py-0.5 rounded-base border border-border/40" style="color:${edgeColor(type)}">${escapeHtml(type)}</span>`;
 
     const edgeListItem = (nodeId, edgeType) => {
       const n = currentNodeMap.get(nodeId);
@@ -492,29 +494,29 @@ export function render(container, _store) {
       : '';
 
     detailPanel.classList.remove('hidden');
-    detailPanel.innerHTML = `
+    detailPanel.innerHTML = safeHtml` // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method
       <div class="space-y-3">
         <div>
           <button id="graph-detail-close" class="float-right text-xs text-fg/40 hover:text-fg cursor-pointer p-1" title="Close">&times;</button>
-          <h3 class="font-heading text-sm text-fg leading-tight pr-6">${escapeHtml(d.name)}</h3>
-          <span class="inline-block mt-1 text-xs px-1.5 py-0.5 rounded-base border border-border" style="color:${nodeColor(d.node_type)}">
-            ${escapeHtml(NODE_TYPE_LABELS[d.node_type] || d.node_type)}
+          <h3 class="font-heading text-sm text-fg leading-tight pr-6">${d.name}</h3>
+          <span class="inline-block mt-1 text-xs px-1.5 py-0.5 rounded-base border border-border" style="color:${rawHtml(nodeColor(d.node_type))}">
+            ${NODE_TYPE_LABELS[d.node_type] || d.node_type}
           </span>
-          ${d.file_path ? `<p class="text-xs text-fg/60 mt-2 break-all">${escapeHtml(d.file_path)}${lineRange ? ':' + lineRange : ''}</p>` : ''}
+          ${rawHtml(d.file_path ? `<p class="text-xs text-fg/60 mt-2 break-all">${escapeHtml(d.file_path)}${lineRange ? ':' + escapeHtml(String(lineRange)) : ''}</p>` : '')}
         </div>
 
         <div>
           <h4 class="text-xs font-heading text-fg/70">Incoming (${incoming.length})</h4>
-          ${incoming.length
+          ${rawHtml(incoming.length
             ? `<ul class="mt-1 space-y-1">${incomingHtml}</ul>`
-            : '<p class="text-xs text-fg/40 mt-1">None</p>'}
+            : '<p class="text-xs text-fg/40 mt-1">None</p>')}
         </div>
 
         <div>
           <h4 class="text-xs font-heading text-fg/70">Outgoing (${outgoing.length})</h4>
-          ${outgoing.length
+          ${rawHtml(outgoing.length
             ? `<ul class="mt-1 space-y-1">${outgoingHtml}</ul>`
-            : '<p class="text-xs text-fg/40 mt-1">None</p>'}
+            : '<p class="text-xs text-fg/40 mt-1">None</p>')}
         </div>
       </div>`;
 
@@ -527,6 +529,8 @@ export function render(container, _store) {
   function deselectNode() {
     selectedNode = null;
     detailPanel.classList.add('hidden');
+    // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method
+    // Clearing content with empty string.
     detailPanel.innerHTML = '';
     if (nodeSel) {
       nodeSel.attr('stroke-width', 2);
@@ -675,7 +679,7 @@ export function render(container, _store) {
     const edgeChipContainer = container.querySelector('#graph-edge-chips');
 
     if (nodeChipContainer) {
-      nodeChipContainer.innerHTML = filterChips({
+      nodeChipContainer.innerHTML = filterChips({ // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method
         items: nodeTypes,
         activeSet: activeNodeTypes,
         colorMap: NODE_COLORS,
@@ -689,7 +693,7 @@ export function render(container, _store) {
     }
 
     if (edgeChipContainer) {
-      edgeChipContainer.innerHTML = filterChips({
+      edgeChipContainer.innerHTML = filterChips({ // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method
         items: edgeTypes,
         activeSet: activeEdgeTypes,
         colorMap: EDGE_COLORS,

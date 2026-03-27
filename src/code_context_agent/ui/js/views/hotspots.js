@@ -5,7 +5,7 @@ import { statCard } from '../components/stat-card.js';
 import { barChart } from '../components/bar-chart.js';
 import { NODE_COLORS, nodeColor } from '../colors.js';
 import { computeDegreeCentrality, findEntryPoints, shortPath } from '../graph-utils.js';
-import { escapeHtml } from '../escape.js';
+import { safeHtml } from '../escape.js';
 
 /**
  * Render the hotspots / centrality analysis view.
@@ -142,6 +142,7 @@ export function render(container, store) {
   // KPI cards
   // -------------------------------------------------------------------------
   const kpiContainer = container.querySelector('#hotspots-kpi');
+  // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method — statCard() returns pre-escaped component HTML
   kpiContainer.innerHTML = [
     statCard({ title: 'Total Nodes', value: totalNodes.toLocaleString() }),
     statCard({
@@ -161,6 +162,7 @@ export function render(container, store) {
   // Bar charts
   // -------------------------------------------------------------------------
   const top20Container = container.querySelector('#hotspots-top20');
+  // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method — barChart() returns pre-escaped component HTML
   top20Container.innerHTML = barChart({
     data: top20,
     labelKey: 'label',
@@ -170,6 +172,7 @@ export function render(container, store) {
   });
 
   const epContainer = container.querySelector('#hotspots-entry');
+  // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method — barChart() returns pre-escaped component HTML
   epContainer.innerHTML = barChart({
     data: epData,
     labelKey: 'label',
@@ -282,14 +285,15 @@ export function render(container, store) {
   // Top Files table rows
   // -------------------------------------------------------------------------
   const tbody = container.querySelector('#hotspots-files-body');
+  // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method — all interpolated values escaped via safeHtml tagged template
   tbody.innerHTML = topFiles
     .map(
-      (f) => `
+      (f) => safeHtml`
       <tr class="border-b border-border/30 hover:bg-main/5">
-        <td class="py-1.5 pr-4 truncate-line max-w-xs" title="${escapeHtml(f.filePath)}">${escapeHtml(shortPath(f.filePath))}</td>
+        <td class="py-1.5 pr-4 truncate-line max-w-xs" title="${f.filePath}">${shortPath(f.filePath)}</td>
         <td class="py-1.5 pr-4 text-right font-heading">${f.symbolCount}</td>
         <td class="py-1.5 pr-4 text-right">${f.avgDegree}</td>
-        <td class="py-1.5 text-fg/70">${escapeHtml(f.topSymbol)}</td>
+        <td class="py-1.5 text-fg/70">${f.topSymbol}</td>
       </tr>`
     )
     .join('');

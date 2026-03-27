@@ -441,6 +441,7 @@ export function render(container, _store) {
   const result = store.get('analysisResult');
 
   if (!result) {
+    // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method — renderEmpty() returns static HTML with no interpolated data
     container.innerHTML = renderEmpty();
     container.firstElementChild?.classList.add('view-enter');
     return () => {};
@@ -459,6 +460,7 @@ export function render(container, _store) {
       </section>
     </div>`;
 
+  // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method — html assembled from render*() helpers that escape data values via escapeHtml()
   container.innerHTML = html;
 
   // Render D3 waterfall chart

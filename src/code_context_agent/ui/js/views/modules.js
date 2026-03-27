@@ -4,6 +4,7 @@
 import { showTooltip, hideTooltip } from '../components/tooltip.js';
 import { nodeColor } from '../colors.js';
 import { buildHierarchy } from '../graph-utils.js';
+import { safeHtml, rawHtml } from '../escape.js';
 
 const d3 = window.d3;
 
@@ -311,15 +312,16 @@ export function render(container, st) {
       cur = cur.parent;
     }
 
+    // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method — node.data.name escaped via safeHtml tagged template
     breadcrumbEl.innerHTML = crumbs
       .map((node, i) => {
         const isLast = i === crumbs.length - 1;
         const name = node.data.name === 'root' ? 'root' : node.data.name;
-        const separator = i > 0 ? '<span class="text-fg/30 mx-0.5">/</span>' : '';
+        const separator = i > 0 ? rawHtml('<span class="text-fg/30 mx-0.5">/</span>') : '';
         if (isLast) {
-          return `${separator}<span class="text-fg font-heading">${name}</span>`;
+          return safeHtml`${separator}<span class="text-fg font-heading">${name}</span>`;
         }
-        return `${separator}<button class="hover:text-main hover:underline transition-colors breadcrumb-btn" data-depth="${i}">${name}</button>`;
+        return safeHtml`${separator}<button class="hover:text-main hover:underline transition-colors breadcrumb-btn" data-depth="${i}">${name}</button>`;
       })
       .join('');
 
