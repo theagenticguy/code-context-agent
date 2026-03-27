@@ -172,7 +172,7 @@ The `tools/graph/storage.py` module defines a `GraphStorage` protocol with two i
 
 ### Web Visualization
 
-The `ui-next/` directory provides a multi-view web visualizer served locally via `code-context-agent viz`. It is a zero-build SPA (26 files, ~6K lines) using vanilla JavaScript, Tailwind CSS v4, and D3.js v7. It provides 10 views: landing, dashboard, graph, modules, hotspots, dependencies, narrative, bundles, insights, and signatures. The viz command serves static files and proxies `/data/` requests to the `.code-context/` output directory.
+The `code_context_agent/ui/` package directory provides a multi-view web visualizer served locally via `code-context-agent viz`. It is a zero-build SPA (26 files, ~6K lines) using vanilla JavaScript, Tailwind CSS v4, and D3.js v7. It provides 10 views: landing, dashboard, graph, modules, hotspots, dependencies, narrative, bundles, insights, and signatures. The viz command serves static files and proxies `/data/` requests to the `.code-context/` output directory.
 
 ### context7 MCP Integration
 

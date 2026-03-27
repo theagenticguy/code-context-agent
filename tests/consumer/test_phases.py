@@ -15,10 +15,10 @@ from code_context_agent.consumer.phases import (
 class TestAnalysisPhase:
     def test_enum_ordering(self):
         assert AnalysisPhase.FOUNDATION < AnalysisPhase.SEMANTIC_DISCOVERY
-        assert AnalysisPhase.WRITE_CONTEXT == 10  # noqa: PLR2004
+        assert AnalysisPhase.WRITE_CONTEXT == 10
 
     def test_all_ten_phases(self):
-        assert len(AnalysisPhase) == 10  # noqa: PLR2004
+        assert len(AnalysisPhase) == 10
 
 
 class TestToolPhaseMap:
@@ -71,7 +71,7 @@ class TestPhaseState:
             started_at=100.0,
             completed_at=115.5,
         )
-        assert ps.elapsed_seconds == 15.5  # noqa: PLR2004
+        assert ps.elapsed_seconds == 15.5
 
 
 class TestResolvePhase:

@@ -46,7 +46,7 @@ def test_register_creates_entry(registry, fake_repo):
 def test_register_detects_graph(registry, fake_repo_with_graph):
     entry = registry.register("graphed", str(fake_repo_with_graph))
     assert entry.graph_exists is True
-    assert entry.artifact_count == 2  # noqa: PLR2004
+    assert entry.artifact_count == 2
 
 
 def test_unregister_removes_entry(registry, fake_repo):

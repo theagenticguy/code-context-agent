@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-UI_NEXT_DIR = Path(__file__).resolve().parent.parent / "ui-next"
+UI_NEXT_DIR = Path(__file__).resolve().parent.parent / "src" / "code_context_agent" / "ui"
 INDEX_HTML = UI_NEXT_DIR / "index.html"
 
 
 def test_ui_next_index_html_exists() -> None:
-    """Verify the ui-next index.html file exists at the expected path."""
+    """Verify the viz index.html file exists at the expected path."""
     assert INDEX_HTML.exists(), f"Expected {INDEX_HTML} to exist"
     assert INDEX_HTML.stat().st_size > 0, "index.html should not be empty"
 

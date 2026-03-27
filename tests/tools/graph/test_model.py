@@ -73,7 +73,7 @@ class TestCodeNode:
         assert node.id == "src/main.py:main"
         assert node.name == "main"
         assert node.node_type == NodeType.FUNCTION
-        assert node.line_start == 10  # noqa: PLR2004
+        assert node.line_start == 10
 
     def test_node_to_dict(self) -> None:
         """Test converting node to dictionary."""
@@ -106,7 +106,7 @@ class TestCodeEdge:
         assert edge.source == "a:foo"
         assert edge.target == "b:bar"
         assert edge.edge_type == EdgeType.CALLS
-        assert edge.weight == 2.0  # noqa: PLR2004
+        assert edge.weight == 2.0
 
     def test_edge_to_dict(self) -> None:
         """Test converting edge to dictionary."""
@@ -131,7 +131,7 @@ class TestCodeEdgeConfidence:
     def test_code_edge_confidence_custom(self) -> None:
         """Test that an explicit confidence value is preserved."""
         edge = CodeEdge(source="a", target="b", edge_type=EdgeType.CALLS, confidence=0.75)
-        assert edge.confidence == 0.75  # noqa: PLR2004
+        assert edge.confidence == 0.75
 
     def test_code_edge_confidence_roundtrip(self) -> None:
         """Test that to_dict includes confidence and from_node_link_data preserves it."""
@@ -146,7 +146,7 @@ class TestCodeEdgeConfidence:
 
         # to_dict includes confidence
         d = edge.to_dict()
-        assert d["confidence"] == 0.85  # noqa: PLR2004
+        assert d["confidence"] == 0.85
 
         # Round-trip through node-link serialization
         graph.add_edge(edge)
@@ -154,7 +154,7 @@ class TestCodeEdgeConfidence:
         restored = CodeGraph.from_node_link_data(data)
         edges = list(restored._graph.edges(data=True))
         assert len(edges) == 1
-        assert edges[0][2]["confidence"] == 0.85  # noqa: PLR2004
+        assert edges[0][2]["confidence"] == 0.85
 
     def test_add_edge_stores_confidence(self) -> None:
         """Test that add_edge passes confidence to the NetworkX graph."""
@@ -168,7 +168,7 @@ class TestCodeEdgeConfidence:
         graph.add_edge(CodeEdge(source="a", target="b", edge_type=EdgeType.CALLS, confidence=0.60))
 
         edge_data = graph._graph.edges["a", "b", "calls"]
-        assert edge_data["confidence"] == 0.60  # noqa: PLR2004
+        assert edge_data["confidence"] == 0.60
 
     def test_get_view_preserves_max_confidence(self) -> None:
         """Test that get_view takes max confidence across parallel edges."""
@@ -183,7 +183,7 @@ class TestCodeEdgeConfidence:
         graph.add_edge(CodeEdge(source="a", target="b", edge_type=EdgeType.REFERENCES, confidence=0.95))
 
         view = graph.get_view()
-        assert view["a"]["b"]["confidence"] == 0.95  # noqa: PLR2004
+        assert view["a"]["b"]["confidence"] == 0.95
 
 
 class TestCodeGraph:
@@ -282,7 +282,7 @@ class TestCodeGraph:
         )
 
         functions = graph.get_nodes_by_type(NodeType.FUNCTION)
-        assert len(functions) == 2  # noqa: PLR2004
+        assert len(functions) == 2
         assert "f1" in functions
         assert "f2" in functions
 
@@ -361,7 +361,7 @@ class TestCodeGraph:
 
         # Import
         restored = CodeGraph.from_node_link_data(data)
-        assert restored.node_count == 2  # noqa: PLR2004
+        assert restored.node_count == 2
         assert restored.edge_count == 1
         assert restored.has_edge("a", "b")
 
@@ -391,7 +391,7 @@ class TestCodeGraph:
         graph.add_edge(CodeEdge(source="a", target="b", edge_type=EdgeType.CALLS))
 
         desc = graph.describe()
-        assert desc["node_count"] == 2  # noqa: PLR2004
+        assert desc["node_count"] == 2
         assert desc["edge_count"] == 1
         assert desc["node_types"]["function"] == 1
         assert desc["node_types"]["class"] == 1
@@ -438,6 +438,6 @@ class TestCodeGraph:
             data["links"] = data.pop("edges")
 
         restored = CodeGraph.from_node_link_data(data)
-        assert restored.node_count == 2  # noqa: PLR2004
+        assert restored.node_count == 2
         assert restored.edge_count == 1
         assert restored.has_edge("x", "y")

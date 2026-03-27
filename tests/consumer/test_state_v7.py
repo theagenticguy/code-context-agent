@@ -53,5 +53,5 @@ class TestAgentDisplayStateDiscoveries:
                     timestamp=float(i),
                 ),
             )
-        assert len(state.discoveries) == 3  # noqa: PLR2004
+        assert len(state.discoveries) == 3
         assert state.discoveries[0].summary == "Event 2"

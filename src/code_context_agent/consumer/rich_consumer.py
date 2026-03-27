@@ -485,7 +485,7 @@ class RichEventConsumer(EventConsumer):
         )
         # Rich auto-refresh calls get_renderable — point it at our builder
         # so the dashboard always shows fresh state (timer, tool elapsed, etc.)
-        self._live.get_renderable = self._build_display  # type: ignore[assignment]
+        self._live.get_renderable = self._build_display  # type: ignore[assignment]  # ty: ignore[invalid-assignment]
         self._live.start()
 
     async def stop(self) -> None:

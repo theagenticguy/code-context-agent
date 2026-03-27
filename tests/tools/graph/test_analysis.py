@@ -341,7 +341,7 @@ class TestCodeAnalyzer:
         analyzer = CodeAnalyzer(graph)
         db_nodes = analyzer.find_clusters_by_category("db")
 
-        assert len(db_nodes) == 2  # noqa: PLR2004
+        assert len(db_nodes) == 2
         assert all(n["category"] == "db" for n in db_nodes)
 
     def test_empty_graph(self) -> None:
@@ -564,7 +564,7 @@ class TestRefactoringCandidates:
 
         extract_candidates = [c for c in candidates if c["type"] == "extract_helper"]
         assert len(extract_candidates) == 1
-        assert extract_candidates[0]["duplicated_lines"] == 15  # noqa: PLR2004
+        assert extract_candidates[0]["duplicated_lines"] == 15
 
     def test_detects_code_smells(self) -> None:
         """Nodes with code_smell note produce code_smell candidates."""
@@ -597,7 +597,7 @@ class TestRefactoringCandidates:
 
         smell_candidates = [c for c in candidates if c["type"] == "code_smell"]
         assert len(smell_candidates) == 1
-        assert smell_candidates[0]["occurrence_count"] == 2  # noqa: PLR2004
+        assert smell_candidates[0]["occurrence_count"] == 2
 
     def test_detects_dead_code(self) -> None:
         """Unreferenced functions produce dead_code candidates."""
@@ -628,7 +628,7 @@ class TestRefactoringCandidates:
 
         dead = [c for c in candidates if c["type"] == "dead_code"]
         assert len(dead) == 1
-        assert dead[0]["occurrence_count"] == 2  # noqa: PLR2004
+        assert dead[0]["occurrence_count"] == 2
 
     def test_ranking_by_score(self) -> None:
         """Candidates are ranked by score descending."""
@@ -678,7 +678,7 @@ class TestRefactoringCandidates:
         analyzer = CodeAnalyzer(graph)
         candidates = analyzer.find_refactoring_candidates()
 
-        assert len(candidates) >= 2  # noqa: PLR2004
+        assert len(candidates) >= 2
         assert candidates[0]["score"] >= candidates[-1]["score"]
 
     def test_empty_graph_returns_empty(self) -> None:
@@ -711,7 +711,7 @@ class TestTraceExecutionFlows:
         flows = analyzer.trace_execution_flows(min_flow_length=2)
         assert len(flows) >= 1
         longest_flow = max(flows, key=lambda f: f["length"])
-        assert longest_flow["length"] == 4  # noqa: PLR2004
+        assert longest_flow["length"] == 4
         assert longest_flow["path"] == ["A", "B", "C", "D"]
 
     def test_trace_flows_respects_max_depth(self) -> None:
@@ -735,7 +735,7 @@ class TestTraceExecutionFlows:
         analyzer = CodeAnalyzer(graph)
         flows = analyzer.trace_execution_flows(max_depth=3, min_flow_length=2)
         for flow in flows:
-            assert flow["length"] <= 4  # entry + 3 hops  # noqa: PLR2004
+            assert flow["length"] <= 4  # entry + 3 hops
 
     def test_trace_flows_deduplicates_prefixes(self) -> None:
         """If flow A->B is prefix of A->B->C, only the longer flow is kept."""
@@ -779,7 +779,7 @@ class TestBlastRadius:
         result = analyzer.blast_radius("util", max_depth=5)
 
         assert result["node_id"] == "util"
-        assert result["total_affected"] >= 2  # noqa: PLR2004
+        assert result["total_affected"] >= 2
         affected_ids = [n["id"] for n in result["affected_nodes"]]
         assert "helper1" in affected_ids
         assert "helper2" in affected_ids
@@ -833,7 +833,7 @@ class TestBlastRadius:
 
         affected = {n["id"]: n for n in result["affected_nodes"]}
         # Impact = 0.5 (confidence) / 2^1 (distance) = 0.25
-        assert affected["caller"]["impact"] == 0.25  # noqa: PLR2004
+        assert affected["caller"]["impact"] == 0.25
 
     def test_blast_radius_unknown_node(self) -> None:
         """Blast radius for a non-existent node returns an error."""

@@ -21,17 +21,17 @@ class TestAnalysisMode:
 class TestSettingsFullMode:
     def test_full_max_duration_default(self) -> None:
         s = Settings()
-        assert s.full_max_duration == 3600  # noqa: PLR2004
+        assert s.full_max_duration == 3600
 
     def test_full_max_duration_range(self) -> None:
         s = Settings(full_max_duration=300)
-        assert s.full_max_duration == 300  # noqa: PLR2004
+        assert s.full_max_duration == 300
         with pytest.raises(ValidationError):
             Settings(full_max_duration=100)
 
     def test_full_max_turns_default(self) -> None:
         s = Settings()
-        assert s.full_max_turns == 3000  # noqa: PLR2004
+        assert s.full_max_turns == 3000
 
     def test_full_mode_settings_override(self) -> None:
         """model_copy to override for full mode."""
@@ -43,6 +43,6 @@ class TestSettingsFullMode:
                 "lsp_max_files": 50_000,
             },
         )
-        assert full.agent_max_duration == 3600  # noqa: PLR2004
-        assert full.agent_max_turns == 3000  # noqa: PLR2004
-        assert full.lsp_max_files == 50_000  # noqa: PLR2004
+        assert full.agent_max_duration == 3600
+        assert full.agent_max_turns == 3000
+        assert full.lsp_max_files == 50_000
