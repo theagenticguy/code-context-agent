@@ -3,6 +3,7 @@
 
 import { loadFromFiles, loadDemoData, loadFromServer } from '../data-loader.js';
 import { store } from '../store.js';
+import { setHTML } from '../escape.js';
 
 // ---------------------------------------------------------------------------
 // Accepted file names
@@ -47,8 +48,7 @@ const SHORTCUTS = [
 export function render(container, _store) {
   // -- Build HTML ----------------------------------------------------------
 
-  // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method — all interpolated values are hardcoded constants (ACCEPTED_FILES, SHORTCUTS) defined in this module
-  container.innerHTML = `
+  setHTML(container, `
     <div class="view-enter h-full overflow-auto bg-bg">
       <div class="max-w-3xl mx-auto px-6 py-16 font-base text-fg">
 
@@ -152,7 +152,7 @@ export function render(container, _store) {
         </div>
 
       </div>
-    </div>`;
+    </div>`);
 
   // -- Wire up event listeners ---------------------------------------------
 

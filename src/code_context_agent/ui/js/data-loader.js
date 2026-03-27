@@ -367,7 +367,10 @@ export function setupDragDrop(_store, router) {
   // Create overlay element (hidden by default)
   const overlay = document.createElement('div');
   overlay.id = 'drop-overlay';
-  overlay.innerHTML = '<div class="drop-overlay-content">Drop files to load</div>';
+  const dropContent = document.createElement('div');
+  dropContent.className = 'drop-overlay-content';
+  dropContent.textContent = 'Drop files to load';
+  overlay.appendChild(dropContent);
   overlay.style.cssText = `
     position: fixed; inset: 0; z-index: 9999;
     display: none; place-items: center;

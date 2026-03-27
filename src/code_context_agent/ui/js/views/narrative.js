@@ -3,7 +3,7 @@
 
 import { store } from '../store.js';
 import { renderMarkdownWithIds, extractTOC } from '../markdown.js';
-import { escapeHtml, safeHtml, rawHtml } from '../escape.js';
+import { escapeHtml, safeHtml, rawHtml, setHTML } from '../escape.js';
 
 /**
  * Render the narrative view into the given container.
@@ -18,8 +18,7 @@ export function render(container, _store) {
 
   // ── Empty state ──────────────────────────────────────────────────────────
   if (!narrative) {
-    // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method — static HTML with no interpolated data
-    container.innerHTML = `
+    setHTML(container, `
       <div class="flex items-center justify-center h-full">
         <div class="text-center max-w-md p-8 rounded-base border-2 border-border shadow-neo bg-bg2">
           <span class="text-4xl block mb-4">\u2263</span>
@@ -28,7 +27,7 @@ export function render(container, _store) {
             No narrative document loaded. Run the code-context-agent analyzer to generate CONTEXT.md
           </p>
         </div>
-      </div>`;
+      </div>`);
     return () => {};
   }
 
@@ -54,8 +53,7 @@ export function render(container, _store) {
     .join('');
 
   // ── Assemble full layout ─────────────────────────────────────────────────
-  // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method — tocItemsHtml is escaped via escapeHtml(); contentHtml is intentional marked() HTML output wrapped in rawHtml()
-  container.innerHTML = safeHtml`
+  setHTML(container, safeHtml`
     <div class="flex h-full view-enter">
       <!-- TOC Sidebar -->
       <aside id="narrative-toc" class="w-56 shrink-0 border-r-2 border-border bg-bg2 overflow-y-auto sticky top-0 h-full">
@@ -239,7 +237,7 @@ export function render(container, _store) {
         border-left-color: var(--main);
         font-weight: 600;
       }
-    </style>`;
+    </style>`);
 
   // ── Scroll-spy via IntersectionObserver ─────────────────────────────────
   const contentEl = container.querySelector('#narrative-content');

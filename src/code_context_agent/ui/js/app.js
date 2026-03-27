@@ -47,8 +47,14 @@ router.beforeNavigate = () => {
  */
 async function renderView(viewId) {
   store.set({ activeView: viewId });
-  content.innerHTML =
-    '<div class="flex items-center justify-center h-full"><span class="text-fg/50">Loading...</span></div>';
+  content.textContent = '';
+  const loader = document.createElement('div');
+  loader.className = 'flex items-center justify-center h-full';
+  const span = document.createElement('span');
+  span.className = 'text-fg/50';
+  span.textContent = 'Loading...';
+  loader.appendChild(span);
+  content.appendChild(loader);
   try {
     const mod = await views[viewId]();
     const result = mod.render(content, store);

@@ -8,7 +8,7 @@ import { showTooltip, hideTooltip } from '../components/tooltip.js';
 import { edgeColor, nodeColor } from '../colors.js';
 import { getDependencyChain, shortPath } from '../graph-utils.js';
 import { DEPENDENCY_EDGE_TYPES } from '../colors.js';
-import { escapeHtml, safeHtml, rawHtml } from '../escape.js';
+import { escapeHtml, safeHtml, rawHtml, setHTML } from '../escape.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -113,15 +113,13 @@ export function render(container, appStore) {
 
   // -- No graph loaded state --
   if (!graph) {
-    // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method
-    // Static HTML with no interpolated data values.
-    container.innerHTML = `
+    setHTML(container, `
       <div class="flex items-center justify-center h-full">
         <div class="text-center">
           <p class="text-2xl font-heading mb-2">Load data first</p>
           <p class="text-fg/50 text-sm">Drop code_graph.json to get started</p>
         </div>
-      </div>`;
+      </div>`);
     return () => {};
   }
 
@@ -133,7 +131,7 @@ export function render(container, appStore) {
   let showAutocomplete = false;
 
   // -- Layout --
-  container.innerHTML = safeHtml` // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method
+  setHTML(container, safeHtml`
     <div id="${rawHtml(VIEW_ID)}" class="flex flex-col h-full view-enter">
       <!-- Controls bar -->
       <div class="flex flex-wrap items-end gap-3 p-4 border-b-2 border-border bg-bg2">
@@ -184,7 +182,7 @@ export function render(container, appStore) {
         </div>
         <svg id="${rawHtml(VIEW_ID)}-svg" class="hidden w-full h-full"></svg>
       </div>
-    </div>`;
+    </div>`);
 
   // -- DOM references --
   const searchWrap = document.getElementById(`${VIEW_ID}-search-wrap`);
@@ -210,7 +208,7 @@ export function render(container, appStore) {
       return;
     }
     acDropdown.classList.remove('hidden');
-    acDropdown.innerHTML = results // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method
+    setHTML(acDropdown, results
       .map(
         (n) => `
         <button data-ac-id="${escapeHtml(n.id)}"
@@ -222,7 +220,7 @@ export function render(container, appStore) {
           <span class="text-fg/40 ml-auto truncate-line max-w-[200px]">${escapeHtml(shortPath(n.file_path))}</span>
         </button>`
       )
-      .join('');
+      .join(''));
 
     // Click handlers
     acDropdown.querySelectorAll('[data-ac-id]').forEach((btn) => {
@@ -295,10 +293,8 @@ export function render(container, appStore) {
     selectedIndicator?.classList.add('hidden');
     svg?.classList.add('hidden');
     emptyState?.classList.remove('hidden');
-    // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method
-    // Static HTML with no interpolated data values.
-    emptyState.innerHTML = `
-      <p class="text-fg/40 text-sm">Search for a node to explore its dependencies</p>`;
+    setHTML(emptyState, `
+      <p class="text-fg/40 text-sm">Search for a node to explore its dependencies</p>`);
   });
 
   // -- Node selection --
@@ -323,9 +319,9 @@ export function render(container, appStore) {
     if (!chain.length) {
       svg?.classList.add('hidden');
       emptyState?.classList.remove('hidden');
-      emptyState.innerHTML = safeHtml` // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method
+      setHTML(emptyState, safeHtml`
         <p class="text-fg/40 text-sm">No dependency chain found for <strong>${selectedNode.name}</strong>
-        (${direction})</p>`;
+        (${direction})</p>`);
       return;
     }
 

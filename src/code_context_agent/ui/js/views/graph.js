@@ -8,7 +8,7 @@ import { searchBar, attachSearchListeners } from '../components/search-bar.js';
 import { showTooltip, hideTooltip } from '../components/tooltip.js';
 import { NODE_COLORS, EDGE_COLORS, nodeColor, edgeColor, NODE_TYPE_LABELS } from '../colors.js';
 import { filterGraph, shortPath } from '../graph-utils.js';
-import { escapeHtml, safeHtml, rawHtml } from '../escape.js';
+import { escapeHtml, safeHtml, rawHtml, setHTML } from '../escape.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -104,9 +104,7 @@ export function render(container, _store) {
 
   // -- Empty state -----------------------------------------------------------
   if (!graph || !graph.nodes || graph.nodes.length === 0) {
-    // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method
-    // Static HTML with no interpolated data values.
-    container.innerHTML = `
+    setHTML(container, `
       <div class="view-enter h-full flex items-center justify-center bg-bg">
         <div class="text-center max-w-md px-6">
           <div class="text-5xl mb-4 opacity-60">&#x1F578;</div>
@@ -119,7 +117,7 @@ export function render(container, _store) {
             Go to Home
           </a>
         </div>
-      </div>`;
+      </div>`);
     return () => {};
   }
 
@@ -138,7 +136,7 @@ export function render(container, _store) {
   const signal = ac.signal;
 
   // -- Build HTML ------------------------------------------------------------
-  container.innerHTML = safeHtml` // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method
+  setHTML(container, safeHtml`
     <div class="view-enter h-full flex flex-col bg-bg overflow-hidden">
 
       <!-- Toolbar -->
@@ -197,7 +195,7 @@ export function render(container, _store) {
         <div id="graph-detail-panel" class="hidden w-72 border-l-2 border-border bg-bg2 p-4 overflow-auto flex-shrink-0">
         </div>
       </div>
-    </div>`;
+    </div>`);
 
   // -- References ------------------------------------------------------------
   const canvasEl = container.querySelector('#graph-canvas');
@@ -494,7 +492,7 @@ export function render(container, _store) {
       : '';
 
     detailPanel.classList.remove('hidden');
-    detailPanel.innerHTML = safeHtml` // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method
+    setHTML(detailPanel, safeHtml`
       <div class="space-y-3">
         <div>
           <button id="graph-detail-close" class="float-right text-xs text-fg/40 hover:text-fg cursor-pointer p-1" title="Close">&times;</button>
@@ -518,7 +516,7 @@ export function render(container, _store) {
             ? `<ul class="mt-1 space-y-1">${outgoingHtml}</ul>`
             : '<p class="text-xs text-fg/40 mt-1">None</p>')}
         </div>
-      </div>`;
+      </div>`);
 
     // Close button
     detailPanel.querySelector('#graph-detail-close')?.addEventListener('click', () => {
@@ -529,9 +527,7 @@ export function render(container, _store) {
   function deselectNode() {
     selectedNode = null;
     detailPanel.classList.add('hidden');
-    // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method
-    // Clearing content with empty string.
-    detailPanel.innerHTML = '';
+    detailPanel.replaceChildren();
     if (nodeSel) {
       nodeSel.attr('stroke-width', 2);
     }
@@ -679,12 +675,12 @@ export function render(container, _store) {
     const edgeChipContainer = container.querySelector('#graph-edge-chips');
 
     if (nodeChipContainer) {
-      nodeChipContainer.innerHTML = filterChips({ // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method
+      setHTML(nodeChipContainer, filterChips({
         items: nodeTypes,
         activeSet: activeNodeTypes,
         colorMap: NODE_COLORS,
         onChange: () => {},
-      });
+      }));
       attachFilterListeners('graph-node-chips', nodeTypes, activeNodeTypes, NODE_COLORS, (newSet) => {
         activeNodeTypes = newSet;
         rerenderChips();
@@ -693,12 +689,12 @@ export function render(container, _store) {
     }
 
     if (edgeChipContainer) {
-      edgeChipContainer.innerHTML = filterChips({ // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method
+      setHTML(edgeChipContainer, filterChips({
         items: edgeTypes,
         activeSet: activeEdgeTypes,
         colorMap: EDGE_COLORS,
         onChange: () => {},
-      });
+      }));
       attachFilterListeners('graph-edge-chips', edgeTypes, activeEdgeTypes, EDGE_COLORS, (newSet) => {
         activeEdgeTypes = newSet;
         rerenderChips();

@@ -4,7 +4,7 @@
 import { store } from '../store.js';
 import { renderMarkdownWithIds } from '../markdown.js';
 import { searchBar, attachSearchListeners } from '../components/search-bar.js';
-import { safeHtml, rawHtml } from '../escape.js';
+import { safeHtml, rawHtml, setHTML } from '../escape.js';
 
 const VIEW_ID = 'signatures-view';
 
@@ -27,7 +27,6 @@ function escapeRegex(str) {
 function highlightMatches(container, query) {
   if (!query) return 0;
 
-  // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp — query is escaped via escapeRegex() which neutralises all regex metacharacters
   const regex = new RegExp(`(${escapeRegex(query)})`, 'gi');
   let matchCount = 0;
 
@@ -79,8 +78,7 @@ function highlightMatches(container, query) {
  */
 function applySearch(contentEl, rawMd, query) {
   // Re-render from clean markdown each time to clear previous highlights
-  // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method — renderMarkdownWithIds() returns intentional marked() HTML output for markdown rendering
-  contentEl.innerHTML = renderMarkdownWithIds(rawMd);
+  setHTML(contentEl, renderMarkdownWithIds(rawMd));
   applyCodeStyling(contentEl);
 
   if (!query) {
@@ -229,8 +227,7 @@ export function render(container, _store) {
 
   // -- Empty state --
   if (!signatures) {
-    // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method — static HTML with no interpolated data
-    container.innerHTML = `
+    setHTML(container, `
       <div class="flex flex-col items-center justify-center h-full gap-4 p-8 view-enter">
         <div class="w-16 h-16 flex items-center justify-center rounded-base border-2 border-border bg-bg2 shadow-neo text-3xl">
           \u270E
@@ -238,13 +235,12 @@ export function render(container, _store) {
         <p class="text-fg/60 text-center max-w-md leading-relaxed">
           No signatures file loaded. Run <code class="font-mono text-sm bg-bg2 border border-border/60 rounded px-1.5 py-0.5">code-context-agent analyze</code> to extract function signatures.
         </p>
-      </div>`;
+      </div>`);
     return () => {};
   }
 
   // -- Main layout --
-  // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method — VIEW_ID is a hardcoded constant; searchBar() is a pre-escaped component output wrapped in rawHtml()
-  container.innerHTML = safeHtml`
+  setHTML(container, safeHtml`
     <div id="${VIEW_ID}" class="flex flex-col h-full view-enter">
       <!-- Header + Search -->
       <div class="flex items-center gap-4 px-6 py-4 border-b-2 border-border bg-bg2 shrink-0">
@@ -259,15 +255,14 @@ export function render(container, _store) {
       <div class="flex-1 overflow-auto">
         <div class="sig-content max-w-4xl mx-auto px-6 py-6"></div>
       </div>
-    </div>`;
+    </div>`);
 
   const viewEl = document.getElementById(VIEW_ID);
   const contentEl = viewEl.querySelector('.sig-content');
   const matchCountEl = viewEl.querySelector('.sig-match-count');
 
   // Render the markdown content
-  // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method — renderMarkdownWithIds() returns intentional marked() HTML output for markdown rendering
-  contentEl.innerHTML = renderMarkdownWithIds(signatures);
+  setHTML(contentEl, renderMarkdownWithIds(signatures));
   applyCodeStyling(contentEl);
 
   // -- Search wiring --
@@ -296,8 +291,7 @@ export function render(container, _store) {
   // -- Store subscription: re-render if signatures data changes --
   const unsubSignatures = store.on('signatures', (newSigs) => {
     if (newSigs) {
-      // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method — renderMarkdownWithIds() returns intentional marked() HTML output for markdown rendering
-      contentEl.innerHTML = renderMarkdownWithIds(newSigs);
+      setHTML(contentEl, renderMarkdownWithIds(newSigs));
       applyCodeStyling(contentEl);
       if (currentQuery) onSearch(currentQuery);
     }

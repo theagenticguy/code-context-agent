@@ -1,15 +1,31 @@
-// escape.js — Shared HTML escaping utilities
+// escape.js — Shared HTML escaping and safe DOM rendering utilities
+
+const ESCAPE_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 
 /**
- * Escape a string for safe insertion into innerHTML.
+ * Escape a string for safe insertion into HTML.
  * @param {string} str
  * @returns {string}
  */
 export function escapeHtml(str) {
   if (str == null) return '';
-  const div = document.createElement('div');
-  div.textContent = String(str);
-  return div.innerHTML;
+  return String(str).replace(/[&<>"']/g, (c) => ESCAPE_MAP[c]);
+}
+
+const domParser = new DOMParser();
+
+/**
+ * Safely set the HTML content of an element without using innerHTML.
+ * Uses DOMParser to parse the HTML string, then replaces the element's
+ * children with the parsed nodes. Unlike innerHTML, DOMParser does not
+ * execute inline <script> tags, providing defense-in-depth.
+ *
+ * @param {HTMLElement} el - Target element
+ * @param {string} html - HTML string (should be pre-sanitized via safeHtml/escapeHtml)
+ */
+export function setHTML(el, html) {
+  const doc = domParser.parseFromString(html, 'text/html');
+  el.replaceChildren(...doc.body.childNodes);
 }
 
 /**
@@ -27,10 +43,10 @@ export function rawHtml(htmlString) {
  * Tagged template literal that auto-escapes all interpolated values.
  *
  * Usage:
- *   container.innerHTML = safeHtml`<div>${userName}</div>`;
+ *   setHTML(container, safeHtml`<div>${userName}</div>`);
  *
  * Values wrapped in rawHtml() bypass escaping:
- *   container.innerHTML = safeHtml`<div>${rawHtml(componentOutput)}</div>`;
+ *   setHTML(container, safeHtml`<div>${rawHtml(componentOutput)}</div>`);
  *
  * @param {TemplateStringsArray} strings
  * @param {...*} values

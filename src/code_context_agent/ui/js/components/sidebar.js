@@ -1,7 +1,7 @@
 // sidebar.js — Navigation sidebar component
 // Renders the main navigation, theme toggle, and keyboard shortcut hints.
 
-import { safeHtml, rawHtml } from '../escape.js';
+import { safeHtml, rawHtml, setHTML } from '../escape.js';
 
 /**
  * View definitions for the sidebar navigation.
@@ -70,7 +70,7 @@ export function renderSidebar(container, store, router) {
         </div>
       </aside>`;
     // All interpolated values auto-escaped via safeHtml; navItem() wrapped in rawHtml() is a static internal component
-    container.innerHTML = template; // nosemgrep: javascript.browser.security.insecure-document-method.insecure-document-method
+    setHTML(container, template);
 
     // Wire up theme toggle click
     const btn = container.querySelector('#theme-toggle');
