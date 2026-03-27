@@ -8,7 +8,7 @@ import { barChart } from '../components/bar-chart.js';
 import { gaugeChart } from '../components/gauge.js';
 import { NODE_COLORS, EDGE_COLORS, SEVERITY_COLORS, NODE_TYPE_LABELS } from '../colors.js';
 import { shortPath } from '../graph-utils.js';
-import { escapeHtml } from '../escape.js';
+import { escapeHtml, safeHtml, rawHtml, setHTML } from '../escape.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -287,7 +287,7 @@ export function render(container, appStore) {
 
   // Empty state — no data loaded
   if (!graph) {
-    container.innerHTML = emptyState();
+    setHTML(container, emptyState());
     // Re-render when graph becomes available
     const unsub = appStore.on('graph', () => render(container, appStore));
     return () => unsub();
@@ -318,14 +318,14 @@ export function render(container, appStore) {
     }
   }
 
-  container.innerHTML = `
+  setHTML(container, safeHtml`
     <div class="p-6 space-y-6 bg-bg min-h-full">
       <h1 class="text-2xl font-heading text-fg">Dashboard</h1>
-      ${kpiRow(graph, analysisResult)}
-      ${distributionRow(nodeTypes, edgeTypes)}
-      ${row3Html}
-      ${businessLogicTable(businessLogicItems)}
-    </div>`;
+      ${rawHtml(kpiRow(graph, analysisResult))}
+      ${rawHtml(distributionRow(nodeTypes, edgeTypes))}
+      ${rawHtml(row3Html)}
+      ${rawHtml(businessLogicTable(businessLogicItems))}
+    </div>`);
 
   // Subscribe to store changes for live updates
   const unsubs = [

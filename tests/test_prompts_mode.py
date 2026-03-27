@@ -46,4 +46,4 @@ class TestGetPromptFullMode:
 class TestGetSteeringContentFullMode:
     def test_full_mode_fragment_exists(self):
         content = get_steering_content("full_mode")
-        assert len(content) > 50  # noqa: PLR2004
+        assert len(content) > 50

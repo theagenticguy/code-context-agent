@@ -226,9 +226,9 @@ def _setup_analysis_context(
             transient=True,
             vertical_overflow="ellipsis",
         )
-        # Rich auto-refresh calls get_renderable — point it at our builder
-        # so the dashboard always shows fresh state (timer, tool elapsed, etc.)
-        live.get_renderable = consumer._build_display  # type: ignore[assignment]
+        from ..consumer import bind_live_renderable
+
+        bind_live_renderable(live, consumer._build_display)
 
     return AnalysisContext(
         repo=repo,

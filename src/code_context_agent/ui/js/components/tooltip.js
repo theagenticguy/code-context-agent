@@ -1,6 +1,8 @@
 // tooltip.js — Global tooltip show/hide using the #tooltip element
 // Positioned with boundary detection to stay within the viewport.
 
+import { setHTML } from '../escape.js';
+
 /**
  * Show the global tooltip at the given position.
  *
@@ -12,7 +14,8 @@ export function showTooltip(html, x, y) {
   const el = document.getElementById('tooltip');
   if (!el) return;
 
-  el.innerHTML = html;
+  // All callers pre-escape content via escapeHtml() or safeHtml before passing to showTooltip()
+  setHTML(el, html);
   el.classList.remove('hidden');
 
   // Force layout so we can measure the rendered size
@@ -39,5 +42,5 @@ export function hideTooltip() {
 
   el.classList.remove('visible');
   el.classList.add('hidden');
-  el.innerHTML = '';
+  el.replaceChildren();
 }

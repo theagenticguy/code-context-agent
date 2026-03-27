@@ -1,6 +1,8 @@
 // filter-chips.js — Toggleable filter chip set with All/None controls
 // Returns an HTML string. Use attachFilterListeners() to wire up interactivity.
 
+import { escapeHtml } from '../escape.js';
+
 /**
  * Render a set of filter chips.
  *
@@ -21,12 +23,12 @@ export function filterChips({ items, activeSet, colorMap, onChange }) {
       const active = activeSet.has(item);
       const color = colorMap[item] || '#6a6a86';
       return `
-        <button data-filter-chip="${item}"
+        <button data-filter-chip="${escapeHtml(item)}"
           class="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-base border-2 border-border font-base transition-all ${
             active ? 'shadow-neo bg-bg2' : 'opacity-40'
           }">
           <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" style="background: ${color}"></span>
-          ${item}
+          ${escapeHtml(item)}
         </button>`;
     })
     .join('');

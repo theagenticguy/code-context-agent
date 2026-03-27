@@ -202,7 +202,7 @@ def analyze(  # noqa: C901, PLR0912
 
 
 @app.command
-def viz(  # noqa: C901, PLR0915
+def viz(  # noqa: C901
     path: Annotated[
         Path,
         Parameter(help="Path to the repository (must contain .code-context/ output)."),
@@ -245,11 +245,8 @@ def viz(  # noqa: C901, PLR0915
         console.print("Run [cyan]code-context-agent analyze[/cyan] first.")
         raise SystemExit(1)
 
-    # Resolve viz directory — ui-next lives at the repo root (sibling to src/)
-    viz_dir = Path(__file__).parent.parent.parent / "ui-next"
-    if not viz_dir.exists():
-        # Fallback: check relative to CWD
-        viz_dir = repo_path / "ui-next"
+    # Resolve viz directory — bundled inside the package as code_context_agent/ui/
+    viz_dir = Path(__file__).parent / "ui"
     if not viz_dir.exists():
         console.print("[red]Error:[/red] Visualization files not found.")
         raise SystemExit(1)

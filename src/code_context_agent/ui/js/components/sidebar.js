@@ -1,6 +1,8 @@
 // sidebar.js — Navigation sidebar component
 // Renders the main navigation, theme toggle, and keyboard shortcut hints.
 
+import { safeHtml, rawHtml, setHTML } from '../escape.js';
+
 /**
  * View definitions for the sidebar navigation.
  * Each entry maps a view ID to its display label, hash route, and keyboard shortcut.
@@ -49,14 +51,14 @@ function navItem(item, isActive) {
 export function renderSidebar(container, store, router) {
   function render() {
     const activeView = store.get('activeView');
-    container.innerHTML = `
+    const template = safeHtml`
       <aside class="w-56 border-r-2 border-border bg-bg2 flex flex-col h-full">
         <div class="p-4 border-b-2 border-border">
           <h1 class="font-heading text-lg tracking-tight">Code Context</h1>
           <p class="text-xs text-fg/50 mt-1">Agent Visualizer</p>
         </div>
         <nav class="flex-1 p-2 space-y-1 overflow-auto">
-          ${NAV_ITEMS.map((item) => navItem(item, item.id === activeView)).join('')}
+          ${rawHtml(NAV_ITEMS.map((item) => navItem(item, item.id === activeView)).join(''))}
         </nav>
         <div class="p-3 border-t-2 border-border">
           <button id="theme-toggle"
@@ -67,6 +69,8 @@ export function renderSidebar(container, store, router) {
           </button>
         </div>
       </aside>`;
+    // All interpolated values auto-escaped via safeHtml; navItem() wrapped in rawHtml() is a static internal component
+    setHTML(container, template);
 
     // Wire up theme toggle click
     const btn = container.querySelector('#theme-toggle');

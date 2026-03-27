@@ -4,7 +4,7 @@
 
 import { store } from '../store.js';
 import { renderMarkdownWithIds, extractTOC } from '../markdown.js';
-import { escapeHtml } from '../escape.js';
+import { escapeHtml, safeHtml, rawHtml, setHTML } from '../escape.js';
 
 /**
  * Render the bundles view into the given container.
@@ -22,7 +22,7 @@ export function render(container, _store) {
 
     // ── Empty state ────────────────────────────────────────────────────────
     if (!bundle) {
-      container.innerHTML = `
+      setHTML(container, `
         <div class="flex flex-col h-full view-enter">
           <header class="p-6 border-b-2 border-border">
             <h1 class="font-heading text-2xl">Bundles \u2014 Focused Analysis</h1>
@@ -38,7 +38,7 @@ export function render(container, _store) {
               <p class="mt-3 text-fg/70">This produces a CONTEXT.bundle.md with deep analysis scoped to that specific area of your codebase.</p>
             </div>
           </div>
-        </div>`;
+        </div>`);
       return;
     }
 
@@ -64,7 +64,7 @@ export function render(container, _store) {
       .join('');
 
     // ── Assemble full layout ───────────────────────────────────────────────
-    container.innerHTML = `
+    setHTML(container, safeHtml`
       <div class="flex h-full view-enter">
         <!-- TOC Sidebar -->
         <aside id="bundle-toc" class="w-56 shrink-0 border-r-2 border-border bg-bg2 overflow-y-auto sticky top-0 h-full">
@@ -72,7 +72,7 @@ export function render(container, _store) {
             <h2 class="font-heading text-sm uppercase tracking-wide text-fg/60">Contents</h2>
           </div>
           <nav class="p-2 space-y-0.5">
-            ${tocItemsHtml || '<p class="text-xs text-fg/40 px-3 py-2">No headings found</p>'}
+            ${rawHtml(tocItemsHtml || '<p class="text-xs text-fg/40 px-3 py-2">No headings found</p>')}
           </nav>
         </aside>
 
@@ -97,7 +97,7 @@ export function render(container, _store) {
 
             <!-- Rendered bundle markdown -->
             <div id="bundle-prose" class="bundle-prose">
-              ${contentHtml}
+              ${rawHtml(contentHtml)}
             </div>
           </div>
         </div>
@@ -274,7 +274,7 @@ export function render(container, _store) {
           border-left-color: var(--main);
           font-weight: 600;
         }
-      </style>`;
+      </style>`);
 
     // ── Scroll-spy via IntersectionObserver ───────────────────────────────
     const scrollEl = container.querySelector('#bundle-scroll');

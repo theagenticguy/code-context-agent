@@ -5,7 +5,7 @@ import { store } from '../store.js';
 import { statCard } from '../components/stat-card.js';
 import { gaugeChart } from '../components/gauge.js';
 import { SEVERITY_COLORS } from '../colors.js';
-import { escapeHtml } from '../escape.js';
+import { escapeHtml, setHTML } from '../escape.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -234,10 +234,10 @@ function renderCodeHealth(health) {
 function renderPhaseTimingsD3(container, timings) {
   const d3 = window.d3;
   if (!d3 || !timings || timings.length === 0) {
-    container.innerHTML = `
+    setHTML(container, `
       <div class="rounded-base border-2 border-border bg-bg2 p-6 text-center text-fg/40 text-sm">
         No phase timing data available.
-      </div>`;
+      </div>`);
     return () => {};
   }
 
@@ -279,7 +279,7 @@ function renderPhaseTimingsD3(container, timings) {
     .clamp(true);
 
   // Create SVG
-  container.innerHTML = '';
+  container.replaceChildren();
   const svg = d3.select(container)
     .append('svg')
     .attr('viewBox', `0 0 ${width} ${height}`)
@@ -406,7 +406,7 @@ function renderPhaseTimingsD3(container, timings) {
 
   // Return cleanup
   return () => {
-    container.innerHTML = '';
+    container.replaceChildren();
   };
 }
 
@@ -441,7 +441,7 @@ export function render(container, _store) {
   const result = store.get('analysisResult');
 
   if (!result) {
-    container.innerHTML = renderEmpty();
+    setHTML(container, renderEmpty());
     container.firstElementChild?.classList.add('view-enter');
     return () => {};
   }
@@ -459,7 +459,7 @@ export function render(container, _store) {
       </section>
     </div>`;
 
-  container.innerHTML = html;
+  setHTML(container, html);
 
   // Render D3 waterfall chart
   const chartContainer = container.querySelector('#phase-timings-chart');

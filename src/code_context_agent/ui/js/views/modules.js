@@ -4,6 +4,7 @@
 import { showTooltip, hideTooltip } from '../components/tooltip.js';
 import { nodeColor } from '../colors.js';
 import { buildHierarchy } from '../graph-utils.js';
+import { escapeHtml, safeHtml, rawHtml, setHTML } from '../escape.js';
 
 const d3 = window.d3;
 
@@ -27,7 +28,7 @@ function typeBreakdownHtml(node) {
     .sort((a, b) => b[1] - a[1])
     .map(
       ([type, count]) =>
-        `<span style="color:${nodeColor(type)}; font-weight:700;">${type}</span>: ${count}`
+        `<span style="color:${nodeColor(type)}; font-weight:700;">${escapeHtml(type)}</span>: ${count}`
     )
     .join('<br>');
   return lines;
@@ -63,7 +64,7 @@ export function render(container, st) {
 
   // ---- Empty state --------------------------------------------------------
   if (!graph || !graph.nodes || graph.nodes.length === 0) {
-    container.innerHTML = `
+    setHTML(container, `
       <div class="flex flex-col items-center justify-center h-full gap-4 p-8">
         <span class="text-5xl">&#x29C9;</span>
         <h2 class="font-heading text-xl">No Module Data</h2>
@@ -71,7 +72,7 @@ export function render(container, st) {
           Drop a <code class="px-1 py-0.5 rounded-base border border-border/40 bg-bg text-xs font-mono">code_graph.json</code>
           file onto the page to visualize module structure.
         </p>
-      </div>`;
+      </div>`);
     return () => {};
   }
 
@@ -80,7 +81,7 @@ export function render(container, st) {
   let resizeObserver = null;
 
   // ---- Shell HTML ---------------------------------------------------------
-  container.innerHTML = `
+  setHTML(container, `
     <div class="flex flex-col h-full">
       <!-- Title bar -->
       <div class="flex items-center gap-3 px-5 py-3 border-b-2 border-border bg-bg2">
@@ -91,7 +92,7 @@ export function render(container, st) {
       </div>
       <!-- SVG canvas -->
       <div id="mod-canvas" class="flex-1 relative overflow-hidden bg-bg"></div>
-    </div>`;
+    </div>`);
 
   const canvasEl = container.querySelector('#mod-canvas');
   const countEl = container.querySelector('#mod-count');
@@ -209,13 +210,13 @@ export function render(container, st) {
       .on('mouseenter', (event, d) => {
         const path = ancestorPath(d);
         const memberCount = d.value || 0;
-        let html = `<div style="margin-bottom:4px;"><strong>${d.data.name}</strong></div>`;
-        html += `<div style="color:var(--foreground);opacity:0.6;font-size:11px;margin-bottom:4px;">${path}</div>`;
-        html += `<div style="margin-bottom:4px;">Members: <strong>${memberCount}</strong></div>`;
+        let html = safeHtml`<div style="margin-bottom:4px;"><strong>${d.data.name}</strong></div>`;
+        html += safeHtml`<div style="color:var(--foreground);opacity:0.6;font-size:11px;margin-bottom:4px;">${path}</div>`;
+        html += safeHtml`<div style="margin-bottom:4px;">Members: <strong>${String(memberCount)}</strong></div>`;
         if (d.children) {
           html += typeBreakdownHtml(d);
         } else if (d.data.node_type) {
-          html += `<span style="color:${nodeColor(d.data.node_type)}; font-weight:700;">${d.data.node_type}</span>`;
+          html += `<span style="color:${nodeColor(d.data.node_type)}; font-weight:700;">${escapeHtml(d.data.node_type)}</span>`;
         }
         showTooltip(html, event.clientX, event.clientY);
 
@@ -311,17 +312,17 @@ export function render(container, st) {
       cur = cur.parent;
     }
 
-    breadcrumbEl.innerHTML = crumbs
+    setHTML(breadcrumbEl, crumbs
       .map((node, i) => {
         const isLast = i === crumbs.length - 1;
         const name = node.data.name === 'root' ? 'root' : node.data.name;
-        const separator = i > 0 ? '<span class="text-fg/30 mx-0.5">/</span>' : '';
+        const separator = i > 0 ? rawHtml('<span class="text-fg/30 mx-0.5">/</span>') : '';
         if (isLast) {
-          return `${separator}<span class="text-fg font-heading">${name}</span>`;
+          return safeHtml`${separator}<span class="text-fg font-heading">${name}</span>`;
         }
-        return `${separator}<button class="hover:text-main hover:underline transition-colors breadcrumb-btn" data-depth="${i}">${name}</button>`;
+        return safeHtml`${separator}<button class="hover:text-main hover:underline transition-colors breadcrumb-btn" data-depth="${i}">${name}</button>`;
       })
-      .join('');
+      .join(''));
 
     // Wire up breadcrumb clicks
     breadcrumbEl.querySelectorAll('.breadcrumb-btn').forEach((btn) => {
@@ -362,6 +363,6 @@ export function render(container, st) {
       resizeObserver = null;
     }
     svg.on('click', null);
-    container.innerHTML = '';
+    container.replaceChildren();
   };
 }

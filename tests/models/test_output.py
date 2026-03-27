@@ -20,8 +20,8 @@ class TestGraphStats:
 
     def test_valid(self) -> None:
         stats = GraphStats(node_count=10, edge_count=20, module_count=3, hotspot_count=5)
-        assert stats.node_count == 10  # noqa: PLR2004
-        assert stats.edge_count == 20  # noqa: PLR2004
+        assert stats.node_count == 10
+        assert stats.edge_count == 20
 
     def test_defaults(self) -> None:
         stats = GraphStats(node_count=0, edge_count=0)
@@ -46,7 +46,7 @@ class TestBusinessLogicItem:
             category="workflows",
         )
         assert item.rank == 1
-        assert item.score == 0.85  # noqa: PLR2004
+        assert item.score == 0.85
 
     def test_score_bounds_low(self) -> None:
         with pytest.raises(ValidationError):
@@ -146,7 +146,7 @@ class TestAnalysisResult:
         )
         assert len(result.business_logic_items) == 1
         assert len(result.risks) == 1
-        assert result.graph_stats.node_count == 100  # noqa: PLR2004
+        assert result.graph_stats.node_count == 100
 
     def test_roundtrip(self) -> None:
         """Test model_dump / model_validate roundtrip."""
@@ -202,8 +202,8 @@ class TestAnalysisResult:
             ),
         )
         assert len(result.refactoring_candidates) == 1
-        assert result.code_health.duplication_percentage == 3.2  # noqa: PLR2004
-        assert result.code_health.code_smell_count == 8  # noqa: PLR2004
+        assert result.code_health.duplication_percentage == 3.2
+        assert result.code_health.code_smell_count == 8
 
     def test_code_health_roundtrip(self) -> None:
         """Code health data survives model_dump / model_validate."""
@@ -255,5 +255,5 @@ class TestAnalysisResultMode:
 
     def test_phase_timing_item(self) -> None:
         item = PhaseTimingItem(phase=3, name="Semantic Discovery", duration_seconds=45.2, tool_count=12)
-        assert item.phase == 3  # noqa: PLR2004
+        assert item.phase == 3
         assert item.name == "Semantic Discovery"

@@ -19,7 +19,7 @@ def _make_hotspots_result():
                 {"path": "src/db.py", "commits": 30, "percentage": 10.8},
             ],
             "total_commits_analyzed": 200,
-        }
+        },
     )
 
 
@@ -34,7 +34,7 @@ def _make_cochanges_result():
                 {"path": "src/utils.py", "count": 8, "percentage": 19.0},
                 {"path": "src/config.py", "count": 3, "percentage": 7.1},
             ],
-        }
+        },
     )
 
 
@@ -47,7 +47,7 @@ def _make_contributors_result():
                 {"email": "bob@example.com", "commits": 20, "percentage": 40.0},
             ],
             "total_commits": 50,
-        }
+        },
     )
 
 
@@ -106,7 +106,7 @@ class TestCodeGraphIngestGitContributors:
         code_graph_ingest_git("test", _make_hotspots_result(), "hotspots")
         # Then attach contributors
         result = json.loads(
-            code_graph_ingest_git("test", _make_contributors_result(), "contributors", source_file="src/auth.py")
+            code_graph_ingest_git("test", _make_contributors_result(), "contributors", source_file="src/auth.py"),
         )
         assert result["status"] == "success"
         # Verify metadata was attached
@@ -171,12 +171,12 @@ class TestCodeGraphIngestClones:
                         "fragment": "another dup",
                     },
                 ],
-            }
+            },
         )
 
         result = json.loads(code_graph_ingest_clones("test", clone_data))
         assert result["status"] == "success"
-        assert result["edges_added"] == 2  # noqa: PLR2004
+        assert result["edges_added"] == 2
 
     def test_graph_not_found(self):
         _graphs.clear()
@@ -198,7 +198,7 @@ class TestCodeGraphIngestClones:
                 "status": "success",
                 "total_clones": 0,
                 "clones": [],
-            }
+            },
         )
         result = json.loads(code_graph_ingest_clones("test", clone_data))
         assert result["status"] == "success"

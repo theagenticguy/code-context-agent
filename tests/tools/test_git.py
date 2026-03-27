@@ -51,7 +51,7 @@ class TestGitFilesChangedTogether:
         result = json.loads(git_files_changed_together(REPO_PATH, "pyproject.toml", limit=5))
 
         assert result["status"] == "success"
-        assert result["total_commits"] <= 5  # noqa: PLR2004
+        assert result["total_commits"] <= 5
 
 
 class TestGitFileHistory:
@@ -77,7 +77,7 @@ class TestGitFileHistory:
         result = json.loads(git_file_history(REPO_PATH, "pyproject.toml", limit=3))
 
         assert result["status"] == "success"
-        assert len(result["commits"]) <= 3  # noqa: PLR2004
+        assert len(result["commits"]) <= 3
 
 
 class TestGitRecentCommits:
@@ -103,7 +103,7 @@ class TestGitRecentCommits:
         result = json.loads(git_recent_commits(REPO_PATH, limit=5))
 
         assert result["status"] == "success"
-        assert len(result["commits"]) <= 5  # noqa: PLR2004
+        assert len(result["commits"]) <= 5
 
 
 class TestGitDiffFile:
@@ -200,4 +200,4 @@ class TestGitContributors:
         result = json.loads(git_contributors(REPO_PATH, limit=5))
 
         assert result["status"] == "success"
-        assert result["total_commits"] <= 5  # noqa: PLR2004
+        assert result["total_commits"] <= 5

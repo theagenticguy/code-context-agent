@@ -3,7 +3,7 @@
 
 import { store } from '../store.js';
 import { renderMarkdownWithIds, extractTOC } from '../markdown.js';
-import { escapeHtml } from '../escape.js';
+import { escapeHtml, safeHtml, rawHtml, setHTML } from '../escape.js';
 
 /**
  * Render the narrative view into the given container.
@@ -18,7 +18,7 @@ export function render(container, _store) {
 
   // ── Empty state ──────────────────────────────────────────────────────────
   if (!narrative) {
-    container.innerHTML = `
+    setHTML(container, `
       <div class="flex items-center justify-center h-full">
         <div class="text-center max-w-md p-8 rounded-base border-2 border-border shadow-neo bg-bg2">
           <span class="text-4xl block mb-4">\u2263</span>
@@ -27,7 +27,7 @@ export function render(container, _store) {
             No narrative document loaded. Run the code-context-agent analyzer to generate CONTEXT.md
           </p>
         </div>
-      </div>`;
+      </div>`);
     return () => {};
   }
 
@@ -53,7 +53,7 @@ export function render(container, _store) {
     .join('');
 
   // ── Assemble full layout ─────────────────────────────────────────────────
-  container.innerHTML = `
+  setHTML(container, safeHtml`
     <div class="flex h-full view-enter">
       <!-- TOC Sidebar -->
       <aside id="narrative-toc" class="w-56 shrink-0 border-r-2 border-border bg-bg2 overflow-y-auto sticky top-0 h-full">
@@ -61,7 +61,7 @@ export function render(container, _store) {
           <h2 class="font-heading text-sm uppercase tracking-wide text-fg/60">Table of Contents</h2>
         </div>
         <nav class="p-2 space-y-0.5">
-          ${tocItemsHtml || '<p class="text-xs text-fg/40 px-3 py-2">No headings found</p>'}
+          ${rawHtml(tocItemsHtml || '<p class="text-xs text-fg/40 px-3 py-2">No headings found</p>')}
         </nav>
       </aside>
 
@@ -69,7 +69,7 @@ export function render(container, _store) {
       <div id="narrative-content" class="flex-1 overflow-y-auto">
         <div class="max-w-3xl mx-auto p-8">
           <div id="narrative-prose" class="narrative-prose">
-            ${contentHtml}
+            ${rawHtml(contentHtml)}
           </div>
         </div>
       </div>
@@ -237,7 +237,7 @@ export function render(container, _store) {
         border-left-color: var(--main);
         font-weight: 600;
       }
-    </style>`;
+    </style>`);
 
   // ── Scroll-spy via IntersectionObserver ─────────────────────────────────
   const contentEl = container.querySelector('#narrative-content');

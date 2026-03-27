@@ -8,7 +8,7 @@ import { showTooltip, hideTooltip } from '../components/tooltip.js';
 import { edgeColor, nodeColor } from '../colors.js';
 import { getDependencyChain, shortPath } from '../graph-utils.js';
 import { DEPENDENCY_EDGE_TYPES } from '../colors.js';
-import { escapeHtml } from '../escape.js';
+import { escapeHtml, safeHtml, rawHtml, setHTML } from '../escape.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -113,13 +113,13 @@ export function render(container, appStore) {
 
   // -- No graph loaded state --
   if (!graph) {
-    container.innerHTML = `
+    setHTML(container, `
       <div class="flex items-center justify-center h-full">
         <div class="text-center">
           <p class="text-2xl font-heading mb-2">Load data first</p>
           <p class="text-fg/50 text-sm">Drop code_graph.json to get started</p>
         </div>
-      </div>`;
+      </div>`);
     return () => {};
   }
 
@@ -131,14 +131,14 @@ export function render(container, appStore) {
   let showAutocomplete = false;
 
   // -- Layout --
-  container.innerHTML = `
-    <div id="${VIEW_ID}" class="flex flex-col h-full view-enter">
+  setHTML(container, safeHtml`
+    <div id="${rawHtml(VIEW_ID)}" class="flex flex-col h-full view-enter">
       <!-- Controls bar -->
       <div class="flex flex-wrap items-end gap-3 p-4 border-b-2 border-border bg-bg2">
         <!-- Search with autocomplete -->
-        <div class="flex-1 min-w-[220px] relative" id="${VIEW_ID}-search-wrap">
-          ${searchBar({ placeholder: 'Find a node...' })}
-          <div id="${VIEW_ID}-autocomplete"
+        <div class="flex-1 min-w-[220px] relative" id="${rawHtml(VIEW_ID)}-search-wrap">
+          ${rawHtml(searchBar({ placeholder: 'Find a node...' }))}
+          <div id="${rawHtml(VIEW_ID)}-autocomplete"
                class="absolute left-0 right-0 top-full mt-1 z-50 hidden
                       rounded-base border-2 border-border bg-bg2 shadow-neo
                       max-h-64 overflow-auto">
@@ -148,41 +148,41 @@ export function render(container, appStore) {
         <!-- Direction toggle -->
         <div class="flex flex-col gap-1">
           <span class="text-[10px] uppercase tracking-wide text-fg/50 font-base">Direction</span>
-          <button id="${VIEW_ID}-dir-toggle"
+          <button id="${rawHtml(VIEW_ID)}-dir-toggle"
                   class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-base
                          border-2 border-border font-base neo-pressable bg-bg2">
-            <span id="${VIEW_ID}-dir-icon">\u25BC</span>
-            <span id="${VIEW_ID}-dir-label">Downstream</span>
+            <span id="${rawHtml(VIEW_ID)}-dir-icon">\u25BC</span>
+            <span id="${rawHtml(VIEW_ID)}-dir-label">Downstream</span>
           </button>
         </div>
 
         <!-- Depth slider -->
         <div class="flex flex-col gap-1">
           <span class="text-[10px] uppercase tracking-wide text-fg/50 font-base">
-            Depth: <span id="${VIEW_ID}-depth-val">${depth}</span>
+            Depth: <span id="${rawHtml(VIEW_ID)}-depth-val">${depth}</span>
           </span>
-          <input id="${VIEW_ID}-depth-slider" type="range"
+          <input id="${rawHtml(VIEW_ID)}-depth-slider" type="range"
                  min="${MIN_DEPTH}" max="${MAX_DEPTH}" value="${depth}"
                  class="w-28 h-2 accent-main cursor-pointer" />
         </div>
 
         <!-- Selected node indicator -->
-        <div id="${VIEW_ID}-selected" class="hidden flex items-center gap-2 px-3 py-1.5 text-xs
+        <div id="${rawHtml(VIEW_ID)}-selected" class="hidden flex items-center gap-2 px-3 py-1.5 text-xs
                     rounded-base border-2 border-border bg-bg2 font-base">
-          <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" id="${VIEW_ID}-sel-dot"></span>
-          <span id="${VIEW_ID}-sel-name" class="truncate-line max-w-[180px]"></span>
-          <button id="${VIEW_ID}-sel-clear" class="ml-1 text-fg/40 hover:text-fg">\u2715</button>
+          <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" id="${rawHtml(VIEW_ID)}-sel-dot"></span>
+          <span id="${rawHtml(VIEW_ID)}-sel-name" class="truncate-line max-w-[180px]"></span>
+          <button id="${rawHtml(VIEW_ID)}-sel-clear" class="ml-1 text-fg/40 hover:text-fg">\u2715</button>
         </div>
       </div>
 
       <!-- D3 tree area -->
-      <div id="${VIEW_ID}-tree" class="flex-1 relative overflow-hidden bg-bg">
-        <div id="${VIEW_ID}-empty" class="flex items-center justify-center h-full">
+      <div id="${rawHtml(VIEW_ID)}-tree" class="flex-1 relative overflow-hidden bg-bg">
+        <div id="${rawHtml(VIEW_ID)}-empty" class="flex items-center justify-center h-full">
           <p class="text-fg/40 text-sm">Search for a node to explore its dependencies</p>
         </div>
-        <svg id="${VIEW_ID}-svg" class="hidden w-full h-full"></svg>
+        <svg id="${rawHtml(VIEW_ID)}-svg" class="hidden w-full h-full"></svg>
       </div>
-    </div>`;
+    </div>`);
 
   // -- DOM references --
   const searchWrap = document.getElementById(`${VIEW_ID}-search-wrap`);
@@ -208,10 +208,10 @@ export function render(container, appStore) {
       return;
     }
     acDropdown.classList.remove('hidden');
-    acDropdown.innerHTML = results
+    setHTML(acDropdown, results
       .map(
         (n) => `
-        <button data-ac-id="${n.id}"
+        <button data-ac-id="${escapeHtml(n.id)}"
                 class="w-full text-left px-3 py-2 text-xs font-base hover:bg-main/20
                        flex items-center gap-2 border-b border-border/20 last:border-b-0
                        transition-colors">
@@ -220,7 +220,7 @@ export function render(container, appStore) {
           <span class="text-fg/40 ml-auto truncate-line max-w-[200px]">${escapeHtml(shortPath(n.file_path))}</span>
         </button>`
       )
-      .join('');
+      .join(''));
 
     // Click handlers
     acDropdown.querySelectorAll('[data-ac-id]').forEach((btn) => {
@@ -293,8 +293,8 @@ export function render(container, appStore) {
     selectedIndicator?.classList.add('hidden');
     svg?.classList.add('hidden');
     emptyState?.classList.remove('hidden');
-    emptyState.innerHTML = `
-      <p class="text-fg/40 text-sm">Search for a node to explore its dependencies</p>`;
+    setHTML(emptyState, `
+      <p class="text-fg/40 text-sm">Search for a node to explore its dependencies</p>`);
   });
 
   // -- Node selection --
@@ -319,9 +319,9 @@ export function render(container, appStore) {
     if (!chain.length) {
       svg?.classList.add('hidden');
       emptyState?.classList.remove('hidden');
-      emptyState.innerHTML = `
+      setHTML(emptyState, safeHtml`
         <p class="text-fg/40 text-sm">No dependency chain found for <strong>${selectedNode.name}</strong>
-        (${direction})</p>`;
+        (${direction})</p>`);
       return;
     }
 
@@ -485,17 +485,17 @@ export function render(container, appStore) {
         const edge = nd.edge;
         const edgeInfo = edge
           ? `<div class="mt-1 pt-1 border-t border-border/30">
-               <span style="color: ${edgeColor(edge.edge_type)}">${edge.edge_type}</span>
+               <span style="color: ${edgeColor(edge.edge_type)}">${escapeHtml(edge.edge_type)}</span>
                ${edge.confidence != null ? ` <span class="text-fg/40">(${(edge.confidence * 100).toFixed(0)}%)</span>` : ''}
              </div>`
           : '';
         showTooltip(
-          `<div>
+          safeHtml`<div>
             <strong>${nd.name}</strong>
             <span class="text-fg/50 ml-1">${nd.node_type}</span>
           </div>
           <div class="text-fg/50 text-[10px]">${nd.file_path || ''}</div>
-          ${edgeInfo}`,
+          ${rawHtml(edgeInfo)}`,
           event.clientX,
           event.clientY
         );

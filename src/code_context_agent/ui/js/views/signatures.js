@@ -4,20 +4,13 @@
 import { store } from '../store.js';
 import { renderMarkdownWithIds } from '../markdown.js';
 import { searchBar, attachSearchListeners } from '../components/search-bar.js';
+import { safeHtml, rawHtml, setHTML } from '../escape.js';
 
 const VIEW_ID = 'signatures-view';
 
 /**
- * Escape special regex characters in a string.
- * @param {string} str
- * @returns {string}
- */
-function escapeRegex(str) {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/**
  * Walk all text nodes inside a container and wrap matches in <mark>.
+ * Uses indexOf for case-insensitive matching (no dynamic RegExp).
  * Returns the number of matches found.
  * @param {HTMLElement} container
  * @param {string} query — the search string (case-insensitive)
@@ -26,7 +19,8 @@ function escapeRegex(str) {
 function highlightMatches(container, query) {
   if (!query) return 0;
 
-  const regex = new RegExp(`(${escapeRegex(query)})`, 'gi');
+  const lowerQuery = query.toLowerCase();
+  const queryLen = query.length;
   let matchCount = 0;
 
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null);
@@ -36,30 +30,31 @@ function highlightMatches(container, query) {
   }
 
   for (const node of textNodes) {
-    if (!regex.test(node.textContent)) continue;
-    regex.lastIndex = 0; // reset after test()
+    const text = node.textContent;
+    const lowerText = text.toLowerCase();
+    if (!lowerText.includes(lowerQuery)) continue;
 
     const fragment = document.createDocumentFragment();
     let lastIndex = 0;
-    let match;
+    let idx;
 
-    while ((match = regex.exec(node.textContent)) !== null) {
+    while ((idx = lowerText.indexOf(lowerQuery, lastIndex)) !== -1) {
       // Text before the match
-      if (match.index > lastIndex) {
-        fragment.appendChild(document.createTextNode(node.textContent.slice(lastIndex, match.index)));
+      if (idx > lastIndex) {
+        fragment.appendChild(document.createTextNode(text.slice(lastIndex, idx)));
       }
-      // The highlighted match
+      // The highlighted match (preserving original case)
       const mark = document.createElement('mark');
       mark.className = 'bg-main/30 rounded-sm px-0.5';
-      mark.textContent = match[1];
+      mark.textContent = text.slice(idx, idx + queryLen);
       fragment.appendChild(mark);
       matchCount++;
-      lastIndex = regex.lastIndex;
+      lastIndex = idx + queryLen;
     }
 
     // Remaining text after last match
-    if (lastIndex < node.textContent.length) {
-      fragment.appendChild(document.createTextNode(node.textContent.slice(lastIndex)));
+    if (lastIndex < text.length) {
+      fragment.appendChild(document.createTextNode(text.slice(lastIndex)));
     }
 
     node.parentNode.replaceChild(fragment, node);
@@ -77,7 +72,7 @@ function highlightMatches(container, query) {
  */
 function applySearch(contentEl, rawMd, query) {
   // Re-render from clean markdown each time to clear previous highlights
-  contentEl.innerHTML = renderMarkdownWithIds(rawMd);
+  setHTML(contentEl, renderMarkdownWithIds(rawMd));
   applyCodeStyling(contentEl);
 
   if (!query) {
@@ -226,7 +221,7 @@ export function render(container, _store) {
 
   // -- Empty state --
   if (!signatures) {
-    container.innerHTML = `
+    setHTML(container, `
       <div class="flex flex-col items-center justify-center h-full gap-4 p-8 view-enter">
         <div class="w-16 h-16 flex items-center justify-center rounded-base border-2 border-border bg-bg2 shadow-neo text-3xl">
           \u270E
@@ -234,18 +229,18 @@ export function render(container, _store) {
         <p class="text-fg/60 text-center max-w-md leading-relaxed">
           No signatures file loaded. Run <code class="font-mono text-sm bg-bg2 border border-border/60 rounded px-1.5 py-0.5">code-context-agent analyze</code> to extract function signatures.
         </p>
-      </div>`;
+      </div>`);
     return () => {};
   }
 
   // -- Main layout --
-  container.innerHTML = `
+  setHTML(container, safeHtml`
     <div id="${VIEW_ID}" class="flex flex-col h-full view-enter">
       <!-- Header + Search -->
       <div class="flex items-center gap-4 px-6 py-4 border-b-2 border-border bg-bg2 shrink-0">
         <h2 class="font-heading text-xl tracking-tight whitespace-nowrap">Signatures</h2>
         <div class="flex-1 max-w-md">
-          ${searchBar({ placeholder: 'Filter signatures...' })}
+          ${rawHtml(searchBar({ placeholder: 'Filter signatures...' }))}
         </div>
         <span class="text-xs text-fg/40 whitespace-nowrap sig-match-count"></span>
       </div>
@@ -254,14 +249,14 @@ export function render(container, _store) {
       <div class="flex-1 overflow-auto">
         <div class="sig-content max-w-4xl mx-auto px-6 py-6"></div>
       </div>
-    </div>`;
+    </div>`);
 
   const viewEl = document.getElementById(VIEW_ID);
   const contentEl = viewEl.querySelector('.sig-content');
   const matchCountEl = viewEl.querySelector('.sig-match-count');
 
   // Render the markdown content
-  contentEl.innerHTML = renderMarkdownWithIds(signatures);
+  setHTML(contentEl, renderMarkdownWithIds(signatures));
   applyCodeStyling(contentEl);
 
   // -- Search wiring --
@@ -290,7 +285,7 @@ export function render(container, _store) {
   // -- Store subscription: re-render if signatures data changes --
   const unsubSignatures = store.on('signatures', (newSigs) => {
     if (newSigs) {
-      contentEl.innerHTML = renderMarkdownWithIds(newSigs);
+      setHTML(contentEl, renderMarkdownWithIds(newSigs));
       applyCodeStyling(contentEl);
       if (currentQuery) onSearch(currentQuery);
     }

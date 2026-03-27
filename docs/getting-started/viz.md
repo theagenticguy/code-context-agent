@@ -52,7 +52,7 @@ The visualizer supports three data loading methods:
 
 The viz command starts a local HTTP server that serves:
 
-- Static files from the `ui-next/` directory (HTML, CSS, JavaScript)
+- Static files from the `code_context_agent/ui/` package directory (HTML, CSS, JavaScript)
 - `/data/*` requests proxied to the `.code-context/` output directory
 - `/api/graph` endpoint serving `code_graph.json`
 - `/api/stats` endpoint serving graph statistics via `CodeGraph.describe()`

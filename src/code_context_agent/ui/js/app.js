@@ -47,8 +47,14 @@ router.beforeNavigate = () => {
  */
 async function renderView(viewId) {
   store.set({ activeView: viewId });
-  content.innerHTML =
-    '<div class="flex items-center justify-center h-full"><span class="text-fg/50">Loading...</span></div>';
+  content.textContent = '';
+  const loader = document.createElement('div');
+  loader.className = 'flex items-center justify-center h-full';
+  const span = document.createElement('span');
+  span.className = 'text-fg/50';
+  span.textContent = 'Loading...';
+  loader.appendChild(span);
+  content.appendChild(loader);
   try {
     const mod = await views[viewId]();
     const result = mod.render(content, store);
@@ -56,8 +62,12 @@ async function renderView(viewId) {
       currentCleanup = result; // view returns cleanup function
     }
   } catch (e) {
-    content.innerHTML = `<div class="p-8 text-red-500">Error loading view: ${e.message}</div>`;
-    console.error(`[app] Error loading view "${viewId}":`, e);
+    content.textContent = '';
+    const errDiv = document.createElement('div');
+    errDiv.className = 'p-8 text-red-500';
+    errDiv.textContent = 'Error loading view: ' + e.message;
+    content.appendChild(errDiv);
+    console.error('[app] Error loading view:', viewId, e);
   }
 }
 

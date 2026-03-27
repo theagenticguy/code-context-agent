@@ -11,7 +11,7 @@ class TestGetPrompt:
     def test_renders_nonempty(self) -> None:
         """Test that get_prompt returns non-empty content."""
         prompt = get_prompt()
-        assert len(prompt) > 100  # noqa: PLR2004
+        assert len(prompt) > 100
 
     def test_contains_rules(self) -> None:
         """Test that prompt includes the rules section."""

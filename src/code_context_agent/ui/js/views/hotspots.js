@@ -5,7 +5,7 @@ import { statCard } from '../components/stat-card.js';
 import { barChart } from '../components/bar-chart.js';
 import { NODE_COLORS, nodeColor } from '../colors.js';
 import { computeDegreeCentrality, findEntryPoints, shortPath } from '../graph-utils.js';
-import { escapeHtml } from '../escape.js';
+import { safeHtml, setHTML } from '../escape.js';
 
 /**
  * Render the hotspots / centrality analysis view.
@@ -21,7 +21,7 @@ export function render(container, store) {
   // Empty state
   // -------------------------------------------------------------------------
   if (!graph || !graph.nodes || graph.nodes.length === 0) {
-    container.innerHTML = `
+    setHTML(container, `
       <div class="flex items-center justify-center h-full">
         <div class="rounded-base border-2 border-border shadow-neo bg-bg2 p-8 text-center max-w-md">
           <h2 class="text-xl font-heading mb-2">No Graph Data</h2>
@@ -30,7 +30,7 @@ export function render(container, store) {
             Drag and drop it anywhere or use the file picker.
           </p>
         </div>
-      </div>`;
+      </div>`);
     return () => {};
   }
 
@@ -86,7 +86,7 @@ export function render(container, store) {
   // -------------------------------------------------------------------------
   // Render
   // -------------------------------------------------------------------------
-  container.innerHTML = `
+  setHTML(container, `
     <div class="p-6 space-y-6 view-enter">
 
       <!-- Section header -->
@@ -136,13 +136,13 @@ export function render(container, store) {
         </div>
       </div>
 
-    </div>`;
+    </div>`);
 
   // -------------------------------------------------------------------------
   // KPI cards
   // -------------------------------------------------------------------------
   const kpiContainer = container.querySelector('#hotspots-kpi');
-  kpiContainer.innerHTML = [
+  setHTML(kpiContainer, [
     statCard({ title: 'Total Nodes', value: totalNodes.toLocaleString() }),
     statCard({
       title: 'Hotspots (Top 5%)',
@@ -155,28 +155,28 @@ export function render(container, store) {
       color: NODE_COLORS.class,
     }),
     statCard({ title: 'Avg Degree', value: avgDegree }),
-  ].join('');
+  ].join(''));
 
   // -------------------------------------------------------------------------
   // Bar charts
   // -------------------------------------------------------------------------
   const top20Container = container.querySelector('#hotspots-top20');
-  top20Container.innerHTML = barChart({
+  setHTML(top20Container, barChart({
     data: top20,
     labelKey: 'label',
     valueKey: 'totalDegree',
     colorFn: (item) => nodeColor(item.node_type),
     maxBars: 20,
-  });
+  }));
 
   const epContainer = container.querySelector('#hotspots-entry');
-  epContainer.innerHTML = barChart({
+  setHTML(epContainer, barChart({
     data: epData,
     labelKey: 'label',
     valueKey: 'outDegree',
     colorFn: (item) => nodeColor(item.node_type),
     maxBars: 20,
-  });
+  }));
 
   // -------------------------------------------------------------------------
   // Degree Distribution Histogram (D3)
@@ -274,30 +274,30 @@ export function render(container, store) {
 
     histContainer.appendChild(svg.node());
   } else {
-    histContainer.innerHTML =
-      '<div class="text-xs text-fg/40 py-4 text-center font-base">No degree data available</div>';
+    setHTML(histContainer,
+      '<div class="text-xs text-fg/40 py-4 text-center font-base">No degree data available</div>');
   }
 
   // -------------------------------------------------------------------------
   // Top Files table rows
   // -------------------------------------------------------------------------
   const tbody = container.querySelector('#hotspots-files-body');
-  tbody.innerHTML = topFiles
+  setHTML(tbody, topFiles
     .map(
-      (f) => `
+      (f) => safeHtml`
       <tr class="border-b border-border/30 hover:bg-main/5">
-        <td class="py-1.5 pr-4 truncate-line max-w-xs" title="${escapeHtml(f.filePath)}">${escapeHtml(shortPath(f.filePath))}</td>
+        <td class="py-1.5 pr-4 truncate-line max-w-xs" title="${f.filePath}">${shortPath(f.filePath)}</td>
         <td class="py-1.5 pr-4 text-right font-heading">${f.symbolCount}</td>
         <td class="py-1.5 pr-4 text-right">${f.avgDegree}</td>
-        <td class="py-1.5 text-fg/70">${escapeHtml(f.topSymbol)}</td>
+        <td class="py-1.5 text-fg/70">${f.topSymbol}</td>
       </tr>`
     )
-    .join('');
+    .join(''));
 
   // -------------------------------------------------------------------------
   // Cleanup
   // -------------------------------------------------------------------------
   return () => {
-    container.innerHTML = '';
+    container.replaceChildren();
   };
 }
