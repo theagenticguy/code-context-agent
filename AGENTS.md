@@ -160,7 +160,9 @@ Both are in `models/base.py`. Use `FrozenModel` for new data models.
 ### Prerequisites
 
 - Python 3.13+ (managed via `mise`)
-- `uv` for package management
+- Node.js 22+ (managed via `mise`)
+- `uv` for Python package management
+- `pnpm` for frontend package management (managed via `mise`)
 - External CLIs: `rg` (ripgrep), `ast-grep`, `repomix`, `npx` (for context7)
 - AWS credentials configured for Bedrock access
 
@@ -168,16 +170,23 @@ Both are in `models/base.py`. Use `FrozenModel` for new data models.
 
 | Task | Command |
 |------|---------|
-| Install all deps | `uv sync --all-groups` |
+| Install all deps | `mise run install:all` |
+| Install Python deps | `mise run install` |
+| Install frontend deps | `mise run ui:install` |
 | Run CLI | `uv run code-context-agent` |
 | Analyze a repo | `uv run code-context-agent analyze /path/to/repo` |
 | Index a repo | `uv run code-context-agent index /path/to/repo` |
 | Start MCP server | `uv run code-context-agent serve` |
-| Lint | `uvx ruff check src/` |
-| Format | `uvx ruff format src/` |
-| Type check | `uvx ty check src/` |
-| Test | `uv run pytest` |
+| Lint (Python) | `mise run lint` |
+| Lint (frontend) | `mise run ui:lint` |
+| Format (Python) | `mise run format` |
+| Format (frontend) | `mise run ui:format` |
+| Type check (Python) | `mise run typecheck` |
+| Type check (frontend) | `mise run ui:typecheck` |
+| Test | `mise run test` |
 | All checks | `mise run check` |
+| Build (frontend + package) | `mise run build` |
+| Frontend dev server | `mise run ui:dev` |
 | Commit | `uv run cz commit` |
 | Bump + tag | `uv run cz bump` then `git push origin <tag>` |
 
@@ -185,9 +194,9 @@ Both are in `models/base.py`. Use `FrozenModel` for new data models.
 
 Hooks are enforced automatically. Do not skip them.
 
-- **pre-commit**: ruff check+fix, ruff format, ty check, gitleaks
+- **pre-commit**: ruff check+fix, ruff format, ty check, biome check (frontend), gitleaks
 - **commit-msg**: conventional commit validation via commitizen
-- **pre-push**: lint, format-check, typecheck, test (362 tests), gitleaks, semgrep OWASP
+- **pre-push**: lint, format-check, typecheck, test, ui-lint, ui-typecheck, gitleaks, semgrep OWASP
 
 ### Conventional commits
 

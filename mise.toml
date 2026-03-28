@@ -1,7 +1,9 @@
 [tools]
 gh = "latest"
 gitleaks = "latest"
+node = "22"
 osv-scanner = "latest"
+pnpm = "latest"
 python = "3.13"
 semgrep = "latest"
 syft = "latest"
@@ -13,36 +15,97 @@ _.python.venv = { path = ".venv", create = true }
 CFLAGS = "-I{{env.HOMEBREW_PREFIX}}/opt/graphviz/include"
 LDFLAGS = "-L{{env.HOMEBREW_PREFIX}}/opt/graphviz/lib"
 
+# --- Python tasks ---
+
 [tasks]
 install = "uv sync --all-groups"
 
 [tasks.lint]
-description = "Lint with ruff"
+description = "Lint Python with ruff"
 run = "uvx ruff check src/"
 
 [tasks."lint:fix"]
-description = "Lint and auto-fix"
+description = "Lint Python and auto-fix"
 run = "uvx ruff check src/ --fix"
 
 [tasks.format]
-description = "Format with ruff"
+description = "Format Python with ruff"
 run = "uvx ruff format src/"
 
 [tasks."format:check"]
-description = "Check formatting"
+description = "Check Python formatting"
 run = "uvx ruff format --check src/"
 
 [tasks.typecheck]
-description = "Type check with ty"
+description = "Type check Python with ty"
 run = "uvx ty check src/"
 
 [tasks.test]
-description = "Run tests"
+description = "Run Python tests"
 run = "uv run pytest"
 
 [tasks."test:verbose"]
-description = "Run tests with verbose output"
+description = "Run Python tests with verbose output"
 run = "uv run pytest -v"
+
+[tasks."test:coverage"]
+description = "Run Python tests with coverage"
+run = "uv run pytest --cov=src/code_context_agent --cov-report=term-missing:skip-covered --cov-report=xml:coverage.xml --cov-branch"
+
+# --- UI tasks (React + Vite + Biome) ---
+
+[tasks."ui:install"]
+description = "Install frontend dependencies"
+run = "pnpm install"
+dir = "ui"
+
+[tasks."ui:dev"]
+description = "Start Vite dev server"
+run = "pnpm dev"
+dir = "ui"
+
+[tasks."ui:build"]
+description = "Build frontend (tsc + vite build)"
+run = "pnpm build"
+dir = "ui"
+depends = ["ui:install"]
+
+[tasks."ui:lint"]
+description = "Lint frontend with Biome"
+run = "pnpm lint"
+dir = "ui"
+
+[tasks."ui:lint:fix"]
+description = "Lint frontend and auto-fix"
+run = "pnpm lint:fix"
+dir = "ui"
+
+[tasks."ui:format"]
+description = "Format frontend with Biome"
+run = "pnpm format"
+dir = "ui"
+
+[tasks."ui:typecheck"]
+description = "Type check frontend with tsc"
+run = "pnpm typecheck"
+dir = "ui"
+
+# --- Shared meta-tasks ---
+
+[tasks."install:all"]
+description = "Install all dependencies (Python + frontend)"
+depends = ["install", "ui:install"]
+
+[tasks.build]
+description = "Build frontend and Python package"
+run = "uv build"
+depends = ["ui:build"]
+
+[tasks.check]
+description = "Run all checks (Python + frontend)"
+depends = ["lint", "format:check", "typecheck", "test", "ui:lint", "ui:typecheck"]
+
+# --- Security ---
 
 [tasks.security]
 description = "Run all security scans"
@@ -61,8 +124,8 @@ description = "SAST scan with bandit (fail on HIGH severity)"
 file = "scripts/security-bandit.sh"
 
 [tasks."security:deps"]
-description = "Audit dependencies for known vulnerabilities (osv-scanner)"
-run = "osv-scanner scan --lockfile uv.lock"
+description = "Audit dependencies for known vulnerabilities"
+run = "osv-scanner scan --lockfile uv.lock --lockfile ui/pnpm-lock.yaml"
 
 [tasks."security:licenses"]
 description = "Check 3P dependency licenses against allowlist"
@@ -76,13 +139,7 @@ run = "syft . -o cyclonedx-json=sbom.cdx.json -o spdx-json=sbom.spdx.json"
 description = "Run all security scans and produce a unified JSON report"
 run = "uv run python scripts/security_report.py --output security-report.json"
 
-[tasks."test:coverage"]
-description = "Run tests with coverage"
-run = "uv run pytest --cov=src/code_context_agent --cov-report=term-missing:skip-covered --cov-report=xml:coverage.xml --cov-branch"
-
-[tasks.check]
-description = "Run all checks (lint + format + typecheck + test)"
-depends = ["lint", "format:check", "typecheck", "test"]
+# --- Docs ---
 
 [tasks."docs:serve"]
 description = "Serve documentation site with live reload"
@@ -91,6 +148,8 @@ run = "uv run mkdocs serve"
 [tasks."docs:build"]
 description = "Build documentation site"
 run = "uv run mkdocs build"
+
+# --- Release ---
 
 [tasks.bump]
 description = "Bump version using commitizen"
