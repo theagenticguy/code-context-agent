@@ -1,7 +1,7 @@
 # code-context-agent
 
 AI-powered CLI tool that analyzes codebases and produces structured context
-documentation for AI coding assistants. v8.0.1.
+documentation for AI coding assistants.
 
 ## Architecture
 
