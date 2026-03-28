@@ -662,6 +662,9 @@ $RECYCLE.BIN/
 # UI build output (populated by `mise run ui:build`, included in wheel by `mise run build`)
 src/code_context_agent/ui/
 
+# Un-ignore frontend source files caught by generic Python `lib/` pattern (line 403)
+!ui/src/lib/
+
 # TanStack Router generated route tree
 ui/src/routeTree.gen.ts
 
