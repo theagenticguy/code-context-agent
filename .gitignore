@@ -659,8 +659,8 @@ $RECYCLE.BIN/
 
 # End of https://www.toptal.com/developers/gitignore/api/linux,python,windows,macOS,VisualStudioCode,jetbrains+all,pycharm+all,node,amplify,sam,typescript,vue,idea,terraform,kubernetes,docker,pnpm,nextjs
 
-# UI build output (Vite builds to Python package ui/ dir)
-src/code_context_agent/ui/assets/
+# UI build output (populated by `mise run ui:build`, included in wheel by `mise run build`)
+src/code_context_agent/ui/
 
 # TanStack Router generated route tree
 ui/src/routeTree.gen.ts

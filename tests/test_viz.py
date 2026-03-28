@@ -15,12 +15,14 @@ needs_frontend_build = pytest.mark.skipif(
 )
 
 
+@needs_frontend_build
 def test_viz_index_html_exists() -> None:
     """Verify the viz index.html file exists at the expected path."""
     assert INDEX_HTML.exists(), f"Expected {INDEX_HTML} to exist"
     assert INDEX_HTML.stat().st_size > 0, "index.html should not be empty"
 
 
+@needs_frontend_build
 def test_viz_html_is_react_build() -> None:
     """Verify the HTML is a Vite-built React app."""
     content = INDEX_HTML.read_text(encoding="utf-8")
