@@ -80,7 +80,10 @@ test:
   variables:
     GIT_DEPTH: 0
   before_script:
-    - apt-get update && apt-get install -y --no-install-recommends git $RUNTIME_PKGS
+    - apt-get update && apt-get install -y --no-install-recommends git nodejs npm $RUNTIME_PKGS
+    - npm install -g pnpm
+    - pnpm --dir ui install --frozen-lockfile
+    - pnpm --dir ui build
   script:
     - uv run pytest
         --junitxml=report.xml
