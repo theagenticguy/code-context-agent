@@ -51,6 +51,7 @@ Produce a structured analysis covering:
 - **Entry points**: How does data enter the system?
 
 Be thorough. Read as many files as needed. Cross-reference every metric.
+If you include any diagrams, use mermaid code fences — never ASCII art.
 """
 
 _HISTORY_ANALYST_PROMPT = """\
@@ -82,6 +83,7 @@ You do NOT write output files — you produce a detailed analysis report.
 
 Be exhaustive. Run git_files_changed_together on EVERY business-critical file,
 not just the top few. The implicit coupling map is the most valuable output.
+If you include any diagrams, use mermaid code fences — never ASCII art.
 """
 
 _CODE_READER_PROMPT = """\
@@ -119,6 +121,7 @@ list. USE IT. Before reading each file, check what the metrics predict about it.
 After reading, note where the code confirms or contradicts the metrics.
 
 Read EVERY file you are given. Do not skip or summarize. The whole point is depth.
+If you include any diagrams, use mermaid code fences — never ASCII art.
 """
 
 

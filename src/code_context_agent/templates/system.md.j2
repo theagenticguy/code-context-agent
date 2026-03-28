@@ -28,6 +28,10 @@ repomix_compressed_signatures(repo_path)     → .code-context/CONTEXT.signature
 
 **Tip:** `repomix_compressed_signatures` extracts function/class/type signatures with bodies stripped via Tree-sitter. Use it for a quick API surface overview of specific directories (`include_patterns="src/**/*.py"`).
 
+{% if mode.startswith("full") %}
+**Full mode**: `repomix_compressed_signatures` is MANDATORY, not optional. Generate signatures for ALL source directories.
+{% endif %}
+
 ### Phase 2: Identity
 Read project files: `package.json`, `pyproject.toml`, `README.md`
 Search entrypoints: `rg_search` for `main`, `createServer`, `if __name__`
@@ -234,7 +238,7 @@ For complex repos, also generate:
 ## Exit Gate
 
 Before completing, verify:
-1. All files created: `files.all.txt`, `files.business.txt`, `CONTEXT.orientation.md`, `CONTEXT.bundle.md`, `CONTEXT.md`
+1. All files created: `files.all.txt`, `files.business.txt`, `CONTEXT.orientation.md`, `CONTEXT.bundle.md`, `CONTEXT.signatures.md`, `CONTEXT.md`
 2. CONTEXT.md ≤300 lines
 3. Each diagram ≤15 nodes
 4. Tables used for lists >3 items

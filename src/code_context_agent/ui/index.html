@@ -1,115 +1,40 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Code Context Agent</title>
-
-  <!-- Tailwind CSS v4 (browser build) — pinned for SRI -->
-  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.2"
-          integrity="sha384-qKt1F1k7v69ebd7q6Na1d2FGVMI+43GgA5hpfz7i+zDfrz8rIjXYu7majL1fXSeS"
-          crossorigin="anonymous"></script>
-
-  <!-- D3.js v7 — pinned for SRI -->
-  <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"
-          integrity="sha384-CjloA8y00+1SDAUkjs099PVfnY2KmDC2BZnws9kh8D/lX1s46w6EPhpXdqMfjK6i"
-          crossorigin="anonymous"></script>
-
-  <!-- marked (Markdown parser) — pinned for SRI -->
-  <script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js"
-          integrity="sha384-948ahk4ZmxYVYOc+rxN1H2gM1EJ2Duhp7uHtZ4WSLkV4Vtx5MUqnV+l7u9B+jFv+"
-          crossorigin="anonymous"></script>
-
-  <!-- Custom CSS -->
-  <link rel="stylesheet" href="css/theme.css">
-
-  <!-- Tailwind v4 @theme configuration (must be inline for CDN build) -->
-  <style type="text/tailwindcss">
-    :root {
-      --box-shadow-x: 4px;
-      --box-shadow-y: 4px;
-
-      /* Light mode (default) */
-      --background: oklch(93.46% 0.0304 254.32);
-      --secondary-background: oklch(100% 0 0);
-      --foreground: oklch(0% 0 0);
-      --main: oklch(67.47% 0.1725 259.61);
-      --main-foreground: oklch(0% 0 0);
-      --border: oklch(0% 0 0);
-      --overlay: oklch(0% 0 0 / 0.8);
-      --ring: oklch(0% 0 0);
-
-      /* Chart palette */
-      --chart-1: oklch(67.47% 0.1726 259.49);
-      --chart-2: oklch(67.28% 0.2147 24.22);
-      --chart-3: oklch(86.03% 0.176 92.36);
-      --chart-4: oklch(79.76% 0.2044 153.08);
-      --chart-5: oklch(66.34% 0.1806 277.2);
-    }
-
-    /* Dark mode overrides */
-    .dark {
-      --background: oklch(29.12% 0.0633 270.86);
-      --secondary-background: oklch(23.93% 0 0);
-      --foreground: oklch(92.49% 0 0);
-      --border: oklch(92.49% 0 0);
-      --ring: oklch(100% 0 0);
-      --main: oklch(67.47% 0.1725 259.61);
-      --main-foreground: oklch(0% 0 0);
-      --overlay: oklch(0% 0 0 / 0.8);
-    }
-
-    @theme {
-      /* Surface colors */
-      --color-bg: var(--background);
-      --color-bg2: var(--secondary-background);
-      --color-fg: var(--foreground);
-      --color-main: var(--main);
-      --color-main-fg: var(--main-foreground);
-      --color-border: var(--border);
-      --color-overlay: var(--overlay);
-
-      /* Chart colors */
-      --color-chart-1: var(--chart-1);
-      --color-chart-2: var(--chart-2);
-      --color-chart-3: var(--chart-3);
-      --color-chart-4: var(--chart-4);
-      --color-chart-5: var(--chart-5);
-
-      /* Border radius */
-      --radius-base: 5px;
-
-      /* Neobrutalism box shadow */
-      --shadow-neo: var(--box-shadow-x) var(--box-shadow-y) 0px 0px var(--border);
-
-      /* Shadow offset as spacing tokens (for translate on hover) */
-      --spacing-shadow-x: var(--box-shadow-x);
-      --spacing-shadow-y: var(--box-shadow-y);
-
-      /* Font weights */
-      --font-weight-heading: 700;
-      --font-weight-base: 500;
-    }
-  </style>
-</head>
-<body>
-  <!-- App shell -->
-  <div id="app" class="flex h-screen bg-bg text-fg font-base">
-    <aside id="sidebar"></aside>
-    <main id="content" class="flex-1 overflow-auto"></main>
-  </div>
-
-  <!-- Drag-and-drop overlay (hidden by default) -->
-  <div id="drag-overlay" class="drag-overlay hidden">
-    <div class="drag-overlay-inner">
-      <span class="text-2xl font-heading">Drop files here</span>
-    </div>
-  </div>
-
-  <!-- Tooltip (hidden by default) -->
-  <div id="tooltip" class="tooltip hidden"></div>
-
-  <!-- Application entry point -->
-  <script type="module" src="js/app.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Code Context Visualizer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=DM+Sans:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script type="module" crossorigin src="./assets/index-BXqm9O-d.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/chunk-CFjPhJqf.js">
+    <link rel="modulepreload" crossorigin href="./assets/src-D38dG0Am.js">
+    <link rel="modulepreload" crossorigin href="./assets/chunk-7R4GIKGN-DQBJnr4Y.js">
+    <link rel="modulepreload" crossorigin href="./assets/dist-CfXmrz1P.js">
+    <link rel="modulepreload" crossorigin href="./assets/math-BKVz7c5F.js">
+    <link rel="modulepreload" crossorigin href="./assets/_createAssigner-Cnio_y90.js">
+    <link rel="modulepreload" crossorigin href="./assets/chunk-GEFDOKGD-DNcif9fO.js">
+    <link rel="modulepreload" crossorigin href="./assets/chunk-PU5JKC2W-CS3dNdeF.js">
+    <link rel="modulepreload" crossorigin href="./assets/defaultLocale-CIS5GEjP.js">
+    <link rel="modulepreload" crossorigin href="./assets/init-BjZiGJO9.js">
+    <link rel="modulepreload" crossorigin href="./assets/linear-Du7nPakI.js">
+    <link rel="modulepreload" crossorigin href="./assets/path-CIRGLb_6.js">
+    <link rel="modulepreload" crossorigin href="./assets/ordinal-D4hP41Iv.js">
+    <link rel="modulepreload" crossorigin href="./assets/array-D0buNyrP.js">
+    <link rel="modulepreload" crossorigin href="./assets/line-DeuI2qyJ.js">
+    <link rel="modulepreload" crossorigin href="./assets/chunk-PQ6SQG4A-Cr07CBNI.js">
+    <link rel="modulepreload" crossorigin href="./assets/chunk-YBOYWFTD-Ba8v6uNX.js">
+    <link rel="modulepreload" crossorigin href="./assets/rough.esm-MuJqrtdI.js">
+    <link rel="modulepreload" crossorigin href="./assets/chunk-KYZI473N-BW0rbyin.js">
+    <link rel="modulepreload" crossorigin href="./assets/chunk-MX3YWQON-OHILabT1.js">
+    <link rel="modulepreload" crossorigin href="./assets/chunk-O4XLMI2P-BY9KqlXb.js">
+    <link rel="stylesheet" crossorigin href="./assets/index-Ds9KtzcX.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
 </html>

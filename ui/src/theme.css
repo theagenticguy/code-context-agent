@@ -1,0 +1,248 @@
+/* ==========================================================================
+   Code Context Agent — Neobrutalism Theme
+   Custom CSS (animations, scrollbars, overlays, utilities)
+   ========================================================================== */
+
+/* Scrollbar styling */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--border);
+  border-radius: 3px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--main);
+}
+
+/* Selection color */
+::selection {
+  background-color: var(--main);
+  color: var(--main-foreground);
+}
+
+/* Drag-and-drop overlay */
+.drag-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--overlay);
+  backdrop-filter: blur(4px);
+}
+
+.drag-overlay-inner {
+  padding: 3rem 4rem;
+  border: 3px dashed var(--foreground);
+  border-radius: var(--radius-base, 5px);
+  background-color: var(--secondary-background);
+  color: var(--foreground);
+  pointer-events: none;
+}
+
+/* Tooltip */
+.tooltip {
+  position: fixed;
+  z-index: 10000;
+  max-width: 280px;
+  padding: 6px 10px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-base, 5px);
+  background-color: var(--secondary-background);
+  color: var(--foreground);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.4;
+  box-shadow: 2px 2px 0px 0px var(--border);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.tooltip.visible {
+  opacity: 1;
+}
+
+/* View transition animations */
+.view-enter {
+  animation: view-fade-in 200ms ease forwards;
+}
+
+@keyframes view-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Dark mode toggle transition */
+html.transitioning-theme,
+html.transitioning-theme *,
+html.transitioning-theme *::before,
+html.transitioning-theme *::after {
+  transition:
+    background-color 300ms ease,
+    color 300ms ease,
+    border-color 300ms ease,
+    box-shadow 300ms ease;
+}
+
+/* Neobrutalism "press" interaction */
+.neo-pressable {
+  box-shadow: var(--box-shadow-x) var(--box-shadow-y) 0px 0px var(--border);
+  transition:
+    transform 100ms ease,
+    box-shadow 100ms ease;
+}
+
+.neo-pressable:hover {
+  transform: translate(var(--box-shadow-x), var(--box-shadow-y));
+  box-shadow: none;
+}
+
+.neo-pressable:active {
+  transform: translate(var(--box-shadow-x), var(--box-shadow-y));
+  box-shadow: none;
+}
+
+/* Utility: truncate with ellipsis */
+.truncate-line {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Break long identifiers anywhere */
+.break-anywhere {
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+/* Neobrutalism focus ring */
+.neo-focus:focus-visible {
+  outline: 2px solid var(--ring, var(--border));
+  outline-offset: 2px;
+}
+
+/* Prose styling for narrative/bundles markdown */
+.prose h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-top: 2rem;
+  margin-bottom: 0.75rem;
+}
+.prose h2 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+.prose h3 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+}
+.prose p {
+  margin-bottom: 0.75rem;
+  line-height: 1.7;
+}
+.prose ul,
+.prose ol {
+  margin-bottom: 0.75rem;
+  padding-left: 1.5rem;
+}
+.prose li {
+  margin-bottom: 0.25rem;
+  line-height: 1.6;
+}
+.prose code {
+  font-size: 0.85em;
+  padding: 0.15em 0.35em;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--main) 15%, transparent);
+  color: var(--main);
+}
+.prose pre {
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-base, 5px);
+  background: var(--secondary-background);
+  overflow-x: auto;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.prose pre code {
+  padding: 0;
+  background: transparent;
+  color: inherit;
+}
+.prose a {
+  color: var(--main);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--main) 40%, transparent);
+}
+.prose a:hover {
+  text-decoration-color: var(--main);
+}
+.prose blockquote {
+  margin-bottom: 0.75rem;
+  padding-left: 1rem;
+  border-left: 4px solid var(--main);
+  color: color-mix(in srgb, var(--foreground) 70%, transparent);
+  font-style: italic;
+}
+.prose table {
+  width: 100%;
+  margin-bottom: 1rem;
+  border-collapse: collapse;
+}
+.prose th,
+.prose td {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--border) 30%, transparent);
+  text-align: left;
+  font-size: 0.875rem;
+}
+.prose th {
+  font-weight: 700;
+  background: color-mix(in srgb, var(--main) 8%, transparent);
+}
+.prose hr {
+  margin: 1.5rem 0;
+  border: none;
+  border-top: 2px solid color-mix(in srgb, var(--border) 20%, transparent);
+}
+
+/* Mermaid diagram styling */
+.mermaid-diagram svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* D3 graph node styling */
+.graph-node rect {
+  transition: opacity 0.2s ease;
+}
+.graph-node:hover rect {
+  filter: brightness(1.1);
+}
