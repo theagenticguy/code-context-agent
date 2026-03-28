@@ -19,6 +19,10 @@ pre-commit:
     - name: ty-check
       run: uvx ty check src/
 
+    - name: biome-check
+      run: pnpm --dir ui lint
+      glob: "ui/**/*.{ts,tsx,js,jsx}"
+
     - name: gitleaks
       run: gitleaks protect --staged --no-banner
 
@@ -36,6 +40,12 @@ pre-push:
 
     - name: test
       run: uv run pytest
+
+    - name: ui-lint
+      run: pnpm --dir ui lint
+
+    - name: ui-typecheck
+      run: pnpm --dir ui typecheck
 
     - name: gitleaks
       run: gitleaks detect --source . --no-banner

@@ -7,18 +7,38 @@
 - LSP sequence: `lsp_start` → then `lsp_*` operations
 - Graph sequence: `code_graph_create` → ingest → analyze → explore → export
 - Evidence format: `path/file.ext:line` + symbol + confidence
+- Diagrams: ALWAYS use mermaid code fences — never ASCII art or box-drawing characters
 
 ## Tool Orchestration
 Use the code graph to unify discovery results and surface structural insights:
 
-```
-DISCOVERY          GIT CONTEXT           GRAPH                    OUTPUTS
-┌─────────────┐   ┌───────────────┐   ┌────────────────┐   ┌──────────────────┐
-│ lsp_*       │──▶│ git_hotspots  │──▶│ ingest → graph │──▶│ CONTEXT.md       │
-│ astgrep_*   │   │ git_cochanged │   │ analyze        │   │ FILE_INDEX.md    │
-│ rg_search   │   │ git_blame     │   │ explore        │   │ files.business   │
-│ repomix_*   │   │ git_history   │   │ export mermaid │   │ CONTEXT.bundle   │
-└─────────────┘   └───────────────┘   └────────────────┘   └──────────────────┘
+```mermaid
+graph LR
+  subgraph DISCOVERY
+    A1[lsp_*]
+    A2[astgrep_*]
+    A3[rg_search]
+    A4[repomix_*]
+  end
+  subgraph GIT_CONTEXT[GIT CONTEXT]
+    B1[git_hotspots]
+    B2[git_cochanged]
+    B3[git_blame]
+    B4[git_history]
+  end
+  subgraph GRAPH
+    C1[ingest → graph]
+    C2[analyze]
+    C3[explore]
+    C4[export mermaid]
+  end
+  subgraph OUTPUTS
+    D1[CONTEXT.md]
+    D2[FILE_INDEX.md]
+    D3[files.business]
+    D4[CONTEXT.bundle]
+  end
+  DISCOVERY --> GIT_CONTEXT --> GRAPH --> OUTPUTS
 ```
 
 The graph adds value when you need:

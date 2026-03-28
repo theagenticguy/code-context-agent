@@ -247,8 +247,8 @@ def viz(  # noqa: C901
 
     # Resolve viz directory — bundled inside the package as code_context_agent/ui/
     viz_dir = Path(__file__).parent / "ui"
-    if not viz_dir.exists():
-        console.print("[red]Error:[/red] Visualization files not found.")
+    if not (viz_dir / "index.html").exists() or not (viz_dir / "assets").exists():
+        console.print("[red]Error:[/red] Frontend not built. Run [cyan]mise run ui:build[/cyan] first.")
         raise SystemExit(1)
 
     # Build URL params pointing to the agent output files
