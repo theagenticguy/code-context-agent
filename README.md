@@ -12,13 +12,13 @@
   <a href="https://github.com/astral-sh/ty"><img src="https://img.shields.io/badge/types-ty-blue?style=flat-square" alt="ty"></a>
 </p>
 
-<p align="center"><strong>AI-powered codebase analysis with 49 tools, graph algorithms, and structured output for AI coding assistants.</strong></p>
+<p align="center"><strong>AI-powered codebase analysis with 52+ tools, graph algorithms, and structured output for AI coding assistants.</strong></p>
 
 ---
 
 # code-context-agent
 
-`code-context-agent` uses Claude Opus 4.6 (via Amazon Bedrock) with 49 tools to analyze unfamiliar codebases and produce structured context documentation for AI coding assistants. It combines semantic analysis (LSP), structural pattern matching (ast-grep), graph algorithms (NetworkX + KuzuDB), git history analysis, BM25 ranked search, and intelligent code bundling (repomix) to generate narrated markdown that helps developers and AI assistants quickly understand a codebase's architecture and business logic.
+`code-context-agent` uses Claude Opus 4.6 (via Amazon Bedrock) with 52+ tools to analyze unfamiliar codebases and produce structured context documentation for AI coding assistants. It combines a deterministic indexer, a coordinator agent that dispatches parallel specialist teams, semantic analysis (LSP), structural pattern matching (ast-grep), graph algorithms (NetworkX + KuzuDB), git history analysis, BM25 ranked search, and intelligent code bundling (repomix) to generate narrated markdown that helps developers and AI assistants quickly understand a codebase's architecture and business logic.
 
 > [!CAUTION]
 > This CLI runs a **fully autonomous AI agent loop**. The agent decides which tools to invoke, what files to read, and what shell commands to run. While shell commands are restricted to a read-only allowlist and all inputs are validated, the agent makes its own decisions within those bounds. **Review all generated output before using it in production.**
@@ -53,7 +53,7 @@ These principles guide every design decision. See [tenets.md](tenets.md) for ful
 ## Features
 
 - **Claude Opus 4.6** with adaptive thinking and 1M context window
-- **49 analysis tools**: LSP, ast-grep, ripgrep, repomix, git history, NetworkX graph, BM25 search
+- **52+ analysis tools**: LSP, ast-grep, ripgrep, repomix, git history, NetworkX graph, BM25 search, coordinator orchestration
 - **Multi-language LSP**: Python (ty), TypeScript, Rust, Go, Java (configurable fallback chains)
 - **Graph-based insights**: Hotspots, foundations (PageRank/TrustRank), modules (Louvain/Leiden), blast radius analysis, execution flow tracing, diff impact mapping
 - **Edge confidence scoring**: Each graph edge carries a confidence value (0.60--0.95) reflecting its data source reliability (LSP, AST, git, heuristic)
@@ -68,7 +68,7 @@ These principles guide every design decision. See [tenets.md](tenets.md) for ful
 - **Tree-sitter compression**: Extract signatures/types only, stripping function bodies for token efficiency
 - **Structured output**: Pydantic-typed `AnalysisResult` with ranked business logic, risks, and graph stats
 - **`--full` mode**: Exhaustive analysis with no size limits, fail-fast error handling, and per-module output
-- **Phase-aware TUI**: 10-phase progress tracking with discovery feed and mode badge
+- **Phase-aware TUI**: 5-phase progress tracking with discovery feed and mode badge
 - **Rich terminal UI**: Real-time progress display with Rich library
 - **MCP server**: Expose graph algorithms, diff impact, Cypher queries, and multi-repo discovery as MCP tools
 - **context7 integration**: Library documentation lookup during analysis via MCP
@@ -84,17 +84,18 @@ flowchart TD
     A --> B2[index]
     A --> B3[viz]
     A --> B4[serve]
-    B1 --> SW[create_analysis_swarm]
+    B1 --> IX2[Deterministic Indexer<br/>21 steps: LSP + AST + git, no LLM]
+    IX2 --> HS[heuristic_summary.json<br/>Bridge artifact]
+    HS --> CO[Coordinator Agent<br/>reads heuristic summary]
+    CO --> DT[dispatch_team<br/>parallel Swarm teams]
+    DT --> T1[Team 1] & T2[Team 2] & TN[Team N]
+    T1 & T2 & TN --> RF[read_team_findings<br/>consolidate results]
+    RF --> WB[write_bundle<br/>generate output]
+    WB --> O[CONTEXT.md +<br/>BUNDLE.area.md]
     B2 --> IX[Deterministic Indexer<br/>LSP + AST + git, no LLM]
     B3 --> VZ[D3.js Web Visualization<br/>force layout + dashboards]
-    SW --> SA[structure_analyst<br/>Graph + LSP + AST tools]
-    SA --> HA[history_analyst<br/>Git history tools]
-    HA --> CR[code_reader<br/>Deep file reading + LSP]
-    CR --> SY[synthesizer<br/>Cross-reference + AnalysisResult]
-    SY --> G[AnalysisResult<br/>structured output]
-    G --> O[Output Files<br/>.code-context/ directory]
-    SW -.-> F[HookProviders<br/>quality + efficiency + fail-fast]
-    SW -.-> GP[Pre-loaded Graph<br/>from index]
+    CO -.-> F[HookProviders<br/>quality + efficiency + fail-fast]
+    CO -.-> GP[Pre-loaded Graph<br/>from index]
     B4 --> Q[FastMCP Server<br/>MCP protocol]
     Q --> R[Claude Code / Cursor<br/>MCP clients]
     Q --> REG[Multi-Repo Registry<br/>~/.code-context/registry.json]
@@ -201,9 +202,25 @@ code-context-agent analyze . --quiet
 
 # Debug mode
 code-context-agent analyze . --debug
+
+# Generate only bundle files (skip CONTEXT.md)
+code-context-agent analyze . --bundles-only
+
+# Incremental analysis since a date (accepted but not yet implemented in V10)
+code-context-agent analyze . --since "2025-01-01"
 ```
 
 The agent automatically determines analysis depth based on repository size and complexity. Use `--full` for exhaustive analysis.
+
+### 5-Phase Pipeline
+
+The V10 analysis pipeline runs in five phases:
+
+1. **Indexing** -- Deterministic 21-step indexer builds the code graph (LSP + AST + git, no LLM)
+2. **Team Planning** -- Coordinator agent reads `heuristic_summary.json` and plans specialist teams
+3. **Team Execution** -- Parallel Swarm teams run concurrently, each producing `findings.md`
+4. **Consolidation** -- Coordinator reads all team findings and cross-references results
+5. **Bundle Generation** -- Coordinator writes `CONTEXT.md` and per-area `BUNDLE.{area}.md` files
 
 ### Full Mode
 
@@ -289,6 +306,9 @@ All outputs are written to `.code-context/` (or custom `--output-dir`):
 | `code_graph.json` | Persisted graph data |
 | `FILE_INDEX.md` | File index with graph metrics (complex repos) |
 | `analysis_result.json` | Structured analysis result (Pydantic JSON) |
+| `heuristic_summary.json` | Bridge artifact between indexer and coordinator |
+| `bundles/BUNDLE.{area}.md` | Targeted narrative bundles per codebase area |
+| `tmp/teams/{id}/findings.md` | Per-team analysis findings |
 | `CONTEXT.modules/` | Per-module context files (`--full` mode) |
 
 ---
@@ -332,29 +352,29 @@ src/code_context_agent/
 ├── agent/              # Agent orchestration
 │   ├── factory.py      # Agent creation with tools + MCP providers
 │   ├── runner.py       # Analysis runner with event streaming
-│   ├── prompts.py      # Jinja2 template rendering
+│   ├── coordinator.py  # Coordinator agent with parallel team dispatch
 │   └── hooks.py        # HookProviders: quality, efficiency, fail-fast
 ├── mcp/                # FastMCP v3 server
 │   ├── server.py       # MCP tools, resources, and server definition
 │   └── registry.py     # Multi-repo registry (~/.code-context/registry.json)
 ├── templates/          # Jinja2 prompt templates
-│   ├── system.md.j2    # Unified system prompt
 │   ├── partials/       # Composable prompt sections
 │   └── steering/       # Quality guidance fragments
 ├── models/             # Pydantic models
 │   ├── base.py         # StrictModel, FrozenModel
 │   └── output.py       # AnalysisResult, BusinessLogicItem, etc.
-├── consumer/           # Phase-aware TUI (10 phases + discovery feed)
+├── consumer/           # Phase-aware TUI (5 phases + discovery feed)
 │   ├── phases.py       # Phase detection, discovery events
 │   ├── rich_consumer.py # Dashboard with phase indicator
 │   └── state.py        # Mutable display state
-├── tools/              # Analysis tools (49)
+├── tools/              # Analysis tools (52+)
 │   ├── discovery.py    # ripgrep, repomix, write_file (11 tools)
+│   ├── coordinator_tools.py # dispatch_team, read_team_findings, write_bundle
 │   ├── astgrep.py      # ast-grep (3 tools)
 │   ├── git.py          # git history (7 tools)
 │   ├── search/         # BM25 ranked search (1 tool)
 │   ├── lsp/            # LSP integration (8 tools)
-│   └── graph/          # NetworkX + KuzuDB analysis (15 tools)
+│   └── graph/          # NetworkX + KuzuDB analysis (14 tools)
 │       ├── analysis.py # Graph algorithms incl. blast radius, execution flows, diff impact
 │       ├── storage.py  # KuzuDB persistent backend with Cypher query support
 │       └── frameworks.py # Framework detection (Next.js, Express, Django, Flask, FastAPI, etc.)

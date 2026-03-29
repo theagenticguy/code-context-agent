@@ -39,7 +39,7 @@ See the [Security](security/overview.md) page for full details on shell hardenin
 
 Opus 4.6 is selected as the default for several reasons:
 
-- **Complex multi-tool reasoning** -- the analysis pipeline involves 49 tools across 4 specialist agents. Opus-class models handle long tool chains and cross-signal synthesis more reliably.
+- **Complex multi-tool reasoning** -- the analysis pipeline involves 52+ tools used by the coordinator and parallel team agents. Opus-class models handle long tool chains and cross-signal synthesis more reliably.
 - **Adaptive thinking (extended reasoning)** -- improves architectural analysis quality by allowing the model to reason through ambiguous structural patterns.
 - **1M context window** -- via `anthropic_beta: context-1m-2025-08-07`, the model can process large codebases without truncation.
 - **Cross-region inference** -- the `global.` prefix in the default model ID (`global.anthropic.claude-opus-4-6-v1`) provides best availability across AWS regions.
@@ -142,9 +142,9 @@ See the [MCP Server](tools/mcp.md) documentation for full setup and tool referen
 |---|---------|-----------|
 | **What it does** | Builds a structural code graph | Full LLM-driven codebase analysis |
 | **Time** | ~30 seconds | ~5--10 minutes (standard), ~30--60 minutes (full) |
-| **LLM calls** | None (deterministic) | Yes (Swarm of 4 specialist agents) |
+| **LLM calls** | None (deterministic) | Yes (Coordinator dispatches parallel specialist teams) |
 | **Cost** | Free | Token-based (see cost FAQ above) |
-| **Output** | `code_graph.json` | `CONTEXT.md`, `CONTEXT.bundle.md`, `analysis_result.json`, `code_graph.json` |
+| **Output** | `code_graph.json`, `heuristic_summary.json` | `CONTEXT.md`, `bundles/BUNDLE.{area}.md`, `CONTEXT.bundle.md`, `analysis_result.json`, `code_graph.json` |
 | **Uses** | LSP, AST-grep, git, framework detection | All index tools + LLM reasoning + ripgrep + repomix |
 
 **Best practice**: Run `index` first, then `analyze`. The analysis agent loads the pre-built graph from `.code-context/code_graph.json`, which saves significant time and tokens on structural discovery.
@@ -163,7 +163,9 @@ After running `analyze`, the `.code-context/` directory contains:
 | File | Best for |
 |------|----------|
 | `CONTEXT.md` | Feeding to AI coding assistants as context. This is the narrated architecture document. |
+| `bundles/BUNDLE.{area}.md` | Targeted narrative bundles per investigation area. Each bundle covers a specific subsystem or concern identified by the coordinator. |
 | `CONTEXT.bundle.md` | Compressed source code bundle (via repomix Tree-sitter compression). Useful as supplementary context. |
+| `heuristic_summary.json` | Bridge artifact between the deterministic indexer and the LLM coordinator. Contains volume, symbols, health, topology, and git metrics. |
 | `analysis_result.json` | Programmatic consumption. Contains the structured `AnalysisResult` with business logic items, architectural risks, and module metadata. |
 | `code_graph.json` | Graph queries via the MCP server or the `viz` command. Contains the full node-link graph. |
 
@@ -173,7 +175,6 @@ For **full mode** (`--full`), additional files are produced:
 |------|----------|
 | `CONTEXT.modules/<module>.md` | Per-module context documents for scoped AI assistance |
 | `FILE_INDEX.md` | Comprehensive file index with centrality, PageRank, and churn metrics |
-| `CONTEXT.business.<category>.md` | Category-specific business logic documents |
 
 To explore the graph interactively:
 
@@ -185,20 +186,15 @@ code-context-agent viz .
 
 ### How do I run incremental analysis?
 
-Use `--since` to analyze only files changed since a git ref:
+The `--since` flag is accepted by the CLI but incremental mode is **not yet implemented** in V10. The flag is reserved for future use.
 
 ```bash
-# Changes since the last 5 commits
+# Accepted but not yet functional in V10
 code-context-agent analyze . --since HEAD~5
-
-# Changes since a branch point
-code-context-agent analyze . --since main
 ```
 
-Incremental analysis is faster and cheaper than a full re-analysis. It works best when a prior `.code-context/` output already exists, as the agent can reference the existing graph and context.
-
-!!! note
-    `--since` and `--full` cannot be combined. Incremental analysis is scoped by definition, while full mode is exhaustive.
+!!! warning
+    In V10, `--since` is parsed and stored but does not change analysis behavior. Full incremental support is planned for a future release.
 
 ---
 
@@ -219,3 +215,31 @@ The focus string is passed to the LLM agents, which prioritize exploring files, 
 ```bash
 code-context-agent analyze . --full --focus "payments"
 ```
+
+---
+
+### What is `--bundles-only`?
+
+The `--bundles-only` flag skips indexing and team dispatch, and regenerates bundles from existing team findings already present in `.code-context/`. This is useful when you want to re-run bundle generation with a different focus or after manually editing team findings, without re-running the full analysis pipeline.
+
+```bash
+# Re-generate bundles from existing team findings
+code-context-agent analyze . --bundles-only
+```
+
+!!! tip
+    Use `--bundles-only` to iterate on output formatting or focus without paying the token cost of a full analysis run.
+
+---
+
+### What is `heuristic_summary.json`?
+
+`heuristic_summary.json` is the bridge artifact between the deterministic indexer and the LLM coordinator. It is produced by the `index` step (or the indexing phase of `analyze`) and contains:
+
+- **Volume metrics** -- file counts, line counts, language distribution
+- **Symbol metrics** -- function/class/module counts and density
+- **Health metrics** -- test coverage signals, lint/type-check indicators
+- **Topology metrics** -- graph density, connected components, centrality outliers
+- **Git metrics** -- churn hotspots, contributor distribution, recent activity
+
+The coordinator agent reads this summary to decide how many parallel teams to dispatch and what investigation areas to assign. This avoids feeding the entire code graph to the LLM, keeping the coordinator prompt focused and token-efficient.
