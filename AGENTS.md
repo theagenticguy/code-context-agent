@@ -5,25 +5,31 @@ documentation for AI coding assistants.
 
 ## Architecture
 
-Three-stage pipeline: deterministic index → Strands Swarm (4 specialist agents) → structured output.
+Two-stage pipeline: deterministic index (21 steps, ~30-90s) → Coordinator Agent dispatches parallel Swarm teams → structured output with narrative bundles.
 Hook-driven display (Rich TUI or JSON logs). No AG-UI dependency.
 
 ```
-CLI (cyclopts) → index (deterministic, ~30s)
-                    ├── LSP + AST-grep + git + framework detection
-                    └── code_graph.json (6K+ nodes)
+CLI (cyclopts) → index (deterministic, ~30-90s)
+                    ├── 21 steps: LSP + AST-grep + git + framework detection
+                    ├── code_graph.json (6K+ nodes)
+                    └── heuristic_summary.json (compact metrics for coordinator)
 
-              → analyze (Swarm, ~5-10 min)
-                    ├── structure_analyst → history_analyst → code_reader → synthesizer
-                    ├── Pre-loaded index graph shared via _graphs["main"]
+              → analyze (Coordinator, ~5-15 min)
+                    ├── read_heuristic_summary → plan teams
+                    ├── dispatch_team("team-structure", ...) ┐
+                    ├── dispatch_team("team-history", ...)    ├ parallel Swarm teams
+                    ├── dispatch_team("team-reader", ...)     ┘
+                    ├── read_team_findings → cross-reference
+                    ├── write_bundle → CONTEXT.md + BUNDLE.{area}.md
                     ├── HookProvider-driven display (TUI or JSON logs)
-                    └── AnalysisResult (structured output from synthesizer)
+                    └── AnalysisResult (structured output with bundles)
 
 Deterministic Indexer (code-context-agent index)
     ├── LSP + AST-grep + git analysis (no LLM)
     ├── Framework detection (8 frameworks)
     ├── Edge confidence scoring (0.60–0.95 per source)
-    └── GraphStorage backend (NetworkX or KuzuDB)
+    ├── GraphStorage backend (NetworkX or KuzuDB)
+    └── heuristic_summary.json (bridge to coordinator)
 
 FastMCP v3 Server (code-context-agent serve)
     ├── start_analysis / check_analysis (kickoff/poll)
@@ -47,12 +53,12 @@ Web Visualization (code-context-agent viz)
 |------|------|
 | `src/code_context_agent/cli.py` | CLI entry point: `analyze`, `serve`, `viz` commands |
 | `src/code_context_agent/config.py` | Settings via pydantic-settings, `CODE_CONTEXT_` prefix |
-| `src/code_context_agent/agent/factory.py` | Single-agent creation: tools, model, hooks, context7 MCP |
-| `src/code_context_agent/agent/swarm.py` | Swarm factory: 4-node specialist pipeline with graph preloading |
-| `src/code_context_agent/agent/runner.py` | Analysis runner with Swarm execution + hook-based display |
-| `src/code_context_agent/agent/analysts.py` | Specialist prompts (Agents-as-Tools + Swarm handoff variants) |
-| `src/code_context_agent/agent/hooks.py` | HookProviders: reasoning checkpoints, display, JSON logging |
-| `src/code_context_agent/agent/prompts.py` | Jinja2 template rendering |
+| `src/code_context_agent/agent/coordinator.py` | Coordinator agent factory: tools, model, heuristic summary, lean prompt |
+| `src/code_context_agent/agent/factory.py` | Analysis tool collection: `get_analysis_tools()` for team inheritance |
+| `src/code_context_agent/agent/runner.py` | Analysis runner with coordinator invocation + hook-based display |
+| `src/code_context_agent/agent/hooks.py` | HookProviders: quality, compaction, tool efficiency, reasoning, fail-fast, team dispatch, display |
+| `src/code_context_agent/tools/coordinator_tools.py` | 4 coordinator tools: `dispatch_team`, `read_team_findings`, `write_bundle`, `read_heuristic_summary` |
+| `src/code_context_agent/consumer/phases.py` | 5-phase `AnalysisPhase` enum and tool-to-phase mapping |
 | `src/code_context_agent/mcp/server.py` | FastMCP v3 server (MCP tools + resources) |
 | `src/code_context_agent/tools/discovery.py` | ripgrep, repomix tools |
 | `src/code_context_agent/tools/lsp/` | LSP client, session manager, tool wrappers |
@@ -65,24 +71,29 @@ Web Visualization (code-context-agent viz)
 | `src/code_context_agent/indexer.py` | Deterministic index pipeline (no LLM) |
 | `src/code_context_agent/mcp/registry.py` | Multi-repo registry with lazy graph cache |
 | `src/code_context_agent/ui/` | Multi-view web visualizer (10 views, D3.js + Tailwind CSS) |
-| `src/code_context_agent/templates/` | Jinja2 system prompt (system.md.j2 + partials/ + steering/) |
-| `src/code_context_agent/models/output.py` | AnalysisResult, BusinessLogicItem, ArchitecturalRisk |
+| `src/code_context_agent/templates/` | Jinja2 prompts: `coordinator.md.j2` (~35 lines), partials/, steering/. Rendering in `templates/__init__.py` |
+| `src/code_context_agent/models/output.py` | AnalysisResult, Bundle, BusinessLogicItem, ArchitecturalRisk, RefactoringCandidate, CodeHealthMetrics |
 
-### Tool categories (50+)
+### Tool categories (53+)
 
-- **Discovery** (9): `create_file_manifest`, `repomix_*`, `rg_search`, `read_file_bounded`, `write_file_list`
+- **Coordinator** (4): `dispatch_team`, `read_team_findings`, `write_bundle`, `read_heuristic_summary`
+- **Discovery** (12): `create_file_manifest`, `repomix_orientation`, `repomix_bundle`, `repomix_bundle_with_context`, `repomix_compressed_signatures`, `repomix_json_export`, `repomix_split_bundle`, `rg_search`, `write_file`, `write_file_list`, `read_file_bounded`
 - **Search** (1): `bm25_search` (BM25 ranked text search via rank_bm25)
 - **LSP** (8): `lsp_start`, `lsp_document_symbols`, `lsp_references`, `lsp_definition`, `lsp_hover`, `lsp_workspace_symbols`, `lsp_diagnostics`, `lsp_shutdown`
-- **Graph** (14): `code_graph_create`, `code_graph_ingest_*`, `code_graph_analyze` (incl. `blast_radius`, `flows`, `diff_impact`), `code_graph_explore`, `code_graph_export`, `code_graph_save/load`, `code_graph_stats`. Includes framework detection (8 frameworks) for entry point scoring and edge confidence scoring (0.60-0.95 per source).
+- **Graph** (14): `code_graph_create`, `code_graph_ingest_lsp`, `code_graph_ingest_astgrep`, `code_graph_ingest_rg`, `code_graph_ingest_inheritance`, `code_graph_ingest_tests`, `code_graph_ingest_git`, `code_graph_ingest_clones`, `code_graph_analyze` (incl. `blast_radius`, `flows`, `diff_impact`), `code_graph_explore`, `code_graph_export`, `code_graph_save/load`, `code_graph_stats`. Includes framework detection (8 frameworks) for entry point scoring and edge confidence scoring (0.60-0.95 per source).
 - **Git** (7): `git_hotspots`, `git_files_changed_together`, `git_blame_summary`, `git_file_history`, `git_contributors`, `git_recent_commits`, `git_diff_file`
 - **AST** (3): `astgrep_scan`, `astgrep_scan_rule_pack`, `astgrep_inline_rule`
+- **Code Health** (1): `detect_clones`
 - **Shell** (1): `shell`
+- **Orchestration** (1): `graph` (from strands_tools, multi-agent DAG — used by team agents)
 - **MCP** (via context7 + registry): `context7_resolve-library-id`, `context7_query-docs`, `list_repos`, `diff_impact`, `execute_cypher`. All MCP tool responses include contextual `next_steps` hints.
-- **Orchestration** (1): `graph` (from strands_tools, multi-agent DAG)
 
 ### State management
 
 - **Code graphs**: Module-level `_graphs: dict[str, CodeGraph]` in `tools/graph/tools.py`
+- **Team findings**: File-based at `.code-context/tmp/teams/{team_id}/findings.md` + `metadata.json`
+- **Heuristic summary**: `.code-context/heuristic_summary.json` (bridge between indexer and coordinator)
+- **Coordinator tools config**: Module-level `_output_dir`, `_repo_path`, `_tool_registry` in `tools/coordinator_tools.py`
 - **LSP sessions**: Singleton `LspSessionManager` in `tools/lsp/session.py` with fallback chains
 - **MCP jobs**: Module-level `_jobs` dict in `mcp/server.py` for kickoff/poll pattern
 - **Registry**: `~/.code-context/registry.json` with lazy graph cache (5-min TTL) in `mcp/registry.py`
@@ -175,6 +186,7 @@ Both are in `models/base.py`. Use `FrozenModel` for new data models.
 | Install frontend deps | `mise run ui:install` |
 | Run CLI | `uv run code-context-agent` |
 | Analyze a repo | `uv run code-context-agent analyze /path/to/repo` |
+| Analyze (bundles only) | `uv run code-context-agent analyze /path --bundles-only` |
 | Index a repo | `uv run code-context-agent index /path/to/repo` |
 | Start MCP server | `uv run code-context-agent serve` |
 | Lint (Python) | `mise run lint` |
@@ -247,9 +259,16 @@ All env vars use the `CODE_CONTEXT_` prefix:
 | `CODE_CONTEXT_MODEL_ID` | `global.anthropic.claude-opus-4-6-v1` | Bedrock model |
 | `CODE_CONTEXT_REGION` | `us-east-1` | AWS region |
 | `CODE_CONTEXT_TEMPERATURE` | `1.0` | Must be 1.0 for adaptive thinking |
+| `CODE_CONTEXT_REASONING_EFFORT` | `high` | Standard mode thinking effort |
+| `CODE_CONTEXT_FULL_REASONING_EFFORT` | `max` | Full mode thinking effort (Opus 4.6 only) |
 | `CODE_CONTEXT_LSP_SERVERS` | `{"py": ["ty server", "pyright-langserver --stdio"], ...}` | Ordered fallback chains |
-| `CODE_CONTEXT_AGENT_MAX_TURNS` | `1000` | |
-| `CODE_CONTEXT_AGENT_MAX_DURATION` | `1200` | 20 min default |
+| `CODE_CONTEXT_LSP_TIMEOUT` | `30` | LSP operation timeout seconds |
+| `CODE_CONTEXT_LSP_STARTUP_TIMEOUT` | `30` | LSP server startup timeout seconds |
+| `CODE_CONTEXT_LSP_MAX_FILES` | `5000` | Max files before LSP analysis is skipped |
+| `CODE_CONTEXT_AGENT_MAX_TURNS` | `1000` | Standard mode max turns |
+| `CODE_CONTEXT_AGENT_MAX_DURATION` | `1200` | Standard mode: 20 min default |
+| `CODE_CONTEXT_FULL_MAX_TURNS` | `3000` | Full mode max agent turns |
+| `CODE_CONTEXT_FULL_MAX_DURATION` | `3600` | Full mode: 60 min default |
 | `CODE_CONTEXT_CONTEXT7_ENABLED` | `true` | Requires npx |
 | `CODE_CONTEXT_GRAPH_BACKEND` | `networkx` | `networkx` or `kuzu` (KuzuDB persistent graph) |
 | `CODE_CONTEXT_OTEL_DISABLED` | `true` | Avoids context detachment errors |

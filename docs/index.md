@@ -2,7 +2,7 @@
 
 **AI-powered CLI tool for automated codebase analysis and context generation.**
 
-`code-context-agent` uses Claude Opus 4.6 (via Amazon Bedrock) with 49 tools to analyze unfamiliar codebases and produce structured context documentation for AI coding assistants. It combines semantic analysis (LSP), structural pattern matching (ast-grep), graph algorithms (NetworkX/KuzuDB), BM25 ranked search, git history analysis, and intelligent code bundling (repomix) to generate narrated markdown that helps developers and AI assistants understand a codebase's architecture and business logic.
+`code-context-agent` uses Claude Opus 4.6 (via Amazon Bedrock) with 52+ tools to analyze unfamiliar codebases and produce structured context documentation for AI coding assistants. It combines semantic analysis (LSP), structural pattern matching (ast-grep), graph algorithms (NetworkX/KuzuDB), BM25 ranked search, git history analysis, and intelligent code bundling (repomix) to generate narrated markdown that helps developers and AI assistants understand a codebase's architecture and business logic.
 
 !!! warning "Autonomous Agent"
     This CLI runs a **fully autonomous AI agent loop**. The agent decides which tools to invoke, what files to read, and what shell commands to run. While shell commands are restricted to a read-only allowlist and all inputs are validated, the agent makes its own decisions within those bounds. **Review all generated output before using it in production.**
@@ -19,7 +19,7 @@
 
 | Capability | Description |
 |------------|-------------|
-| **49 analysis tools** | LSP, ast-grep, ripgrep, BM25 search, repomix, git history, NetworkX/KuzuDB graph |
+| **52+ analysis tools** | LSP, ast-grep, ripgrep, BM25 search, repomix, git history, NetworkX/KuzuDB graph |
 | **Multi-language LSP** | Python (ty), TypeScript, Rust, Go, Java with ordered fallback chains |
 | **Graph-based insights** | Hotspots, foundations (PageRank/TrustRank), modules (Louvain/Leiden), blast radius, execution flows, diff impact, framework detection |
 | **BM25 ranked search** | Concept-level search with TF-IDF-like relevance scoring |
@@ -42,17 +42,19 @@ flowchart TD
     A[CLI: cyclopts] --> B[run_analysis]
     A --> IDX[index command]
     A --> VIZ[viz command]
-    B --> SW[create_analysis_swarm]
-    IDX --> IDXP[Deterministic Indexer]
+    IDX --> IDXP[Deterministic Indexer<br/>21 steps]
+    IDXP --> HS[heuristic_summary.json<br/>bridge artifact]
     VIZ --> VIZS[Web Visualizer / D3.js]
-    SW --> SA[structure_analyst<br/>Graph + LSP + AST tools]
-    SA --> HA[history_analyst<br/>Git history tools]
-    HA --> CR[code_reader<br/>Deep file reading + LSP]
-    CR --> SY[synthesizer<br/>Cross-reference + AnalysisResult]
-    SY --> G[AnalysisResult<br/>structured output]
-    G --> O[Output Files<br/>.code-context/ directory]
-    SW -.-> F[HookProviders<br/>quality + efficiency + fail-fast]
-    SW -.-> GP[Pre-loaded Graph<br/>from index]
+    B --> COORD[Coordinator Agent<br/>reads heuristic_summary.json]
+    COORD --> DT[dispatch_team<br/>parallel specialist teams]
+    DT --> T1[Team 1]
+    DT --> T2[Team 2]
+    DT --> TN[Team N]
+    T1 & T2 & TN --> RF[read_team_findings<br/>collect results]
+    RF --> WB[write_bundle<br/>generate output]
+    WB --> OUT[CONTEXT.md +<br/>bundles/BUNDLE.area.md]
+    COORD -.-> F[HookProviders<br/>quality + efficiency + fail-fast]
+    COORD -.-> GP[Pre-loaded Graph<br/>from index]
 ```
 
 ---
@@ -93,16 +95,17 @@ All outputs are written to `.code-context/` (or custom `--output-dir`):
 | File | Description |
 |------|-------------|
 | `CONTEXT.md` | Main narrated context (<=300 lines in standard mode) |
+| `bundles/BUNDLE.{area}.md` | Targeted narrative bundles per investigation area |
 | `CONTEXT.orientation.md` | Token distribution tree |
 | `CONTEXT.bundle.md` | Bundled source code (compressed) |
 | `CONTEXT.signatures.md` | Signatures-only structural view |
 | `files.all.txt` | Complete file manifest |
 | `files.business.txt` | Curated business logic files |
 | `code_graph.json` | Persisted graph data |
+| `heuristic_summary.json` | Bridge artifact between indexer and coordinator |
 | `FILE_INDEX.md` | File index with graph metrics (complex repos) |
 | `analysis_result.json` | Structured analysis result (Pydantic JSON) |
 | `CONTEXT.modules/` | Per-module context files (full mode) |
-| `CONTEXT.business.*.md` | Category-specific business logic (full mode) |
 
 ---
 
