@@ -34,7 +34,9 @@ class AnalysisContext(BaseModel):
 
     repo: Path
     output: Path
-    swarm: Any  # Swarm instance
+    swarm: Any = None  # Swarm instance (swarm pipeline)
+    coordinator: Any = None  # Agent instance (coordinator pipeline)
+    pipeline: str = "coordinator"  # "coordinator" or "swarm"
     state: AgentDisplayState | None = None  # None for quiet mode
     live: Any = None  # Rich Live instance, None for quiet mode
     max_duration: int = 1200
@@ -183,13 +185,19 @@ def _setup_analysis_context(
 
     max_duration = settings.agent_max_duration
 
+    pipeline = settings.pipeline
+
     # Create display state (None for quiet mode)
     state = None if quiet else AgentDisplayState()
     if state:
         state.max_duration = max_duration
-        state.init_swarm_agents(["structure_analyst", "history_analyst", "code_reader", "synthesizer"])
+        if pipeline == "coordinator":
+            # Coordinator pipeline: single coordinator agent dispatches teams
+            state.init_swarm_agents(["coordinator"])
+        else:
+            state.init_swarm_agents(["structure_analyst", "history_analyst", "code_reader", "synthesizer"])
 
-    # Create hooks — agent_hooks go on each node, swarm_hooks go on the Swarm
+    # Create hooks
     agent_hooks, swarm_hooks = create_all_hooks(
         full_mode=full_mode,
         state=state,
@@ -201,24 +209,36 @@ def _setup_analysis_context(
     if not graph_path.exists():
         graph_path = None
 
-    # Create the Swarm
-    swarm = create_analysis_swarm(
-        mode=mode,
-        graph_path=graph_path,
-        hooks=swarm_hooks,
-    )
+    swarm = None
+    coordinator = None
 
-    # Apply agent_hooks to each node in the swarm
-    # swarm.nodes is a dict[str, SwarmNode]; each SwarmNode has .executor (the Agent)
-    for node in swarm.nodes.values():
-        for hook in agent_hooks:
-            node.executor.hooks.add_hook(hook)
+    if pipeline == "coordinator":
+        # Coordinator pipeline: regular Agent with swarm() tool
+        from .coordinator import create_coordinator_agent
+
+        all_hooks = agent_hooks + swarm_hooks
+        coordinator = create_coordinator_agent(
+            repo_path=repo,
+            output_dir=output,
+            mode=mode,
+            hooks=all_hooks,
+        )
+    else:
+        # Swarm pipeline: sequential handoff chain (legacy)
+        swarm = create_analysis_swarm(
+            mode=mode,
+            graph_path=graph_path,
+            hooks=swarm_hooks,
+        )
+        for node in swarm.nodes.values():
+            for hook in agent_hooks:
+                node.executor.hooks.add_hook(hook)
 
     # Start Rich Live display if not quiet
     live = None
     if state is not None:
         consumer = RichEventConsumer(mode=mode)
-        consumer.state = state  # Share our state with the consumer
+        consumer.state = state
         live = Live(
             consumer._build_display(),
             console=consumer.console,
@@ -234,6 +254,8 @@ def _setup_analysis_context(
         repo=repo,
         output=output,
         swarm=swarm,
+        coordinator=coordinator,
+        pipeline=pipeline,
         state=state,
         live=live,
         max_duration=max_duration,
@@ -241,14 +263,47 @@ def _setup_analysis_context(
     )
 
 
+async def _run_coordinator(coordinator: Any, prompt: str) -> tuple[str, str | None, Any]:
+    """Run the coordinator Agent pipeline and extract results."""
+    result = await coordinator.invoke_async(prompt)
+    structured_output = getattr(result, "structured_output", None)
+    stop_reason = getattr(result, "stop_reason", "end_turn")
+    if stop_reason in ("max_tokens", "content_filtered", "guardrail_intervened"):
+        return "error", f"Coordinator stopped: {stop_reason}", structured_output
+    if stop_reason == "cancelled":
+        return "stopped", None, structured_output
+    return "completed", None, structured_output
+
+
+async def _run_swarm(swarm: Any, prompt: str) -> tuple[str, str | None, Any]:
+    """Run the Swarm pipeline and extract results."""
+    result = await swarm.invoke_async(prompt)
+    structured_output = None
+
+    synthesizer_result = result.results.get("synthesizer")
+    if synthesizer_result and hasattr(synthesizer_result, "result"):
+        agent_result = synthesizer_result.result
+        if hasattr(agent_result, "structured_output"):
+            structured_output = agent_result.structured_output
+
+    status_name = result.status.name if hasattr(result.status, "name") else str(result.status)
+    if status_name == "COMPLETED":
+        return "completed", None, structured_output
+    if status_name == "FAILED":
+        return "error", "Swarm execution failed", structured_output
+    if status_name == "INTERRUPTED":
+        return "stopped", None, structured_output
+    return "completed", None, structured_output
+
+
 async def _execute_analysis(
     context: AnalysisContext,
     prompt: str,
 ) -> StreamResult:
-    """Run the Swarm and process results.
+    """Run the analysis pipeline and process results.
 
     Args:
-        context: Analysis context with Swarm and configuration
+        context: Analysis context with pipeline and configuration
         prompt: Analysis prompt
 
     Returns:
@@ -258,32 +313,17 @@ async def _execute_analysis(
     error_message: str | None = None
     structured_output = None
 
-    # Set state start time
     if context.state:
         context.state.start_time = start_time
 
     try:
-        # Run the Swarm — hooks handle display updates
-        result = await context.swarm.invoke_async(prompt)
-
-        # Extract structured output from synthesizer (final node)
-        synthesizer_result = result.results.get("synthesizer")
-        if synthesizer_result and hasattr(synthesizer_result, "result"):
-            agent_result = synthesizer_result.result
-            if hasattr(agent_result, "structured_output"):
-                structured_output = agent_result.structured_output
-
-        # Check completion status
-        status_name = result.status.name if hasattr(result.status, "name") else str(result.status)
-        if status_name == "COMPLETED":
-            status = "completed"
-        elif status_name == "FAILED":
-            status = "error"
-            error_message = "Swarm execution failed"
-        elif status_name == "INTERRUPTED":
-            status = "stopped"
+        if context.pipeline == "coordinator" and context.coordinator is not None:
+            status, error_message, structured_output = await _run_coordinator(context.coordinator, prompt)
+        elif context.swarm is not None:
+            status, error_message, structured_output = await _run_swarm(context.swarm, prompt)
         else:
-            status = "completed"
+            status = "error"
+            error_message = "No pipeline configured"
 
     except Exception as e:  # noqa: BLE001
         import traceback

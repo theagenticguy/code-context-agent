@@ -24,7 +24,9 @@ from code_context_agent.tools.graph.adapters import (
     ingest_git_cochanges,
     ingest_git_hotspots,
     ingest_lsp_symbols,
+    ingest_test_mapping,
 )
+from code_context_agent.tools.graph.frameworks import detect_frameworks
 from code_context_agent.tools.graph.model import CodeGraph
 
 # Extension to LSP server kind mapping (matches LspClient._detect_language + config.lsp_servers keys)
@@ -80,6 +82,10 @@ async def build_index(
     if not quiet:
         logger.info(f"Indexing {len(files)} files in {repo}")
 
+    # Step 1a: Write file manifest to disk (BM25 search checks for this)
+    manifest_path = out / "files.all.txt"
+    manifest_path.write_text("\n".join(files))
+
     # Step 2: Detect languages
     lang_files = _detect_languages(files)
     if not quiet:
@@ -98,16 +104,37 @@ async def build_index(
     # Step 6: Clone detection
     _ingest_clones(graph, repo, quiet)
 
-    # Step 7: Save
+    # Step 7: Framework detection (activates dead code in frameworks.py)
+    frameworks = detect_frameworks(files)
+    if not quiet and frameworks:
+        logger.info(f"Frameworks detected: {frameworks}")
+
+    # Step 8: Test-to-production mapping
+    _ingest_tests(graph, files, quiet)
+
+    # Step 9: Repomix compressed signatures
+    _run_repomix_signatures(repo, out, quiet)
+
+    # Step 10: Repomix orientation
+    _run_repomix_orientation(repo, out, quiet)
+
+    # Step 11: BM25 index prebuild
+    _prebuild_bm25(files, repo, quiet)
+
+    # Step 12: Save graph
     graph_path = out / "code_graph.json"
     graph_data = graph.to_node_link_data()
     graph_path.write_text(json.dumps(graph_data, indent=2))
 
+    graph_stats = graph.describe()
     if not quiet:
-        stats = graph.describe()
         logger.info(
-            f"Index complete: {stats.get('node_count', 0)} nodes, {stats.get('edge_count', 0)} edges -> {graph_path}",
+            f"Index complete: {graph_stats.get('node_count', 0)} nodes, "
+            f"{graph_stats.get('edge_count', 0)} edges -> {graph_path}",
         )
+
+    # Step 13: Generate index metadata
+    _write_index_metadata(graph, graph_stats, out, files, lang_files, frameworks, quiet)
 
     return graph
 
@@ -487,3 +514,151 @@ def _ingest_clones(graph: CodeGraph, repo: Path, quiet: bool) -> None:
 
         if not quiet:
             logger.info(f"Clone detection: {len(clones)} duplicate blocks found")
+
+
+# --------------------------------------------------------------------------- #
+# New deterministic steps (7-13)
+# --------------------------------------------------------------------------- #
+
+_TEST_PATTERNS = {"test_", "_test.", ".test.", ".spec.", "__tests__"}
+
+
+def _ingest_tests(graph: CodeGraph, files: list[str], quiet: bool) -> None:
+    """Ingest test-to-production mapping using filename conventions."""
+    test_files = [f for f in files if any(p in f.lower() for p in _TEST_PATTERNS)]
+    prod_files = [f for f in files if f not in set(test_files)]
+
+    if not test_files:
+        return
+
+    edges = ingest_test_mapping(test_files, prod_files)
+    for edge in edges:
+        graph.add_edge(edge)
+
+    if not quiet:
+        logger.info(f"Test mapping: {len(edges)} test→production edges from {len(test_files)} test files")
+
+
+def _run_repomix_signatures(repo: Path, out: Path, quiet: bool) -> None:
+    """Generate compressed signatures via repomix (tree-sitter body stripping)."""
+    if shutil.which("repomix") is None:
+        logger.debug("repomix not found -- skipping signatures")
+        return
+
+    sig_path = out / "CONTEXT.signatures.md"
+    try:
+        subprocess.run(
+            [
+                "repomix",
+                "--compress",
+                "--remove-comments",
+                "--remove-empty-lines",
+                "--style",
+                "markdown",
+                "-o",
+                str(sig_path),
+                str(repo),
+            ],
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+        if not quiet and sig_path.exists():
+            size_kb = sig_path.stat().st_size / 1024
+            logger.info(f"Repomix signatures: {size_kb:.0f}KB -> {sig_path}")
+    except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError) as e:
+        logger.warning(f"Repomix signatures failed: {e}")
+
+
+def _run_repomix_orientation(repo: Path, out: Path, quiet: bool) -> None:
+    """Generate token-aware orientation overview via repomix."""
+    if shutil.which("repomix") is None:
+        logger.debug("repomix not found -- skipping orientation")
+        return
+
+    orient_path = out / "CONTEXT.orientation.md"
+    try:
+        subprocess.run(
+            [
+                "repomix",
+                "--no-files",
+                "--style",
+                "markdown",
+                "--token-count-tree",
+                "300",
+                "-o",
+                str(orient_path),
+                str(repo),
+            ],
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if not quiet and orient_path.exists():
+            size_kb = orient_path.stat().st_size / 1024
+            logger.info(f"Repomix orientation: {size_kb:.0f}KB -> {orient_path}")
+    except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError) as e:
+        logger.warning(f"Repomix orientation failed: {e}")
+
+
+def _prebuild_bm25(files: list[str], repo: Path, quiet: bool) -> None:
+    """Pre-build BM25 search index so first search has zero latency."""
+    try:
+        from code_context_agent.tools.search.bm25 import BM25Index
+        from code_context_agent.tools.search.tools import _indexes
+
+        index = BM25Index.from_files(files, repo)
+        _indexes[str(repo)] = index
+        if not quiet:
+            logger.info(f"BM25 index: {len(files)} files indexed")
+    except Exception as e:  # noqa: BLE001
+        logger.debug(f"BM25 prebuild failed: {e}")
+
+
+def _write_index_metadata(
+    graph: CodeGraph,
+    graph_stats: dict[str, Any],
+    out: Path,
+    files: list[str],
+    lang_files: dict[str, list[str]],
+    frameworks: list[str],
+    quiet: bool,
+) -> None:
+    """Write index metadata JSON for coordinator consumption."""
+    from datetime import UTC, datetime
+
+    from code_context_agent.tools.graph.analysis import CodeAnalyzer
+
+    analyzer = CodeAnalyzer(graph)
+
+    try:
+        entry_points = analyzer.find_entry_points()[:10]
+    except Exception:  # noqa: BLE001
+        entry_points = []
+
+    try:
+        hotspots = analyzer.find_hotspots(10)
+    except Exception:  # noqa: BLE001
+        hotspots = []
+
+    from code_context_agent.models.index import IndexMetadata
+
+    metadata = IndexMetadata(
+        file_count=len(files),
+        languages={lang: len(fs) for lang, fs in lang_files.items()},
+        frameworks=frameworks,
+        graph_stats=graph_stats,
+        top_entry_points=entry_points,
+        top_hotspots=hotspots,
+        indexed_at=datetime.now(tz=UTC).isoformat(),
+        has_signatures=(out / "CONTEXT.signatures.md").exists(),
+        has_orientation=(out / "CONTEXT.orientation.md").exists(),
+    )
+
+    metadata_path = out / "index_metadata.json"
+    metadata_path.write_text(metadata.model_dump_json(indent=2))
+
+    if not quiet:
+        logger.info(f"Index metadata: {metadata_path}")

@@ -39,6 +39,19 @@ class SwarmAgentState(StrictModel):
     findings: list[str] = Field(default_factory=list)
 
 
+class TeamState(StrictModel):
+    """State for a dispatched Swarm team.
+
+    Tracks teams created by the coordinator via strands_tools.swarm calls.
+    """
+
+    name: str
+    agents: list[str] = Field(default_factory=list)
+    status: str = "running"
+    started_at: float | None = None
+    duration_seconds: float = 0.0
+
+
 class ToolCallState(StrictModel):
     """State for a single tool call.
 
@@ -128,6 +141,9 @@ class AgentDisplayState(StrictModel):
     # Multi-agent tracking (Swarm)
     agents: list[SwarmAgentState] = Field(default_factory=list)
     active_agent_name: str | None = None
+
+    # Team tracking (Coordinator pipeline)
+    teams: list[TeamState] = Field(default_factory=list)
 
     def clear_text_buffer(self) -> str:
         """Clear and return the text buffer.
@@ -296,6 +312,28 @@ class AgentDisplayState(StrictModel):
                     agent.tool_count += 1
                     break
 
+    def start_team(self, name: str, agent_names: list[str]) -> None:
+        """Register a dispatched Swarm team.
+
+        Args:
+            name: Display name for the team (e.g., "Team 1: Structure").
+            agent_names: List of agent names in the team.
+        """
+        self.teams.append(TeamState(name=name, agents=agent_names, started_at=time.monotonic()))
+
+    def complete_team(self, name: str) -> None:
+        """Mark a team as completed.
+
+        Args:
+            name: Name of the team to complete.
+        """
+        for team in self.teams:
+            if team.name == name and team.status == "running":
+                team.status = "done"
+                if team.started_at:
+                    team.duration_seconds = time.monotonic() - team.started_at
+                break
+
     def reset(self) -> None:
         """Reset state for a new run."""
         self.current_phase = ""
@@ -318,3 +356,5 @@ class AgentDisplayState(StrictModel):
         # Reset multi-agent tracking (Swarm)
         self.agents = []
         self.active_agent_name = None
+        # Reset team tracking (Coordinator)
+        self.teams = []

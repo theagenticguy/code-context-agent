@@ -2,7 +2,7 @@
 
 from .base import EventConsumer
 from .rich_consumer import QuietConsumer, RichEventConsumer, bind_live_renderable
-from .state import AgentDisplayState, SwarmAgentState, ToolCallState
+from .state import AgentDisplayState, SwarmAgentState, TeamState, ToolCallState
 
 __all__ = [
     "AgentDisplayState",
@@ -11,5 +11,6 @@ __all__ = [
     "QuietConsumer",
     "RichEventConsumer",
     "SwarmAgentState",
+    "TeamState",
     "ToolCallState",
 ]

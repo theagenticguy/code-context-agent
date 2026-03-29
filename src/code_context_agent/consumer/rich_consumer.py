@@ -450,8 +450,19 @@ class RichEventConsumer(EventConsumer):
             Panel(agent_table, title="Swarm Agents", border_style="magenta"),
         )
 
-        # Discoveries panel
+        # Discoveries + Teams panel
         disc_text = Text()
+        # Show dispatched teams (coordinator pipeline)
+        if self.state.teams:
+            for team in self.state.teams:
+                if team.status == "running":
+                    disc_text.append("  ● ", style="yellow")
+                    disc_text.append(f"{team.name}", style="bold")
+                    disc_text.append(f" ({', '.join(team.agents)})\n", style="dim")
+                else:
+                    disc_text.append("  ✓ ", style="green")
+                    disc_text.append(f"{team.name}", style="dim")
+                    disc_text.append(f" ({team.duration_seconds:.0f}s)\n", style="dim")
         for disc in self.state.discoveries[-15:]:
             disc_text.append(f"  {disc.summary}\n")
         layout["discoveries"].update(

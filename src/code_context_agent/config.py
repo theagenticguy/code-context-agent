@@ -180,6 +180,12 @@ class Settings(BaseSettings):
         description="Graph storage backend: 'networkx' (in-memory, default) or 'kuzu' (persistent KuzuDB)",
     )
 
+    # Analysis pipeline type
+    pipeline: Literal["coordinator", "swarm"] = Field(
+        default="coordinator",
+        description="Analysis pipeline: 'coordinator' (parallel Swarm teams) or 'swarm' (sequential handoff chain)",
+    )
+
     # Telemetry settings
     otel_disabled: bool = Field(
         default=True,

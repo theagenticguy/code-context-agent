@@ -377,6 +377,47 @@ class ToolDisplayHook(HookProvider):
                         break
 
 
+class CoordinatorDisplayHook(HookProvider):
+    """Hook that tracks coordinator tool calls for TUI display.
+
+    When the coordinator dispatches swarm teams via the swarm() tool,
+    this hook tracks team creation and completion for display.
+    """
+
+    def __init__(self, state: AgentDisplayState) -> None:  # noqa: D107
+        self._state = state
+        self._team_count = 0
+
+    def register_hooks(self, registry: HookRegistry, **kwargs: Any) -> None:
+        """Register coordinator tool tracking callbacks."""
+        registry.add_callback(BeforeToolCallEvent, self._on_tool_start)
+        registry.add_callback(AfterToolCallEvent, self._on_tool_end)
+
+    def _on_tool_start(self, event: BeforeToolCallEvent, **kwargs: Any) -> None:
+        """Track swarm team dispatch."""
+        tool_name = event.tool_use.get("name", "")
+        if tool_name == "swarm":
+            self._team_count += 1
+            tool_input = event.tool_use.get("input", {})
+            agents_spec = tool_input.get("agents", [])
+            agent_names = [a.get("name", f"agent_{i + 1}") for i, a in enumerate(agents_spec)]
+            task_preview = str(tool_input.get("task", ""))[:60]
+            team_name = f"Team {self._team_count}: {task_preview}"
+            self._state.start_team(team_name, agent_names)
+            logger.info(f"Coordinator dispatched {team_name} with agents: {agent_names}")
+
+    def _on_tool_end(self, event: AfterToolCallEvent, **kwargs: Any) -> None:
+        """Track swarm team completion."""
+        tool_name = event.tool_use.get("name", "")
+        if tool_name == "swarm":
+            # Complete the oldest running team
+            for team in self._state.teams:
+                if team.status == "running":
+                    self._state.complete_team(team.name)
+                    logger.info(f"Team completed: {team.name}")
+                    break
+
+
 class JsonLogHook(HookProvider):
     """Hook that emits structured JSON log lines for CI/CD --quiet mode.
 
@@ -465,8 +506,10 @@ def create_all_hooks(
         agent_hooks.append(JsonLogHook())
     elif state is not None:
         agent_hooks.append(ToolDisplayHook(state))
+        # Coordinator team tracking (works alongside ToolDisplayHook)
+        agent_hooks.append(CoordinatorDisplayHook(state))
 
-    # Swarm-level hooks (registered on the Swarm)
+    # Swarm-level hooks (registered on the Swarm, or unused by coordinator pipeline)
     swarm_hooks: list[HookProvider] = []
     if quiet:
         swarm_hooks.append(JsonLogSwarmHook())
