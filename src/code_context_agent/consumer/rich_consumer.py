@@ -14,7 +14,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 from rich.console import Console, Group, RenderableType
-from rich.layout import Layout
 from rich.live import Live
 from rich.panel import Panel
 from rich.spinner import Spinner
@@ -27,6 +26,7 @@ from .state import AgentDisplayState, ToolCallState
 _RECENT_TOOLS_SHOWN = 8
 _KB = 1024
 _MB = 1024 * 1024
+_MANDATE_TRUNCATE_LEN = 53
 
 
 def bind_live_renderable(live: Live, builder: Callable[[], RenderableType]) -> None:
@@ -295,7 +295,7 @@ class RichEventConsumer(EventConsumer):
         t = Text()
         current = self.state.phases[-1]
         t.append("  Phase: ", style="dim")
-        t.append(f"[{current.phase}/10] ", style="bold cyan")
+        t.append(f"[{current.phase}/5] ", style="bold cyan")
         t.append(current.name, style="bold")
         t.append(f"  ({current.description})", style="dim")
         return t
@@ -313,11 +313,129 @@ class RichEventConsumer(EventConsumer):
             t.append("\n")
         return t
 
-    def _build_single_agent_display(self) -> RenderableType:
-        """Build the fixed-height single-agent dashboard display.
+    def _build_team_table(self) -> RenderableType | None:
+        """Build a table showing dispatched team status."""
+        if not self.state.teams:
+            return None
 
-        This is the original layout for non-Swarm (single agent) runs.
-        """
+        table = Table(
+            show_header=True,
+            show_edge=False,
+            padding=(0, 1),
+            expand=True,
+            box=None,
+        )
+        table.add_column("Team", ratio=2)
+        table.add_column("Mandate", ratio=4)
+        table.add_column("Agents", width=7, justify="right")
+        table.add_column("Status", width=10, justify="center")
+        table.add_column("Time", width=8, justify="right")
+
+        for team in self.state.teams:
+            # Status styling
+            if team.status == "running":
+                status_text = "[yellow]running[/yellow]"
+            elif team.status == "done":
+                status_text = "[green]done[/green]"
+            else:
+                status_text = "[red]error[/red]"
+
+            # Duration
+            if team.status == "running" and team.started_at is not None:
+                import time as _time
+
+                elapsed = _time.monotonic() - team.started_at
+            else:
+                elapsed = team.duration_seconds
+            time_str = self._format_time(elapsed)
+
+            # Truncate mandate for display
+            mandate = team.mandate[:50] + "..." if len(team.mandate) > _MANDATE_TRUNCATE_LEN else team.mandate
+
+            table.add_row(
+                f"[bold]{team.team_id}[/bold]",
+                f"[dim]{mandate}[/dim]",
+                str(team.agent_count),
+                status_text,
+                f"[dim]{time_str}[/dim]",
+            )
+
+        return table
+
+    def _build_coordinator_display(self) -> RenderableType:
+        """Build the coordinator pipeline display with team tracking."""
+        elements: list[RenderableType] = []
+
+        # Timer + progress
+        elements.append(self._build_timer())
+        elements.append(Text(""))
+
+        # Phase indicator
+        phase = self._build_phase_indicator()
+        if phase:
+            elements.append(phase)
+            elements.append(Text(""))
+
+        # Team status table
+        team_table = self._build_team_table()
+        if team_table:
+            elements.append(Text("  Teams:", style="dim"))
+            elements.append(team_table)
+            elements.append(Text(""))
+
+        # Tool summary + categories
+        elements.append(self._build_tool_summary())
+
+        # Discovery feed
+        discoveries = self._build_discovery_feed()
+        if discoveries:
+            elements.append(Text(""))
+            elements.append(Text("  Discoveries:", style="dim"))
+            elements.append(discoveries)
+
+        # Active tool spinner
+        active = self._build_active_tool()
+        if active:
+            elements.append(Text(""))
+            elements.append(active)
+
+        # Recent tool history
+        recent = self._build_recent_tools()
+        if recent:
+            elements.append(Text(""))
+            elements.append(Text("  Recent:", style="dim"))
+            elements.append(recent)
+
+        # Error
+        if self.state.error:
+            elements.append(Text(""))
+            elements.append(
+                Panel(
+                    Text(self.state.error, style="bold red"),
+                    title="Error",
+                    border_style="red",
+                ),
+            )
+
+        # Completion
+        if self.state.completed:
+            elements.append(Text(""))
+            elements.append(Text("  ✓ Analysis complete", style="bold green"))
+
+        # Mode badge in panel title
+        title = "Code Context Agent"
+        if self._mode.startswith("full"):
+            title += " [FULL]"
+
+        return Panel(
+            Group(*elements) if elements else Text("Starting analysis...", style="dim"),
+            title=title,
+            border_style="cyan",
+            padding=(1, 2),
+        )
+
+    def _build_single_agent_display(self) -> RenderableType:
+        """Build the fixed-height dashboard display."""
         elements: list[RenderableType] = []
 
         # Timer + progress
@@ -381,120 +499,14 @@ class RichEventConsumer(EventConsumer):
             padding=(1, 2),
         )
 
-    def _build_swarm_display(self) -> Layout:
-        """Build multi-agent Swarm dashboard layout.
-
-        Layout structure::
-
-            +------------------------------------------------+
-            | Header: Timer + Progress                       |
-            +------------------+-----------------------------+
-            | Agent Status     | Discoveries                 |
-            | - structure_...  | - 6751 nodes in graph       |
-            | - history_an...  | - 42 hotspots found         |
-            | - code_reader    | - 7 coupling pairs          |
-            | - synthesizer    |                             |
-            +------------------------------------------------+
-            | Recent Tools: [agent] tool_name -> status       |
-            +------------------------------------------------+
-        """
-        layout = Layout()
-        layout.split_column(
-            Layout(name="header", size=3),
-            Layout(name="body", ratio=1),
-            Layout(name="footer", size=10),
-        )
-        layout["body"].split_row(
-            Layout(name="agents", minimum_size=30, ratio=1),
-            Layout(name="discoveries", ratio=2),
-        )
-
-        # Header: timer + overall progress
-        elapsed = self.state.get_elapsed_seconds()
-        done_count = sum(1 for a in self.state.agents if a.status == "done")
-        total = len(self.state.agents)
-        layout["header"].update(
-            Panel(
-                Text.assemble(
-                    ("Time: ", "dim"),
-                    (f"{self._format_time(elapsed)} ", "bold cyan"),
-                    ("Agents: ", "dim"),
-                    (f"{done_count}/{total} ", "bold"),
-                    ("Tools: ", "dim"),
-                    (f"{len(self.state.completed_tools)}", "bold green"),
-                ),
-                border_style="cyan",
-            ),
-        )
-
-        # Agent status table
-        agent_table = Table(show_header=False, expand=True, box=None, padding=(0, 1))
-        agent_table.add_column("status", width=3)
-        agent_table.add_column("name", ratio=2)
-        agent_table.add_column("info", ratio=1, justify="right")
-
-        for agent in self.state.agents:
-            if agent.status == "running":
-                icon: RenderableType = Spinner("dots", style="yellow")
-                info = agent.current_tool if agent.current_tool else f"{agent.tool_count} tools"
-            elif agent.status == "done":
-                icon = Text("\u2713", style="bold green")
-                info = f"{agent.tool_count} tools, {agent.duration_seconds:.0f}s"
-            else:
-                icon = Text("\u00b7", style="dim")
-                info = ""
-            name_style = "bold" if agent.status == "running" else "dim"
-            agent_table.add_row(icon, Text(agent.name, style=name_style), info)
-
-        layout["agents"].update(
-            Panel(agent_table, title="Swarm Agents", border_style="magenta"),
-        )
-
-        # Discoveries + Teams panel
-        disc_text = Text()
-        # Show dispatched teams (coordinator pipeline)
-        if self.state.teams:
-            for team in self.state.teams:
-                if team.status == "running":
-                    disc_text.append("  ● ", style="yellow")
-                    disc_text.append(f"{team.name}", style="bold")
-                    disc_text.append(f" ({', '.join(team.agents)})\n", style="dim")
-                else:
-                    disc_text.append("  ✓ ", style="green")
-                    disc_text.append(f"{team.name}", style="dim")
-                    disc_text.append(f" ({team.duration_seconds:.0f}s)\n", style="dim")
-        for disc in self.state.discoveries[-15:]:
-            disc_text.append(f"  {disc.summary}\n")
-        layout["discoveries"].update(
-            Panel(
-                disc_text or Text("Waiting...", style="dim"),
-                title="Findings",
-                border_style="green",
-            ),
-        )
-
-        # Footer: recent tools
-        tool_table = Table(show_header=False, expand=True, box=None, padding=(0, 1))
-        tool_table.add_column("icon", width=3)
-        tool_table.add_column("agent", width=18)
-        tool_table.add_column("tool", ratio=2)
-        recent = self.state.get_recent_tools(8)
-        for tool in recent:
-            is_error = tool.status == "error" or (isinstance(tool.result, str) and '"status": "error"' in tool.result)
-            status_icon = "[red]err[/]" if is_error else "[green]ok[/]"
-            agent_name = tool.agent_name or ""
-            tool_table.add_row(status_icon, f"[dim]{agent_name}[/]", f"[bold]{tool.tool_name}[/]")
-
-        layout["footer"].update(
-            Panel(tool_table, title="Recent Tools", border_style="dim"),
-        )
-
-        return layout
-
     def _build_display(self) -> RenderableType:
-        """Build the dashboard display, dispatching to Swarm or single-agent layout."""
-        if self.state.agents:
-            return self._build_swarm_display()
+        """Build the dashboard display.
+
+        Uses coordinator display when teams have been dispatched,
+        otherwise falls back to the single-agent display.
+        """
+        if self.state.teams:
+            return self._build_coordinator_display()
         return self._build_single_agent_display()
 
     async def start(self) -> None:

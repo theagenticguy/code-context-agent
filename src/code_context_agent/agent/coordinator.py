@@ -1,15 +1,15 @@
 """Coordinator Agent factory for team-based code analysis.
 
 The coordinator is a regular strands Agent (not a Swarm node) that dispatches
-specialist Swarm teams via strands_tools.swarm tool calls. Teams execute in
+specialist Swarm teams via the dispatch_team tool. Teams execute in
 parallel via ConcurrentToolExecutor.
 
 Architecture:
     Enhanced Index (deterministic) → Coordinator Agent (LLM)
-        ├── swarm(task=..., agents=[structure team]) ┐
-        ├── swarm(task=..., agents=[history team])   ├ parallel
-        └── swarm(task=..., agents=[reader team])    ┘
-            → Consolidate findings → AnalysisResult
+        ├── dispatch_team("team-structure", ...) ┐
+        ├── dispatch_team("team-history", ...)    ├ parallel
+        └── dispatch_team("team-reader", ...)     ┘
+            → read_team_findings → write_bundle → AnalysisResult
 """
 
 from __future__ import annotations
@@ -51,84 +51,129 @@ def _create_model() -> BedrockModel:
 def _render_coordinator_prompt(
     repo_path: Path,
     output_dir: Path,
-    metadata: dict[str, Any],
-    graph_summary: str,
-    mode: str,
+    heuristic: dict[str, Any],
+    focus: str | None = None,
 ) -> str:
-    """Render the coordinator system prompt from the Jinja2 template."""
+    """Render the lean coordinator system prompt from Jinja2 template."""
     from ..templates import render_prompt
 
-    # Build a namespace object for the template to access metadata fields via dot notation
-    class _MetadataProxy:
+    # Build a namespace object for the template to access heuristic fields via dot notation.
+    # Supports __len__/__iter__ so Jinja2 filters (| length, | join) work on nested dicts.
+    class _DictProxy:
         def __init__(self, data: dict[str, Any]) -> None:
-            self.__dict__.update(data)
+            self._data = data
+            for key, value in data.items():
+                if isinstance(value, dict):
+                    setattr(self, key, _DictProxy(value))
+                else:
+                    setattr(self, key, value)
+
+        def __getattr__(self, name: str) -> Any:
+            return 0  # Safe fallback for missing keys in template
+
+        def __len__(self) -> int:
+            return len(self._data)
+
+        def __iter__(self):
+            return iter(self._data)
 
     return render_prompt(
         "coordinator.md.j2",
         repo_path=str(repo_path),
         output_dir=str(output_dir),
-        metadata=_MetadataProxy(metadata),
-        graph_summary=graph_summary,
-        mode=mode,
+        heuristic=_DictProxy(heuristic),
+        focus=focus,
     )
 
 
-def _get_coordinator_tools() -> list[Any]:
+def _get_coordinator_tools(analysis_tools: list[Any]) -> list[Any]:
     """Get ALL tools for the coordinator agent.
 
-    Reuses get_analysis_tools() from factory.py and prepends the swarm
-    dispatch tool. The coordinator registers every tool so that child
-    swarm agents can inherit any subset via the `tools` field.
+    Includes:
+    - 4 coordinator-specific tools (dispatch_team, read_team_findings, etc.)
+    - All analysis tools (inherited by team agents via the swarm `tools` field)
+
+    Args:
+        analysis_tools: Pre-fetched list from get_analysis_tools().
     """
-    from strands_tools.swarm import swarm
+    from ..tools.coordinator_tools import (
+        dispatch_team,
+        read_heuristic_summary,
+        read_team_findings,
+        write_bundle,
+    )
 
-    from .factory import get_analysis_tools
-
-    return [swarm, *get_analysis_tools()]
+    return [dispatch_team, read_team_findings, write_bundle, read_heuristic_summary, *analysis_tools]
 
 
 def create_coordinator_agent(
     repo_path: Path,
     output_dir: Path,
-    mode: str = "standard",
+    focus: str | None = None,
     hooks: list[HookProvider] | None = None,
 ) -> Agent:
     """Create a coordinator Agent that dispatches Swarm teams.
 
     The coordinator reads pre-computed index artifacts and uses the
-    strands_tools.swarm tool to dispatch specialist teams in parallel.
+    dispatch_team tool to dispatch specialist teams in parallel.
 
     Args:
         repo_path: Path to the repository.
         output_dir: Path to output directory with index artifacts.
-        mode: Analysis mode ("standard", "full", "full+focus", etc.).
+        focus: Optional focus area for targeted analysis.
         hooks: Optional HookProviders for the coordinator.
 
     Returns:
         Configured Agent ready for invocation.
     """
-    # Load index metadata
-    from ..models.index import IndexMetadata
+    # Get analysis tools (these are inherited by swarm team agents)
+    from .factory import get_analysis_tools
 
+    analysis_tools = get_analysis_tools()
+
+    # Configure coordinator tools with output dir, repo path, and tool registry
+    from ..tools.coordinator_tools import configure as configure_coordinator_tools
+
+    configure_coordinator_tools(output_dir=output_dir, repo_path=repo_path, tools=analysis_tools)
+
+    # Load heuristic summary (preferred) or fall back to index metadata
+    heuristic: dict[str, Any] = {}
+    heuristic_path = output_dir / "heuristic_summary.json"
     metadata_path = output_dir / "index_metadata.json"
-    if metadata_path.exists():
-        metadata = _json.loads(metadata_path.read_text())
-    else:
-        logger.warning("No index_metadata.json found, coordinator will have limited context")
-        metadata = IndexMetadata(
-            file_count=0,
-            languages={},
-            frameworks=[],
-            graph_stats={},
-            top_entry_points=[],
-            top_hotspots=[],
-            has_signatures=False,
-            has_orientation=False,
-            indexed_at="",
-        ).model_dump()
+
+    if heuristic_path.exists():
+        try:
+            heuristic = _json.loads(heuristic_path.read_text())
+            logger.info("Loaded heuristic summary for coordinator")
+        except (OSError, ValueError) as e:
+            logger.warning(f"Failed to load heuristic summary: {e}")
+
+    if not heuristic and metadata_path.exists():
+        try:
+            raw = _json.loads(metadata_path.read_text())
+            # Adapt index metadata to heuristic summary shape for template compatibility
+            heuristic = {
+                "volume": {
+                    "total_files": raw.get("file_count", 0),
+                    "languages": raw.get("languages", {}),
+                    "frameworks": raw.get("frameworks", []),
+                    "estimated_tokens": 0,
+                },
+                "symbols": {"functions": 0, "classes": 0, "modules": 0},
+                "health": {
+                    "semgrep_findings": {"critical": 0, "high": 0, "medium": 0},
+                },
+                "topology": {
+                    "graph_nodes": raw.get("graph_stats", {}).get("node_count", 0),
+                    "graph_edges": raw.get("graph_stats", {}).get("edge_count", 0),
+                },
+                "git": {},
+            }
+            logger.info("Loaded index metadata (fallback) for coordinator")
+        except (OSError, ValueError) as e:
+            logger.warning(f"Failed to load index metadata: {e}")
 
     # Pre-load graph into shared state
-    graph_summary = "{}"
     graph_path = output_dir / "code_graph.json"
     if graph_path.exists():
         try:
@@ -139,25 +184,23 @@ def create_coordinator_agent(
             graph_data = _json.loads(data)
             code_graph = CodeGraph.from_node_link_data(graph_data)
             _graphs["main"] = code_graph
-            graph_summary = _json.dumps(code_graph.describe(), indent=2)
             logger.info(
                 f"Preloaded graph: {code_graph.node_count} nodes, {code_graph.edge_count} edges",
             )
         except (OSError, ValueError, TypeError, KeyError) as e:
             logger.warning(f"Failed to preload graph: {e}")
 
-    # Render system prompt
+    # Render lean system prompt
     system_prompt = _render_coordinator_prompt(
         repo_path=repo_path,
         output_dir=output_dir,
-        metadata=metadata,
-        graph_summary=graph_summary,
-        mode=mode,
+        heuristic=heuristic,
+        focus=focus,
     )
 
     # Create model and tools
     model = _create_model()
-    tools = _get_coordinator_tools()
+    tools = _get_coordinator_tools(analysis_tools)
 
     # Create the coordinator Agent
     agent = Agent(
@@ -175,7 +218,7 @@ def create_coordinator_agent(
             agent.hooks.add_hook(hook)
 
     logger.info(
-        f"Created coordinator agent with {len(tools)} tools, mode={mode}, repo={repo_path}",
+        f"Created coordinator agent with {len(tools)} tools, focus={focus}, repo={repo_path}",
     )
 
     return agent

@@ -10,14 +10,8 @@ from __future__ import annotations
 from typing import Any
 
 from loguru import logger
-from strands import Agent
-from strands.models import BedrockModel
 
 from ..config import get_settings
-from ..models.output import AnalysisResult
-from .analysts import create_analyst_agents
-from .hooks import create_all_hooks
-from .prompts import get_prompt
 
 
 def get_analysis_tools() -> list[Any]:
@@ -186,60 +180,3 @@ def _create_context7_provider() -> Any | None:
     except (ImportError, Exception) as e:  # noqa: BLE001
         logger.warning(f"Failed to configure context7 MCP server: {e}")
         return None
-
-
-def create_agent(mode: str = "standard") -> Agent:
-    """Create a configured agent for code context analysis.
-
-    Args:
-        mode: Analysis mode ("standard", "full", "full+focus", "focus", "incremental").
-
-    Returns:
-        Configured Agent instance ready for analysis.
-    """
-    settings = get_settings()
-
-    # Use 'max' effort for full mode, configurable effort for standard
-    full_mode = mode in ("full", "full+focus")
-    effort = settings.full_reasoning_effort if full_mode else settings.reasoning_effort
-
-    logger.info(
-        f"Creating agent: model={settings.model_id}, region={settings.region}, "
-        f"mode={mode}, thinking=adaptive, effort={effort}",
-    )
-
-    # Create Bedrock model with adaptive thinking, effort control, and 1M context
-    model = BedrockModel(
-        model_id=settings.model_id,
-        region_name=settings.region,
-        temperature=settings.temperature,
-        additional_request_fields={
-            "thinking": {"type": "adaptive"},
-            "output_config": {"effort": effort},
-            "anthropic_beta": ["context-1m-2025-08-07"],
-        },
-    )
-
-    # Render system prompt from Jinja2 template (mode-aware)
-    system_prompt = get_prompt(mode=mode)
-
-    tools = get_analysis_tools()
-
-    # Full mode: add specialist sub-agents for deep analysis
-    if full_mode:
-        analyst_agents = create_analyst_agents()
-        tools.extend(analyst_agents)
-        logger.info(f"Added {len(analyst_agents)} specialist sub-agents for deep analysis")
-
-    agent_hooks, _swarm_hooks = create_all_hooks(full_mode=full_mode)
-
-    logger.info(f"Agent configured with {len(tools)} tools, {len(agent_hooks)} hooks, mode={mode}")
-
-    return Agent(
-        model=model,
-        tools=tools,
-        system_prompt=system_prompt,
-        structured_output_model=AnalysisResult,
-        hooks=agent_hooks,
-        callback_handler=None,
-    )

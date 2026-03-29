@@ -30,7 +30,6 @@ Environment Variables:
 from __future__ import annotations
 
 import functools
-from enum import StrEnum
 from typing import Literal
 
 from pydantic import Field
@@ -38,13 +37,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_OUTPUT_DIR = ".code-context"
 """Default output directory name for analysis artifacts."""
-
-
-class AnalysisMode(StrEnum):
-    """Analysis mode selection."""
-
-    STANDARD = "standard"
-    FULL = "full"
 
 
 class Settings(BaseSettings):
@@ -178,12 +170,6 @@ class Settings(BaseSettings):
     graph_backend: str = Field(
         default="networkx",
         description="Graph storage backend: 'networkx' (in-memory, default) or 'kuzu' (persistent KuzuDB)",
-    )
-
-    # Analysis pipeline type
-    pipeline: Literal["coordinator", "swarm"] = Field(
-        default="coordinator",
-        description="Analysis pipeline: 'coordinator' (parallel Swarm teams) or 'swarm' (sequential handoff chain)",
     )
 
     # Telemetry settings

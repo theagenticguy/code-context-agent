@@ -8,7 +8,9 @@ tool is missing the step is skipped and indexing continues.
 from __future__ import annotations
 
 import json
+import re
 import shutil
+import statistics
 import subprocess
 import tempfile
 from collections import Counter
@@ -135,6 +137,29 @@ async def build_index(
 
     # Step 13: Generate index metadata
     _write_index_metadata(graph, graph_stats, out, files, lang_files, frameworks, quiet)
+
+    # Step 14-15: Semgrep
+    _run_semgrep_auto(repo, out, quiet)
+    _run_semgrep_owasp(repo, out, quiet)
+
+    # Step 16: Type checker
+    _run_typecheck(repo, out, lang_files, quiet)
+
+    # Step 17: Linter
+    _run_lint(repo, out, quiet)
+
+    # Step 18: Complexity
+    _run_complexity(repo, out, lang_files, quiet)
+
+    # Step 19-20: Dead code
+    _run_dead_code_py(repo, out, lang_files, quiet)
+    _run_dead_code_ts(repo, out, lang_files, quiet)
+
+    # Step 21: Dependencies
+    _run_deps(repo, out, lang_files, quiet)
+
+    # Final: Heuristic summary
+    _generate_heuristic_summary(graph, graph_stats, files, lang_files, frameworks, out, repo, quiet)
 
     return graph
 
@@ -662,3 +687,634 @@ def _write_index_metadata(
 
     if not quiet:
         logger.info(f"Index metadata: {metadata_path}")
+
+
+# --------------------------------------------------------------------------- #
+# Steps 14-21: Extended static analysis
+# --------------------------------------------------------------------------- #
+
+
+def _run_semgrep_auto(repo: Path, out: Path, quiet: bool) -> None:
+    """Step 14: Run semgrep with auto config for general findings."""
+    if shutil.which("semgrep") is None:
+        logger.debug("semgrep not found -- skipping semgrep auto scan")
+        return
+
+    try:
+        result = subprocess.run(
+            ["semgrep", "--config", "auto", "--json", "--quiet", str(repo)],
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        if result.stdout:
+            (out / "semgrep_auto.json").write_text(result.stdout)
+            if not quiet:
+                logger.info(f"Semgrep auto: wrote {out / 'semgrep_auto.json'}")
+    except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError) as e:
+        logger.warning(f"Semgrep auto scan failed: {e}")
+
+
+def _run_semgrep_owasp(repo: Path, out: Path, quiet: bool) -> None:
+    """Step 15: Run semgrep with OWASP Top Ten config."""
+    if shutil.which("semgrep") is None:
+        logger.debug("semgrep not found -- skipping semgrep OWASP scan")
+        return
+
+    try:
+        result = subprocess.run(
+            ["semgrep", "--config", "p/owasp-top-ten", "--json", "--quiet", str(repo)],
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        if result.stdout:
+            (out / "semgrep_owasp.json").write_text(result.stdout)
+            if not quiet:
+                logger.info(f"Semgrep OWASP: wrote {out / 'semgrep_owasp.json'}")
+    except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError) as e:
+        logger.warning(f"Semgrep OWASP scan failed: {e}")
+
+
+def _run_typecheck(repo: Path, out: Path, lang_files: dict[str, list[str]], quiet: bool) -> None:
+    """Step 16: Run type checker (ty or pyright) for Python projects."""
+    if "py" not in lang_files:
+        return
+
+    # Try ty first
+    if shutil.which("ty"):
+        try:
+            result = subprocess.run(
+                ["ty", "check", "--output-format", "json"],
+                cwd=str(repo),
+                capture_output=True,
+                text=True,
+                timeout=180,
+            )
+            if result.stdout:
+                (out / "typecheck.json").write_text(result.stdout)
+                if not quiet:
+                    logger.info(f"Type check (ty): wrote {out / 'typecheck.json'}")
+                return
+        except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError) as e:
+            logger.warning(f"ty check failed: {e}")
+
+    # Fallback to pyright
+    if shutil.which("pyright"):
+        try:
+            result = subprocess.run(
+                ["pyright", "--outputjson"],
+                cwd=str(repo),
+                capture_output=True,
+                text=True,
+                timeout=180,
+            )
+            if result.stdout:
+                (out / "typecheck.json").write_text(result.stdout)
+                if not quiet:
+                    logger.info(f"Type check (pyright): wrote {out / 'typecheck.json'}")
+                return
+        except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError) as e:
+            logger.warning(f"pyright check failed: {e}")
+
+    logger.debug("No type checker (ty or pyright) found -- skipping type check")
+
+
+def _run_lint(repo: Path, out: Path, quiet: bool) -> None:
+    """Step 17: Run ruff linter."""
+    if shutil.which("ruff") is None:
+        logger.debug("ruff not found -- skipping lint")
+        return
+
+    try:
+        result = subprocess.run(
+            ["ruff", "check", "--output-format", "json", str(repo)],
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        # ruff returns exit code 1 when it finds violations (normal, not an error)
+        if result.stdout:
+            # Validate it's parseable JSON before writing
+            try:
+                json.loads(result.stdout)
+                (out / "lint.json").write_text(result.stdout)
+                if not quiet:
+                    logger.info(f"Lint (ruff): wrote {out / 'lint.json'}")
+            except json.JSONDecodeError:
+                logger.debug("ruff output is not valid JSON")
+    except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError) as e:
+        logger.warning(f"Ruff lint failed: {e}")
+
+
+def _run_complexity(repo: Path, out: Path, lang_files: dict[str, list[str]], quiet: bool) -> None:
+    """Step 18: Run radon cyclomatic complexity analysis."""
+    if "py" not in lang_files:
+        return
+
+    if shutil.which("radon") is None:
+        logger.debug("radon not found -- skipping complexity analysis")
+        return
+
+    try:
+        result = subprocess.run(
+            ["radon", "cc", "-j", str(repo)],
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if result.stdout:
+            (out / "complexity.json").write_text(result.stdout)
+            if not quiet:
+                logger.info(f"Complexity (radon): wrote {out / 'complexity.json'}")
+    except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError) as e:
+        logger.warning(f"Radon complexity analysis failed: {e}")
+
+
+def _run_dead_code_py(repo: Path, out: Path, lang_files: dict[str, list[str]], quiet: bool) -> None:
+    """Step 19: Run vulture dead code detection for Python."""
+    if "py" not in lang_files:
+        return
+
+    if shutil.which("vulture") is None:
+        logger.debug("vulture not found -- skipping Python dead code detection")
+        return
+
+    try:
+        result = subprocess.run(
+            ["vulture", str(repo), "--min-confidence", "80"],
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        # vulture outputs text lines, not JSON -- parse them
+        pattern = re.compile(r"^(.+?):(\d+): (.+)$")
+        entries: list[dict[str, Any]] = []
+        if result.stdout:
+            for line in result.stdout.strip().splitlines():
+                m = pattern.match(line.strip())
+                if m:
+                    entries.append({"file": m.group(1), "line": int(m.group(2)), "message": m.group(3)})
+
+        (out / "dead_code_py.json").write_text(json.dumps(entries, indent=2))
+        if not quiet:
+            logger.info(f"Dead code (vulture): {len(entries)} findings -> {out / 'dead_code_py.json'}")
+    except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError) as e:
+        logger.warning(f"Vulture dead code detection failed: {e}")
+
+
+def _run_dead_code_ts(repo: Path, out: Path, lang_files: dict[str, list[str]], quiet: bool) -> None:
+    """Step 20: Run knip dead code detection for TypeScript/JavaScript."""
+    if "ts" not in lang_files:
+        return
+
+    if shutil.which("npx") is None:
+        logger.debug("npx not found -- skipping TS/JS dead code detection")
+        return
+
+    try:
+        result = subprocess.run(
+            ["npx", "-y", "knip@5", "--reporter", "json"],
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if result.stdout:
+            (out / "dead_code_ts.json").write_text(result.stdout)
+            if not quiet:
+                logger.info(f"Dead code (knip): wrote {out / 'dead_code_ts.json'}")
+    except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError) as e:
+        logger.warning(f"Knip dead code detection failed: {e}")
+
+
+def _run_deps(repo: Path, out: Path, lang_files: dict[str, list[str]], quiet: bool) -> None:
+    """Step 21: Generate dependency graph."""
+    if "py" in lang_files and shutil.which("pipdeptree"):
+        try:
+            result = subprocess.run(
+                ["pipdeptree", "--json"],
+                cwd=str(repo),
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            if result.stdout:
+                (out / "deps.json").write_text(result.stdout)
+                if not quiet:
+                    logger.info(f"Dependencies (pipdeptree): wrote {out / 'deps.json'}")
+            return
+        except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError) as e:
+            logger.warning(f"pipdeptree failed: {e}")
+
+    if "ts" in lang_files and shutil.which("npm"):
+        try:
+            result = subprocess.run(
+                ["npm", "ls", "--json", "--depth=1"],
+                cwd=str(repo),
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            if result.stdout:
+                (out / "deps.json").write_text(result.stdout)
+                if not quiet:
+                    logger.info(f"Dependencies (npm): wrote {out / 'deps.json'}")
+            return
+        except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError) as e:
+            logger.warning(f"npm ls failed: {e}")
+
+    logger.debug("No dependency tool available -- skipping dependency graph")
+
+
+# --------------------------------------------------------------------------- #
+# Heuristic summary helpers
+# --------------------------------------------------------------------------- #
+
+
+def _count_total_lines(repo: Path, files: list[str]) -> int:
+    """Count total lines across all files (capped at 5000 files for perf)."""
+    total = 0
+    for f in files[:5000]:
+        try:
+            total += (repo / f).read_bytes().count(b"\n")
+        except (OSError, ValueError):
+            continue
+    return total
+
+
+def _extract_token_count(orientation_path: Path) -> int | None:
+    """Parse repomix orientation file for a token count line."""
+    if not orientation_path.exists():
+        return None
+    try:
+        text = orientation_path.read_text(errors="replace")
+        # Look for patterns like "Token count: 123456" or "Tokens: 123,456"
+        m = re.search(r"[Tt]oken[s]?\s*(?:count)?[:\s]+([0-9][0-9,_]*)", text)
+        if m:
+            return int(m.group(1).replace(",", "").replace("_", ""))
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def _load_json_artifact(path: Path) -> Any | None:
+    """Load a JSON artifact, returning None on missing or parse error."""
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def _count_semgrep_by_severity(data: Any) -> dict[str, int]:
+    """Parse semgrep JSON and count findings by severity."""
+    counts: dict[str, int] = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
+    if not isinstance(data, dict):
+        return counts
+    results = data.get("results", [])
+    if not isinstance(results, list):
+        return counts
+    for item in results:
+        severity = str(item.get("extra", {}).get("severity", "info")).lower()
+        if severity in counts:
+            counts[severity] += 1
+        else:
+            counts["info"] += 1
+    return counts
+
+
+def _count_owasp_by_category(data: Any) -> dict[str, int]:
+    """Parse semgrep OWASP JSON and group findings by check_id prefix."""
+    categories: dict[str, int] = {}
+    if not isinstance(data, dict):
+        return categories
+    results = data.get("results", [])
+    if not isinstance(results, list):
+        return categories
+    for item in results:
+        check_id = str(item.get("check_id", "unknown"))
+        # Extract category from check_id (e.g. "python.django.security.injection.sql" -> "injection")
+        parts = check_id.split(".")
+        # Use the broadest meaningful segment -- typically after "security" or 3rd segment
+        _min_owasp_depth = 3
+        category = check_id
+        if len(parts) >= _min_owasp_depth:
+            category = parts[2] if len(parts) > _min_owasp_depth else parts[-1]
+        categories[category] = categories.get(category, 0) + 1
+    return categories
+
+
+def _count_type_errors(data: Any) -> int:
+    """Count type errors from ty or pyright output."""
+    if not isinstance(data, (dict, list)):
+        return 0
+    # ty outputs a JSON list of diagnostics
+    if isinstance(data, list):
+        return len(data)
+    # pyright outputs a dict with generalDiagnostics
+    diagnostics = data.get("generalDiagnostics", [])
+    if isinstance(diagnostics, list):
+        return len(diagnostics)
+    return 0
+
+
+def _count_dead_code(out: Path) -> int:
+    """Count total dead code findings from Python and TS artifacts."""
+    total = 0
+    py_data = _load_json_artifact(out / "dead_code_py.json")
+    if isinstance(py_data, list):
+        total += len(py_data)
+    ts_data = _load_json_artifact(out / "dead_code_ts.json")
+    if isinstance(ts_data, list):
+        total += len(ts_data)
+    elif isinstance(ts_data, dict):
+        # knip JSON may have arrays under various keys
+        for v in ts_data.values():
+            if isinstance(v, list):
+                total += len(v)
+    return total
+
+
+def _avg_complexity(data: Any) -> float:
+    """Compute mean cyclomatic complexity from radon cc JSON output.
+
+    Radon outputs a dict of filepath -> list of function dicts, each with a
+    ``complexity`` field.
+    """
+    if not isinstance(data, dict):
+        return 0.0
+    all_cc: list[float] = []
+    for funcs in data.values():
+        if not isinstance(funcs, list):
+            continue
+        for func in funcs:
+            if isinstance(func, dict) and "complexity" in func:
+                all_cc.append(float(func["complexity"]))
+    if not all_cc:
+        return 0.0
+    return round(statistics.mean(all_cc), 2)
+
+
+def _extract_top_complex_functions(data: Any, top_k: int = 10) -> list[dict[str, Any]]:
+    """Extract top N functions by cyclomatic complexity from radon output."""
+    if not isinstance(data, dict):
+        return []
+    entries: list[dict[str, Any]] = []
+    for filepath, funcs in data.items():
+        if not isinstance(funcs, list):
+            continue
+        for func in funcs:
+            if not isinstance(func, dict) or "complexity" not in func:
+                continue
+            entries.append(
+                {
+                    "name": func.get("name", "unknown"),
+                    "file": filepath,
+                    "lines": f"{func.get('lineno', 0)}-{func.get('endline', func.get('lineno', 0))}",
+                    "complexity": func.get("complexity", 0),
+                },
+            )
+    entries.sort(key=lambda x: x["complexity"], reverse=True)
+    return entries[:top_k]
+
+
+def _compute_bus_factor_risks(repo: Path, files: list[str]) -> list[str]:
+    """Find directories with a single contributor (bus factor risk).
+
+    For each directory with >5 files, count distinct git authors. Cap to
+    20 directories for performance.
+    """
+    dir_files: dict[str, int] = {}
+    for f in files:
+        parent = str(Path(f).parent)
+        if parent == ".":
+            continue
+        dir_files[parent] = dir_files.get(parent, 0) + 1
+
+    # Only check directories with >5 files, capped at 20
+    _min_dir_files = 5
+    candidate_dirs = sorted(
+        ((d, c) for d, c in dir_files.items() if c > _min_dir_files),
+        key=lambda x: x[1],
+        reverse=True,
+    )[:20]
+
+    risks: list[str] = []
+    for dir_path, file_count in candidate_dirs:
+        try:
+            result = subprocess.run(
+                ["git", "log", "--format=%aN", "--", f"{dir_path}/"],
+                cwd=str(repo),
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            if result.returncode == 0 and result.stdout:
+                authors = set(result.stdout.strip().splitlines())
+                if len(authors) <= 1:
+                    risks.append(f"{dir_path} ({len(authors)} contributor, {file_count} files)")
+        except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError):
+            continue
+
+    return risks
+
+
+def _count_contributors(repo: Path) -> int:
+    """Count distinct contributors via git shortlog."""
+    try:
+        result = subprocess.run(
+            ["git", "shortlog", "-sn", "--all", "HEAD"],
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode == 0 and result.stdout:
+            return len([line for line in result.stdout.strip().splitlines() if line.strip()])
+    except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError):
+        pass
+    return 0
+
+
+def _get_total_commits(repo: Path) -> int:
+    """Count total commits via git rev-list."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-list", "--count", "HEAD"],
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode == 0 and result.stdout:
+            return int(result.stdout.strip())
+    except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError, ValueError):
+        pass
+    return 0
+
+
+# --------------------------------------------------------------------------- #
+# Heuristic summary generation
+# --------------------------------------------------------------------------- #
+
+
+def _build_health_section(out: Path, graph_stats: dict[str, Any]) -> dict[str, Any]:
+    """Build the health section of the heuristic summary from index artifacts."""
+    semgrep_data = _load_json_artifact(out / "semgrep_auto.json")
+    semgrep_severities = _count_semgrep_by_severity(semgrep_data) if semgrep_data else {}
+
+    owasp_data = _load_json_artifact(out / "semgrep_owasp.json")
+    owasp_categories = _count_owasp_by_category(owasp_data) if owasp_data else {}
+
+    typecheck_data = _load_json_artifact(out / "typecheck.json")
+    type_error_count = _count_type_errors(typecheck_data) if typecheck_data else 0
+
+    lint_data = _load_json_artifact(out / "lint.json")
+    lint_count = len(lint_data) if isinstance(lint_data, list) else 0
+
+    complexity_data = _load_json_artifact(out / "complexity.json")
+    avg_cc = _avg_complexity(complexity_data) if complexity_data else 0.0
+
+    return {
+        "semgrep_findings": semgrep_severities,
+        "owasp_findings": owasp_categories,
+        "type_errors": type_error_count,
+        "lint_violations": lint_count,
+        "dead_code_symbols": _count_dead_code(out),
+        "clone_groups": graph_stats.get("edge_types", {}).get("similar_to", 0),
+        "avg_cyclomatic_complexity": avg_cc,
+    }
+
+
+def _build_topology_section(
+    graph: CodeGraph,
+    graph_stats: dict[str, Any],
+    repo: Path,
+    files: list[str],
+) -> dict[str, Any]:
+    """Build the topology section of the heuristic summary."""
+    import networkx as nx
+
+    from code_context_agent.tools.graph.analysis import CodeAnalyzer
+
+    view = graph.get_view()
+
+    try:
+        components = nx.number_weakly_connected_components(view)
+    except Exception:  # noqa: BLE001
+        components = 0
+
+    # Fan-in / fan-out
+    max_fi_node, max_fi_count = "", 0
+    max_fo_node, max_fo_count = "", 0
+    try:
+        if view.number_of_nodes() > 0:
+            in_degrees = dict(view.in_degree())
+            if in_degrees:
+                max_fi_node = max(in_degrees, key=lambda k: in_degrees[k])
+                max_fi_count = in_degrees[max_fi_node]
+            out_degrees = dict(view.out_degree())
+            if out_degrees:
+                max_fo_node = max(out_degrees, key=lambda k: out_degrees[k])
+                max_fo_count = out_degrees[max_fo_node]
+    except Exception:  # noqa: BLE001
+        logger.debug("Fan-in/fan-out computation failed")
+
+    # Entry points and hotspots
+    analyzer = CodeAnalyzer(graph)
+    try:
+        entry_points = analyzer.find_entry_points()[:10]
+    except Exception:  # noqa: BLE001
+        entry_points = []
+
+    try:
+        hotspots = analyzer.find_hotspots(10)
+    except Exception:  # noqa: BLE001
+        hotspots = []
+
+    return {
+        "graph_nodes": graph_stats.get("node_count", 0),
+        "graph_edges": graph_stats.get("edge_count", 0),
+        "connected_components": components,
+        "max_fan_in": {"node": max_fi_node, "count": max_fi_count},
+        "max_fan_out": {"node": max_fo_node, "count": max_fo_count},
+        "entry_points": [ep.get("id", "") for ep in entry_points],
+        "hotspots": [h.get("id", "") for h in hotspots],
+        "bus_factor_risks": _compute_bus_factor_risks(repo, files),
+    }
+
+
+def _build_git_section(graph: CodeGraph, repo: Path) -> dict[str, Any]:
+    """Build the git section of the heuristic summary."""
+    from code_context_agent.tools.graph.model import EdgeType
+
+    coupled_pairs: list[str] = []
+    try:
+        cochange_edges = graph.get_edges_by_type(EdgeType.COCHANGES)
+        sorted_edges = sorted(cochange_edges, key=lambda e: e[2].get("weight", 0), reverse=True)
+        coupled_pairs = [f"{e[0]} <-> {e[1]}" for e in sorted_edges[:10]]
+    except Exception:  # noqa: BLE001
+        logger.debug("Coupled pairs extraction failed")
+
+    return {
+        "total_commits_analyzed": _get_total_commits(repo),
+        "active_contributors": _count_contributors(repo),
+        "most_coupled_pairs": coupled_pairs[:5],
+    }
+
+
+def _generate_heuristic_summary(
+    graph: CodeGraph,
+    graph_stats: dict[str, Any],
+    files: list[str],
+    lang_files: dict[str, list[str]],
+    frameworks: list[str],
+    out: Path,
+    repo: Path,
+    quiet: bool,
+) -> dict[str, Any]:
+    """Aggregate all index outputs into heuristic_summary.json.
+
+    This is the bridge artifact between cheap deterministic indexing and
+    expensive LLM inference -- it tells the coordinator what to focus on.
+    """
+    total_lines = _count_total_lines(repo, files)
+    estimated_tokens = _extract_token_count(out / "CONTEXT.orientation.md")
+
+    node_types = graph_stats.get("node_types", {})
+    complexity_data = _load_json_artifact(out / "complexity.json")
+    top_complex = _extract_top_complex_functions(complexity_data) if complexity_data else []
+
+    summary: dict[str, Any] = {
+        "volume": {
+            "total_files": len(files),
+            "total_lines": total_lines,
+            "estimated_tokens": estimated_tokens or int(total_lines * 2.5),
+            "languages": {lang: len(fs) for lang, fs in lang_files.items()},
+            "frameworks": frameworks,
+        },
+        "symbols": {
+            "functions": node_types.get("function", 0),
+            "classes": node_types.get("class", 0),
+            "modules": node_types.get("module", 0),
+            "top_complex_functions": top_complex,
+        },
+        "health": _build_health_section(out, graph_stats),
+        "topology": _build_topology_section(graph, graph_stats, repo, files),
+        "git": _build_git_section(graph, repo),
+    }
+
+    summary_path = out / "heuristic_summary.json"
+    summary_path.write_text(json.dumps(summary, indent=2))
+
+    if not quiet:
+        logger.info(f"Heuristic summary: {summary_path}")
+
+    return summary

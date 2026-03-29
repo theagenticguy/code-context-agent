@@ -1,4 +1,4 @@
-"""Tests for RichEventConsumer v7 phase + discovery features."""
+"""Tests for RichEventConsumer phase + discovery + coordinator features."""
 
 import json
 import time
@@ -11,16 +11,22 @@ class TestPhaseDetectionInConsumer:
     def test_tool_start_advances_phase(self):
         consumer = RichEventConsumer()
         consumer.state.start_time = time.monotonic()
-        consumer._detect_phase("create_file_manifest")
+        consumer._detect_phase("dispatch_team")
         assert consumer.state.current_phase_index == 0
-        assert consumer.state.phases[0].phase == AnalysisPhase.FOUNDATION
+        assert consumer.state.phases[0].phase == AnalysisPhase.TEAM_EXECUTION
 
-    def test_lsp_tool_advances_to_phase_3(self):
+    def test_heuristic_tool_advances_to_team_planning(self):
         consumer = RichEventConsumer()
         consumer.state.start_time = time.monotonic()
-        consumer._detect_phase("create_file_manifest")
+        consumer._detect_phase("read_heuristic_summary")
+        assert consumer.state.phases[-1].phase == AnalysisPhase.TEAM_PLANNING
+
+    def test_lsp_tool_maps_to_team_execution(self):
+        consumer = RichEventConsumer()
+        consumer.state.start_time = time.monotonic()
+        consumer._detect_phase("read_heuristic_summary")
         consumer._detect_phase("lsp_start")
-        assert consumer.state.phases[-1].phase == AnalysisPhase.SEMANTIC_DISCOVERY
+        assert consumer.state.phases[-1].phase == AnalysisPhase.TEAM_EXECUTION
 
     def test_unknown_tool_no_phase_change(self):
         consumer = RichEventConsumer()
@@ -120,3 +126,19 @@ class TestModeBadge:
     def test_standard_mode_default(self):
         consumer = RichEventConsumer()
         assert consumer._mode == "standard"
+
+
+class TestCoordinatorDisplay:
+    def test_build_display_uses_coordinator_when_teams_present(self):
+        consumer = RichEventConsumer()
+        consumer.state.start_time = time.monotonic()
+        consumer.state.start_team("arch", "Architecture analysis", agent_count=2)
+        # Should not raise; coordinator display is used
+        display = consumer._build_display()
+        assert display is not None
+
+    def test_build_display_uses_single_agent_when_no_teams(self):
+        consumer = RichEventConsumer()
+        consumer.state.start_time = time.monotonic()
+        display = consumer._build_display()
+        assert display is not None
