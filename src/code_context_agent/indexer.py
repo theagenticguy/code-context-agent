@@ -959,7 +959,7 @@ def _extract_token_count(orientation_path: Path) -> int | None:
         if m:
             return int(m.group(1).replace(",", "").replace("_", ""))
     except (OSError, ValueError):
-        pass
+        pass  # Orientation file missing or unparseable — fall through to None
     return None
 
 
@@ -1139,7 +1139,7 @@ def _count_contributors(repo: Path) -> int:
         if result.returncode == 0 and result.stdout:
             return len([line for line in result.stdout.strip().splitlines() if line.strip()])
     except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError):
-        pass
+        pass  # git shortlog unavailable or timed out — fall through to 0
     return 0
 
 
@@ -1156,7 +1156,7 @@ def _get_total_commits(repo: Path) -> int:
         if result.returncode == 0 and result.stdout:
             return int(result.stdout.strip())
     except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError, ValueError):
-        pass
+        pass  # git rev-list unavailable or timed out — fall through to 0
     return 0
 
 

@@ -277,7 +277,7 @@ def read_team_findings(team_id: str | None = None) -> str:
                 try:
                     meta = json.loads(meta_path.read_text())
                 except (json.JSONDecodeError, OSError):
-                    pass
+                    pass  # Corrupt or unreadable metadata — skip this team's metadata
 
             teams.append(
                 {
