@@ -1,3 +1,18 @@
+## v10.0.0 (2026-03-29)
+
+### BREAKING CHANGE
+
+- Default pipeline changed from sequential Swarm to
+coordinator with parallel teams. Set CODE_CONTEXT_PIPELINE=swarm to
+restore previous behavior.
+- removes swarm pipeline, old coordinator prompt, analyst
+sub-agents, and 10-phase analysis model. Single coordinator-driven pipeline
+with progressive disclosure replaces all prior analysis modes.
+
+### Feat
+
+- coordinator agent with parallel swarm teams (#26)
+
 ## v9.0.2 (2026-03-28)
 
 ## v9.0.1 (2026-03-27)
