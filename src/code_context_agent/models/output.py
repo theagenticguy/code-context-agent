@@ -73,19 +73,20 @@ class CodeHealthMetrics(FrozenModel):
     code_smell_count: int = Field(ge=0, default=0)
 
 
-class PhaseTimingItem(FrozenModel):
-    """Timing data for a single analysis phase."""
+class Bundle(FrozenModel):
+    """A narrative bundle about a specific codebase area."""
 
-    phase: int = Field(ge=1, le=10, description="Phase number")
-    name: str = Field(description="Phase name")
-    duration_seconds: float = Field(ge=0.0, description="Time spent in this phase")
-    tool_count: int = Field(ge=0, description="Number of tool calls in this phase")
+    area: str = Field(description="Bundle area identifier (e.g., 'auth', 'hotspots', 'security')")
+    path: str = Field(description="Relative path to the bundle file")
+    line_count: int = Field(ge=0, description="Number of lines in the bundle")
+    summary: str = Field(description="One-sentence summary of this bundle's content")
+    focus_match: bool = Field(default=False, description="Whether this bundle was generated for the --focus area")
 
 
 class AnalysisResult(FrozenModel):
     """Structured output for the complete analysis.
 
-    This model captures the analysis summary returned by the agent.
+    This model captures the analysis summary returned by the coordinator agent.
     The actual files (CONTEXT.md, bundles, etc.) are created by tools.
     """
 
@@ -113,8 +114,7 @@ class AnalysisResult(FrozenModel):
         default=None,
         description="Aggregate code health metrics",
     )
-    analysis_mode: str = Field(default="standard", description="Analysis mode: standard or full")
-    phase_timings: list[PhaseTimingItem] = Field(
+    bundles: list[Bundle] = Field(
         default_factory=list,
-        description="Per-phase timing data",
+        description="Generated narrative bundles for codebase areas",
     )

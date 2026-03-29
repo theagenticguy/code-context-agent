@@ -16,100 +16,91 @@ from ..models.base import FrozenModel, StrictModel
 
 
 class AnalysisPhase(IntEnum):
-    """Ordered analysis phases (1-10)."""
+    """Ordered analysis phases (1-5) for the coordinator pipeline."""
 
-    FOUNDATION = 1
-    IDENTITY = 2
-    SEMANTIC_DISCOVERY = 3
-    PATTERN_DISCOVERY = 4
-    GIT_HISTORY = 5
-    GRAPH_ANALYSIS = 6
-    BUSINESS_LOGIC = 7
-    TESTS = 8
-    BUNDLE = 9
-    WRITE_CONTEXT = 10
+    INDEXING = 1
+    TEAM_PLANNING = 2
+    TEAM_EXECUTION = 3
+    CONSOLIDATION = 4
+    BUNDLE_GENERATION = 5
 
 
 TOOL_PHASE_MAP: dict[str, AnalysisPhase] = {
-    # Phase 1: Foundation
-    "create_file_manifest": AnalysisPhase.FOUNDATION,
-    "repomix_orientation": AnalysisPhase.FOUNDATION,
-    "repomix_compressed_signatures": AnalysisPhase.FOUNDATION,
-    # Phase 2: Identity
-    "read_file_bounded": AnalysisPhase.IDENTITY,
-    # Phase 3: Semantic Discovery
-    "lsp_start": AnalysisPhase.SEMANTIC_DISCOVERY,
-    "lsp_document_symbols": AnalysisPhase.SEMANTIC_DISCOVERY,
-    "lsp_references": AnalysisPhase.SEMANTIC_DISCOVERY,
-    "lsp_definition": AnalysisPhase.SEMANTIC_DISCOVERY,
-    "lsp_hover": AnalysisPhase.SEMANTIC_DISCOVERY,
-    "lsp_workspace_symbols": AnalysisPhase.SEMANTIC_DISCOVERY,
-    "lsp_diagnostics": AnalysisPhase.SEMANTIC_DISCOVERY,
-    "lsp_shutdown": AnalysisPhase.SEMANTIC_DISCOVERY,
-    # Phase 4: Pattern Discovery
-    "astgrep_scan": AnalysisPhase.PATTERN_DISCOVERY,
-    "astgrep_scan_rule_pack": AnalysisPhase.PATTERN_DISCOVERY,
-    "astgrep_inline_rule": AnalysisPhase.PATTERN_DISCOVERY,
-    # Phase 5: Git History
-    "git_hotspots": AnalysisPhase.GIT_HISTORY,
-    "git_files_changed_together": AnalysisPhase.GIT_HISTORY,
-    "git_blame_summary": AnalysisPhase.GIT_HISTORY,
-    "git_file_history": AnalysisPhase.GIT_HISTORY,
-    "git_contributors": AnalysisPhase.GIT_HISTORY,
-    "git_recent_commits": AnalysisPhase.GIT_HISTORY,
-    "git_diff_file": AnalysisPhase.GIT_HISTORY,
-    # Phase 6: Graph Analysis
-    "code_graph_create": AnalysisPhase.GRAPH_ANALYSIS,
-    "code_graph_ingest_lsp": AnalysisPhase.GRAPH_ANALYSIS,
-    "code_graph_ingest_astgrep": AnalysisPhase.GRAPH_ANALYSIS,
-    "code_graph_ingest_rg": AnalysisPhase.GRAPH_ANALYSIS,
-    "code_graph_ingest_inheritance": AnalysisPhase.GRAPH_ANALYSIS,
-    "code_graph_ingest_tests": AnalysisPhase.GRAPH_ANALYSIS,
-    "code_graph_ingest_git": AnalysisPhase.GRAPH_ANALYSIS,
-    "code_graph_ingest_clones": AnalysisPhase.GRAPH_ANALYSIS,
-    "code_graph_analyze": AnalysisPhase.GRAPH_ANALYSIS,
-    "code_graph_explore": AnalysisPhase.GRAPH_ANALYSIS,
-    "code_graph_export": AnalysisPhase.GRAPH_ANALYSIS,
-    "code_graph_save": AnalysisPhase.GRAPH_ANALYSIS,
-    "code_graph_load": AnalysisPhase.GRAPH_ANALYSIS,
-    "code_graph_stats": AnalysisPhase.GRAPH_ANALYSIS,
-    # Phase 7: Business Logic (uses rg_search + write_file_list)
-    "write_file_list": AnalysisPhase.BUSINESS_LOGIC,
-    # Phase 8: Tests (uses rg_search -- detected by context)
-    "detect_clones": AnalysisPhase.TESTS,
-    # Phase 9: Bundle
-    "repomix_bundle": AnalysisPhase.BUNDLE,
-    "repomix_bundle_with_context": AnalysisPhase.BUNDLE,
-    "repomix_split_bundle": AnalysisPhase.BUNDLE,
-    "repomix_json_export": AnalysisPhase.BUNDLE,
-    # Phase 10: Write Context
-    "write_file": AnalysisPhase.WRITE_CONTEXT,
+    # Phase 2: Team Planning (coordinator reads heuristic summary)
+    "read_heuristic_summary": AnalysisPhase.TEAM_PLANNING,
+    # Phase 3: Team Execution (coordinator dispatches teams + all team agent tools)
+    "dispatch_team": AnalysisPhase.TEAM_EXECUTION,
+    # -- Discovery tools (used by team agents) --
+    "create_file_manifest": AnalysisPhase.TEAM_EXECUTION,
+    "repomix_orientation": AnalysisPhase.TEAM_EXECUTION,
+    "repomix_compressed_signatures": AnalysisPhase.TEAM_EXECUTION,
+    "repomix_bundle": AnalysisPhase.TEAM_EXECUTION,
+    "repomix_bundle_with_context": AnalysisPhase.TEAM_EXECUTION,
+    "repomix_split_bundle": AnalysisPhase.TEAM_EXECUTION,
+    "repomix_json_export": AnalysisPhase.TEAM_EXECUTION,
+    "read_file_bounded": AnalysisPhase.TEAM_EXECUTION,
+    "write_file_list": AnalysisPhase.TEAM_EXECUTION,
+    "write_file": AnalysisPhase.TEAM_EXECUTION,
+    "rg_search": AnalysisPhase.TEAM_EXECUTION,
+    "bm25_search": AnalysisPhase.TEAM_EXECUTION,
+    "shell": AnalysisPhase.TEAM_EXECUTION,
+    "detect_clones": AnalysisPhase.TEAM_EXECUTION,
+    # -- LSP tools (used by team agents) --
+    "lsp_start": AnalysisPhase.TEAM_EXECUTION,
+    "lsp_document_symbols": AnalysisPhase.TEAM_EXECUTION,
+    "lsp_references": AnalysisPhase.TEAM_EXECUTION,
+    "lsp_definition": AnalysisPhase.TEAM_EXECUTION,
+    "lsp_hover": AnalysisPhase.TEAM_EXECUTION,
+    "lsp_workspace_symbols": AnalysisPhase.TEAM_EXECUTION,
+    "lsp_diagnostics": AnalysisPhase.TEAM_EXECUTION,
+    "lsp_shutdown": AnalysisPhase.TEAM_EXECUTION,
+    # -- AST-grep tools (used by team agents) --
+    "astgrep_scan": AnalysisPhase.TEAM_EXECUTION,
+    "astgrep_scan_rule_pack": AnalysisPhase.TEAM_EXECUTION,
+    "astgrep_inline_rule": AnalysisPhase.TEAM_EXECUTION,
+    # -- Git tools (used by team agents) --
+    "git_hotspots": AnalysisPhase.TEAM_EXECUTION,
+    "git_files_changed_together": AnalysisPhase.TEAM_EXECUTION,
+    "git_blame_summary": AnalysisPhase.TEAM_EXECUTION,
+    "git_file_history": AnalysisPhase.TEAM_EXECUTION,
+    "git_contributors": AnalysisPhase.TEAM_EXECUTION,
+    "git_recent_commits": AnalysisPhase.TEAM_EXECUTION,
+    "git_diff_file": AnalysisPhase.TEAM_EXECUTION,
+    # -- Graph tools (used by team agents) --
+    "code_graph_create": AnalysisPhase.TEAM_EXECUTION,
+    "code_graph_ingest_lsp": AnalysisPhase.TEAM_EXECUTION,
+    "code_graph_ingest_astgrep": AnalysisPhase.TEAM_EXECUTION,
+    "code_graph_ingest_rg": AnalysisPhase.TEAM_EXECUTION,
+    "code_graph_ingest_inheritance": AnalysisPhase.TEAM_EXECUTION,
+    "code_graph_ingest_tests": AnalysisPhase.TEAM_EXECUTION,
+    "code_graph_ingest_git": AnalysisPhase.TEAM_EXECUTION,
+    "code_graph_ingest_clones": AnalysisPhase.TEAM_EXECUTION,
+    "code_graph_analyze": AnalysisPhase.TEAM_EXECUTION,
+    "code_graph_explore": AnalysisPhase.TEAM_EXECUTION,
+    "code_graph_export": AnalysisPhase.TEAM_EXECUTION,
+    "code_graph_save": AnalysisPhase.TEAM_EXECUTION,
+    "code_graph_load": AnalysisPhase.TEAM_EXECUTION,
+    "code_graph_stats": AnalysisPhase.TEAM_EXECUTION,
+    # Phase 4: Consolidation (coordinator reads team findings)
+    "read_team_findings": AnalysisPhase.CONSOLIDATION,
+    # Phase 5: Bundle Generation (coordinator writes bundles)
+    "write_bundle": AnalysisPhase.BUNDLE_GENERATION,
 }
 
 PHASE_NAMES: dict[AnalysisPhase, str] = {
-    AnalysisPhase.FOUNDATION: "Foundation",
-    AnalysisPhase.IDENTITY: "Identity",
-    AnalysisPhase.SEMANTIC_DISCOVERY: "Semantic Discovery",
-    AnalysisPhase.PATTERN_DISCOVERY: "Pattern Discovery",
-    AnalysisPhase.GIT_HISTORY: "Git History",
-    AnalysisPhase.GRAPH_ANALYSIS: "Graph Analysis",
-    AnalysisPhase.BUSINESS_LOGIC: "Business Logic",
-    AnalysisPhase.TESTS: "Tests & Health",
-    AnalysisPhase.BUNDLE: "Bundle",
-    AnalysisPhase.WRITE_CONTEXT: "Write Context",
+    AnalysisPhase.INDEXING: "Indexing",
+    AnalysisPhase.TEAM_PLANNING: "Team Planning",
+    AnalysisPhase.TEAM_EXECUTION: "Team Execution",
+    AnalysisPhase.CONSOLIDATION: "Consolidation",
+    AnalysisPhase.BUNDLE_GENERATION: "Bundle Generation",
 }
 
 PHASE_DESCRIPTIONS: dict[AnalysisPhase, str] = {
-    AnalysisPhase.FOUNDATION: "File manifest, orientation, signatures",
-    AnalysisPhase.IDENTITY: "Project identity and entrypoints",
-    AnalysisPhase.SEMANTIC_DISCOVERY: "LSP symbols, references, definitions",
-    AnalysisPhase.PATTERN_DISCOVERY: "AST-grep rule packs and patterns",
-    AnalysisPhase.GIT_HISTORY: "Hotspots, coupling, blame, history",
-    AnalysisPhase.GRAPH_ANALYSIS: "Code graph construction and algorithms",
-    AnalysisPhase.BUSINESS_LOGIC: "Ranking and categorization",
-    AnalysisPhase.TESTS: "Test coverage and code health",
-    AnalysisPhase.BUNDLE: "Source code bundling",
-    AnalysisPhase.WRITE_CONTEXT: "CONTEXT.md generation",
+    AnalysisPhase.INDEXING: "Deterministic code indexing (no LLM)",
+    AnalysisPhase.TEAM_PLANNING: "Reading heuristic summary, planning teams",
+    AnalysisPhase.TEAM_EXECUTION: "Parallel specialist teams analyzing code",
+    AnalysisPhase.CONSOLIDATION: "Reading and cross-referencing team findings",
+    AnalysisPhase.BUNDLE_GENERATION: "Writing targeted bundle files",
 }
 
 

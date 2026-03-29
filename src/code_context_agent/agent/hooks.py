@@ -20,10 +20,6 @@ from strands.hooks import (
     HookProvider,
     HookRegistry,
 )
-from strands.hooks.events import (
-    AfterNodeCallEvent,
-    BeforeNodeCallEvent,
-)
 
 _MAX_OUTPUT_SIZE = 100_000
 
@@ -287,32 +283,6 @@ class FailFastHook(HookProvider):
             raise FullModeToolError(tool_name, str(error_msg))
 
 
-class SwarmDisplayHook(HookProvider):
-    """Hook that tracks Swarm node transitions for multi-agent TUI display.
-
-    Updates AgentDisplayState when agents start/stop, enabling the Rich
-    dashboard to show which specialist is currently active.
-    """
-
-    def __init__(self, state: AgentDisplayState) -> None:  # noqa: D107
-        self._state = state
-
-    def register_hooks(self, registry: HookRegistry, **kwargs: Any) -> None:
-        """Register Swarm node transition callbacks."""
-        registry.add_callback(BeforeNodeCallEvent, self._on_node_start)
-        registry.add_callback(AfterNodeCallEvent, self._on_node_end)
-
-    def _on_node_start(self, event: BeforeNodeCallEvent, **kwargs: Any) -> None:
-        """Update state when a Swarm agent starts."""
-        logger.info(f"Swarm agent started: {event.node_id}")
-        self._state.set_active_agent(event.node_id)
-
-    def _on_node_end(self, event: AfterNodeCallEvent, **kwargs: Any) -> None:
-        """Update state when a Swarm agent completes."""
-        logger.info(f"Swarm agent completed: {event.node_id}")
-        self._state.complete_agent(event.node_id)
-
-
 class ToolDisplayHook(HookProvider):
     """Hook that tracks tool calls for TUI display.
 
@@ -340,18 +310,11 @@ class ToolDisplayHook(HookProvider):
             self._state.active_tool = ToolCallState(
                 tool_call_id=tool_id,
                 tool_name=tool_name,
-                agent_name=self._state.active_agent_name or "",
                 args_buffer="",
                 result=None,
                 status="running",
             )
             self._state.tool_start_time = time.monotonic()
-            # Track current tool on the active swarm agent
-            if self._state.active_agent_name:
-                for agent in self._state.agents:
-                    if agent.name == self._state.active_agent_name:
-                        agent.current_tool = tool_name
-                        break
 
     def _on_tool_end(self, event: AfterToolCallEvent, **kwargs: Any) -> None:
         """Update state when a tool call completes."""
@@ -368,13 +331,57 @@ class ToolDisplayHook(HookProvider):
             self._state.active_tool = None
             if is_error:
                 self._state.tool_errors += 1
-            # Increment per-agent tool count and clear current tool
-            self._state.increment_agent_tool_count()
-            if self._state.active_agent_name:
-                for agent in self._state.agents:
-                    if agent.name == self._state.active_agent_name:
-                        agent.current_tool = None
-                        break
+
+
+class TeamDispatchHook(HookProvider):
+    """Hook that tracks dispatch_team tool calls for TUI display.
+
+    Updates AgentDisplayState with team dispatch/completion information
+    so the coordinator display can show team progress.
+    """
+
+    def __init__(self, state: AgentDisplayState) -> None:  # noqa: D107
+        self._state = state
+
+    def register_hooks(self, registry: HookRegistry, **kwargs: Any) -> None:
+        """Register team dispatch callbacks."""
+        registry.add_callback(BeforeToolCallEvent, self._on_dispatch_start)
+        registry.add_callback(AfterToolCallEvent, self._on_dispatch_end)
+
+    def _on_dispatch_start(self, event: BeforeToolCallEvent, **kwargs: Any) -> None:
+        """Track when a team is dispatched."""
+        tool_name = event.tool_use.get("name", "")
+        if tool_name != "dispatch_team":
+            return
+
+        args = event.tool_use.get("input", {})
+        if not isinstance(args, dict):
+            return
+
+        team_id = args.get("team_id", "unknown")
+        mandate = args.get("mandate", "")
+        agents = args.get("agents", [])
+        agent_count = len(agents) if isinstance(agents, list) else 0
+
+        self._state.start_team(team_id, mandate, agent_count)
+        logger.debug(f"Team dispatched: {team_id} ({agent_count} agents)")
+
+    def _on_dispatch_end(self, event: AfterToolCallEvent, **kwargs: Any) -> None:
+        """Track when a team dispatch completes."""
+        tool_name = event.tool_use.get("name", "")
+        if tool_name != "dispatch_team":
+            return
+
+        args = event.tool_use.get("input", {})
+        if not isinstance(args, dict):
+            return
+
+        team_id = args.get("team_id", "unknown")
+        is_error = _is_error_result(event.result)
+        status = "error" if is_error else "done"
+
+        self._state.complete_team(team_id, status=status)
+        logger.debug(f"Team completed: {team_id} (status={status})")
 
 
 class JsonLogHook(HookProvider):
@@ -410,37 +417,15 @@ class JsonLogHook(HookProvider):
             )
 
 
-class JsonLogSwarmHook(HookProvider):
-    """Hook that emits JSON log lines for Swarm agent transitions."""
-
-    def __init__(self) -> None:  # noqa: D107
-        self._json_logger = logger.bind(output="json")
-
-    def register_hooks(self, registry: HookRegistry, **kwargs: Any) -> None:
-        """Register JSON log callbacks for Swarm node events."""
-        registry.add_callback(BeforeNodeCallEvent, self._on_node_start)
-        registry.add_callback(AfterNodeCallEvent, self._on_node_end)
-
-    def _on_node_start(self, event: BeforeNodeCallEvent, **kwargs: Any) -> None:
-        """Emit JSON log line when a Swarm agent starts."""
-        self._json_logger.info("agent_start", agent=event.node_id)
-
-    def _on_node_end(self, event: AfterNodeCallEvent, **kwargs: Any) -> None:
-        """Emit JSON log line when a Swarm agent completes."""
-        self._json_logger.info("agent_end", agent=event.node_id)
-
-
 def create_all_hooks(
     *,
     full_mode: bool = False,
     state: Any | None = None,
     quiet: bool = False,
-) -> tuple[list[HookProvider], list[HookProvider]]:
+) -> list[HookProvider]:
     """Create all hook providers for agent guidance and display.
 
-    Returns a tuple of (agent_hooks, swarm_hooks).
-    Agent hooks are registered on each Agent node.
-    Swarm hooks are registered on the Swarm itself.
+    Returns a flat list of hook providers to register on the agent.
 
     Args:
         full_mode: If True, include FailFastHook.
@@ -448,29 +433,22 @@ def create_all_hooks(
         quiet: If True, use JsonLogHook instead of display hooks.
 
     Returns:
-        Tuple of (agent_hooks, swarm_hooks).
+        List of HookProvider instances.
     """
-    # Agent-level hooks (registered on each Agent node)
-    agent_hooks: list[HookProvider] = [
+    hooks: list[HookProvider] = [
         ConversationCompactionHook(),
         OutputQualityHook(),
         ToolEfficiencyHook(),
         ReasoningCheckpointHook(),
     ]
     if full_mode:
-        agent_hooks.append(FailFastHook())
+        hooks.append(FailFastHook())
 
     # Display hooks
     if quiet:
-        agent_hooks.append(JsonLogHook())
+        hooks.append(JsonLogHook())
     elif state is not None:
-        agent_hooks.append(ToolDisplayHook(state))
+        hooks.append(ToolDisplayHook(state))
+        hooks.append(TeamDispatchHook(state))
 
-    # Swarm-level hooks (registered on the Swarm)
-    swarm_hooks: list[HookProvider] = []
-    if quiet:
-        swarm_hooks.append(JsonLogSwarmHook())
-    elif state is not None:
-        swarm_hooks.append(SwarmDisplayHook(state))
-
-    return agent_hooks, swarm_hooks
+    return hooks

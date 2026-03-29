@@ -1,0 +1,459 @@
+"""Coordinator-level tools for team dispatch, finding reads, and bundle writing.
+
+These tools are used ONLY by the coordinator agent, not by team agents.
+Their docstrings encode all behavioral guidance so the coordinator prompt stays lean.
+"""
+
+from __future__ import annotations
+
+import json
+import time
+from pathlib import Path  # noqa: TC003 — used at runtime for _output_dir/_repo_path
+from typing import Any
+
+from loguru import logger
+from strands import tool
+
+# ---------------------------------------------------------------------------
+# Module-level state — configured by coordinator.py before agent creation.
+# Follows the same pattern as tools/graph/tools.py (_graphs dict).
+# ---------------------------------------------------------------------------
+_output_dir: Path | None = None
+_repo_path: Path | None = None
+_tool_registry: dict[str, Any] = {}  # tool_name → tool function, populated by configure()
+
+
+def configure(output_dir: Path, repo_path: Path, tools: list[Any] | None = None) -> None:
+    """Set the output directory, repo path, and tool registry for coordinator tools.
+
+    Must be called before the coordinator agent is created.
+
+    Args:
+        output_dir: Path to .code-context output directory.
+        repo_path: Path to the repository root.
+        tools: List of tool functions from get_analysis_tools(). Used by dispatch_team
+               to resolve string tool names to actual function objects for swarm agents.
+    """
+    global _output_dir, _repo_path, _tool_registry  # noqa: PLW0603
+    _output_dir = output_dir
+    _repo_path = repo_path
+    if tools:
+        _tool_registry = {}
+        for t in tools:
+            # strands @tool-decorated functions have a tool_name attribute
+            name = getattr(t, "tool_name", None) or getattr(t, "__name__", None)
+            if name:
+                _tool_registry[name] = t
+
+
+def _get_output_dir() -> Path:
+    if _output_dir is None:
+        msg = "coordinator_tools.configure() must be called before using coordinator tools"
+        raise RuntimeError(msg)
+    return _output_dir
+
+
+def _teams_dir() -> Path:
+    return _get_output_dir() / "tmp" / "teams"
+
+
+def _bundles_dir() -> Path:
+    return _get_output_dir() / "bundles"
+
+
+# ============================================================================
+# Tool 1: dispatch_team
+# ============================================================================
+
+
+@tool
+def dispatch_team(
+    team_id: str,
+    mandate: str,
+    agents: list[dict[str, Any]],
+    file_scope: list[str] | None = None,
+    key_questions: list[str] | None = None,
+    artifact_pointers: list[str] | None = None,
+    max_handoffs: int = 10,
+    execution_timeout: float = 600.0,
+    node_timeout: float = 600.0,
+) -> str:
+    """Dispatch a specialist team to investigate a specific area of the codebase.
+
+    Each team runs as a Strands Swarm — a group of 2-3 agents that hand off to
+    each other to complete a mandate. Teams write their findings to a persistent
+    file at .code-context/tmp/teams/{team_id}/findings.md so you can read them
+    later with read_team_findings.
+
+    TEAM SIZING HEURISTICS (based on heuristic_summary.json):
+
+      Volume         | Strategy
+      ---------------|------------------------------------------
+      <200 files     | 1 team total, 2 agents (analyst + reader)
+      200-2000       | 2-3 parallel teams by concern
+      2000+          | 3-5 teams scoped by domain/directory
+      --focus set    | 1 dedicated focus team + preemptive teams
+
+    AGENT SPEC FORMAT:
+
+      Each entry in `agents` is a dict with:
+        - name (str): e.g. "structure_analyst", "code_reader"
+        - system_prompt (str): role and instructions for this agent
+        - tools (list[str]): tool names this agent can use, inherited from
+          the coordinator's tool registry. Common subsets:
+
+          Structure: code_graph_stats, code_graph_analyze, code_graph_explore,
+                     lsp_start, lsp_document_symbols, lsp_references,
+                     astgrep_scan, rg_search, bm25_search, read_file_bounded
+          Git:       git_hotspots, git_files_changed_together, git_blame_summary,
+                     git_file_history, git_contributors, git_recent_commits,
+                     read_file_bounded
+          Reading:   read_file_bounded, rg_search, bm25_search, lsp_references,
+                     lsp_definition, lsp_hover, code_graph_analyze
+
+    FINDING PERSISTENCE:
+
+      The team task is automatically augmented to require writing findings to:
+        .code-context/tmp/teams/{team_id}/findings.md
+        .code-context/tmp/teams/{team_id}/metadata.json
+
+      metadata.json schema: {"files_read": [...], "tools_used": [...],
+                              "duration_s": N, "status": "done"}
+
+    Args:
+        team_id: Unique identifier (e.g., "team-structure", "team-focus-auth").
+        mandate: What to investigate and why (1-3 sentences).
+        agents: List of agent spec dicts (see AGENT SPEC FORMAT above).
+        file_scope: Optional file paths or directories to focus on.
+        key_questions: Optional questions the coordinator wants answered.
+        artifact_pointers: Optional Phase 1 artifact paths to consult.
+        max_handoffs: Max handoffs between agents within the team.
+        execution_timeout: Max seconds for the entire team execution.
+        node_timeout: Max seconds per individual agent turn.
+
+    Returns:
+        JSON with team_id, status, findings_path, and result summary.
+    """
+    from strands_tools.swarm import swarm as _swarm
+
+    output_dir = _get_output_dir()
+
+    # Resolve string tool names in agent specs to actual tool functions.
+    # strands_tools.swarm expects tool function objects, not string names.
+    resolved_agents = []
+    for agent_spec in agents:
+        spec = dict(agent_spec)  # don't mutate the original
+        if "tools" in spec and isinstance(spec["tools"], list):
+            resolved_tools = []
+            for tool_name in spec["tools"]:
+                if isinstance(tool_name, str) and tool_name in _tool_registry:
+                    resolved_tools.append(_tool_registry[tool_name])
+                else:
+                    resolved_tools.append(tool_name)  # already a function or unknown
+            spec["tools"] = resolved_tools
+        resolved_agents.append(spec)
+
+    # Create team directory
+    team_dir = _teams_dir() / team_id
+    team_dir.mkdir(parents=True, exist_ok=True)
+
+    findings_path = str(team_dir / "findings.md")
+    metadata_path = str(team_dir / "metadata.json")
+
+    # Build augmented task with persistence instructions
+    task_parts = [
+        f"## Team Mandate\n{mandate}\n",
+    ]
+
+    if file_scope:
+        scope_list = "\n".join(f"- {f}" for f in file_scope)
+        task_parts.append(f"## File Scope\nFocus on these files/directories:\n{scope_list}")
+
+    if key_questions:
+        task_parts.append("## Key Questions\n" + "\n".join(f"- {q}" for q in key_questions))
+
+    if artifact_pointers:
+        task_parts.append(
+            "## Pre-computed Artifacts\nConsult these Phase 1 artifacts for context:\n"
+            + "\n".join(f"- {a}" for a in artifact_pointers),
+        )
+
+    task_parts.append(
+        f"""## Required Output
+
+When your analysis is complete, the LAST agent in the chain MUST:
+
+1. Write detailed findings to: {findings_path}
+   - Use markdown format with clear sections
+   - Include file:line references for all claims
+   - Use mermaid code-fenced diagrams (never ASCII art)
+
+2. Write metadata to: {metadata_path}
+   - JSON with keys: files_read (list), tools_used (list), duration_s (float), status ("done")
+
+Use the write_file tool for both files. The coordinator will read these after your team completes.
+
+The pre-built code graph is loaded as "main". Use code_graph_analyze("main", ...) to query it.
+Output directory: {output_dir}
+Repository: {_repo_path}""",
+    )
+
+    augmented_task = "\n\n".join(task_parts)
+
+    start = time.monotonic()
+    try:
+        result = _swarm(
+            task=augmented_task,
+            agents=resolved_agents,
+            max_handoffs=max_handoffs,
+            max_iterations=max_handoffs,
+            execution_timeout=execution_timeout,
+            node_timeout=node_timeout,
+        )
+        duration = time.monotonic() - start
+        status = "completed"
+        summary = str(result)[:500] if result else "No result returned"
+    except Exception as e:  # noqa: BLE001
+        duration = time.monotonic() - start
+        status = "error"
+        summary = str(e)[:500]
+        logger.warning(f"Team {team_id} failed after {duration:.1f}s: {e}")
+
+    return json.dumps(
+        {
+            "team_id": team_id,
+            "status": status,
+            "duration_seconds": round(duration, 1),
+            "findings_path": findings_path,
+            "metadata_path": metadata_path,
+            "summary": summary,
+        },
+    )
+
+
+# ============================================================================
+# Tool 2: read_team_findings
+# ============================================================================
+
+
+@tool
+def read_team_findings(team_id: str | None = None) -> str:
+    """Read findings from dispatched teams.
+
+    If team_id is None, lists all team directories with their status and
+    metadata summary — use this to see which teams have completed.
+
+    If team_id is specified, returns that team's full findings.md content.
+
+    CROSS-REFERENCING PATTERN:
+
+      After reading all team findings, look for files or symbols mentioned
+      by multiple teams. Convergent signals from independent teams are
+      high-confidence findings. Divergent signals indicate areas that need
+      a follow-up investigation.
+
+    Args:
+        team_id: Specific team to read, or None to list all teams.
+
+    Returns:
+        JSON listing all teams (when team_id=None), or the findings
+        markdown content (when team_id is specified).
+    """
+    teams_root = _teams_dir()
+
+    if team_id is None:
+        # List all teams
+        if not teams_root.exists():
+            return json.dumps({"status": "no_teams", "teams": []})
+
+        teams = []
+        for team_dir in sorted(teams_root.iterdir()):
+            if not team_dir.is_dir():
+                continue
+            meta_path = team_dir / "metadata.json"
+            findings_path = team_dir / "findings.md"
+            meta = None
+            if meta_path.exists():
+                try:
+                    meta = json.loads(meta_path.read_text())
+                except (json.JSONDecodeError, OSError):
+                    pass  # Corrupt or unreadable metadata — skip this team's metadata
+
+            teams.append(
+                {
+                    "team_id": team_dir.name,
+                    "has_findings": findings_path.exists(),
+                    "findings_lines": len(findings_path.read_text().splitlines()) if findings_path.exists() else 0,
+                    "metadata": meta,
+                },
+            )
+
+        return json.dumps({"status": "ok", "teams": teams}, indent=2)
+
+    # Read specific team
+    team_dir = teams_root / team_id
+    if not team_dir.exists():
+        return json.dumps({"status": "error", "message": f"Team directory not found: {team_id}"})
+
+    findings_path = team_dir / "findings.md"
+    if not findings_path.exists():
+        return json.dumps(
+            {
+                "status": "no_findings",
+                "message": f"Team {team_id} has no findings.md — it may still be running or failed before writing.",
+            },
+        )
+
+    content = findings_path.read_text()
+    return json.dumps(
+        {
+            "status": "ok",
+            "team_id": team_id,
+            "findings": content,
+            "line_count": len(content.splitlines()),
+        },
+    )
+
+
+# ============================================================================
+# Tool 3: write_bundle
+# ============================================================================
+
+
+@tool
+def write_bundle(area: str, content: str, is_context: bool = False) -> str:
+    """Write a narrative bundle or the executive summary CONTEXT.md.
+
+    BUNDLE NAMING:
+      - Bundles go to: .code-context/bundles/BUNDLE.{area}.md
+      - CONTEXT.md goes to: .code-context/CONTEXT.md (set is_context=True)
+
+    BUNDLE STRUCTURE (7 sections):
+      1. One-paragraph summary — what this area does in business terms
+      2. Key files — ranked list with role descriptions and file:line ranges
+      3. Call flow — how data/control flows through this area (use mermaid)
+      4. Blast radius — what breaks if you change this area
+      5. Risk assessment — security, complexity, coupling, test coverage
+      6. Change guidance — where to start, what to watch out for
+      7. Git context — ownership, churn frequency, implicit coupling
+
+    BUNDLE SELECTION LOGIC:
+      - If --focus was specified: MANDATORY bundle for the focus area
+      - Always generate preemptive bundles for:
+        * High blast radius areas (extreme fan-in/fan-out)
+        * Hot spots (high churn + high complexity)
+        * Critical business logic (core domain, not glue code)
+
+    DIAGRAM RULE:
+      All diagrams MUST use mermaid code-fenced blocks. Never ASCII art.
+
+    Args:
+        area: Bundle area identifier (e.g., "auth", "hotspots", "security").
+              Ignored when is_context=True.
+        content: The full markdown content to write.
+        is_context: If True, writes CONTEXT.md instead of a bundle file.
+
+    Returns:
+        JSON with the written file path and line count.
+    """
+    output_dir = _get_output_dir()
+
+    if is_context:
+        file_path = output_dir / "CONTEXT.md"
+    else:
+        bundles_dir = _bundles_dir()
+        bundles_dir.mkdir(parents=True, exist_ok=True)
+        file_path = bundles_dir / f"BUNDLE.{area}.md"
+
+    file_path.write_text(content)
+    line_count = len(content.splitlines())
+
+    logger.info(f"Wrote {file_path.name}: {line_count} lines")
+
+    return json.dumps(
+        {
+            "status": "ok",
+            "path": str(file_path),
+            "relative_path": str(file_path.relative_to(output_dir)),
+            "line_count": line_count,
+        },
+    )
+
+
+# ============================================================================
+# Tool 4: read_heuristic_summary
+# ============================================================================
+
+
+@tool
+def read_heuristic_summary() -> str:
+    """Read the pre-computed heuristic summary produced by the deterministic indexer.
+
+    This artifact is the ONLY thing you need to read before planning teams.
+    It summarizes 21 indexer steps into a compact JSON structure.
+
+    SCHEMA:
+
+      volume:
+        total_files, total_lines, estimated_tokens, languages (dict), frameworks (list)
+
+      symbols:
+        functions, classes, modules, top_complex_functions
+        (list of {name, file, lines, complexity})
+
+      health:
+        semgrep_findings: {critical, high, medium, low, info}
+        owasp_findings: {category: count}
+        type_errors: int
+        lint_violations: int
+        dead_code_symbols: int
+        clone_groups: int
+        avg_cyclomatic_complexity: float
+
+      topology:
+        graph_nodes, graph_edges, connected_components
+        max_fan_in: {node, count}  — most depended-upon symbol
+        max_fan_out: {node, count} — symbol with most outgoing deps
+        entry_points: list         — likely entry points with scores
+        hotspots: list             — high-churn structurally central files
+        bus_factor_risks: list     — directories with single contributor
+
+      git:
+        total_commits_analyzed, active_contributors
+        most_coupled_pairs: list of {a, b, coupling}
+
+    INTERPRETATION GUIDE:
+
+      Signal                               | Action
+      -------------------------------------|---------------------------------------
+      health.semgrep_findings.critical > 0 | MANDATORY security team
+      topology.max_fan_in.count > 50       | High blast radius — dedicated team
+      topology.bus_factor_risks non-empty  | Ownership analysis in git team mandate
+      health.avg_cyclomatic_complexity > 10| Complexity team for deep code reading
+      volume.total_files > 2000            | Domain-scoped teams, not one mega-team
+      git.most_coupled_pairs coupling > 0.7| Implicit coupling — needs investigation
+
+    Returns:
+        The heuristic_summary.json content as formatted JSON.
+        Falls back to index_metadata.json if heuristic summary is unavailable.
+    """
+    output_dir = _get_output_dir()
+
+    heuristic_path = output_dir / "heuristic_summary.json"
+    if heuristic_path.exists():
+        try:
+            data = json.loads(heuristic_path.read_text())
+            return json.dumps(data, indent=2)
+        except (json.JSONDecodeError, OSError) as e:
+            logger.warning(f"Failed to read heuristic summary: {e}")
+
+    # Fallback to index metadata
+    metadata_path = output_dir / "index_metadata.json"
+    if metadata_path.exists():
+        try:
+            data = json.loads(metadata_path.read_text())
+            return json.dumps({"_fallback": "index_metadata", **data}, indent=2)
+        except (json.JSONDecodeError, OSError) as e:
+            logger.warning(f"Failed to read index metadata: {e}")
+
+    return json.dumps({"status": "error", "message": "No heuristic summary or index metadata found"})

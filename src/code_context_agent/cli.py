@@ -54,7 +54,7 @@ def main(
 
 
 @app.command
-def analyze(  # noqa: C901, PLR0912
+def analyze(  # noqa: C901, PLR0912, PLR0915
     path: Annotated[
         Path,
         Parameter(help="Path to the repository to analyze."),
@@ -91,28 +91,31 @@ def analyze(  # noqa: C901, PLR0912
         bool,
         Parameter(help="Suppress all output except errors on stderr. No TUI, no JSON."),
     ] = False,
+    bundles_only: Annotated[
+        bool,
+        Parameter(help="Skip indexing and team dispatch; regenerate bundles from existing team findings."),
+    ] = False,
     debug: Annotated[
         bool,
         Parameter(help="Enable debug logging for troubleshooting."),
     ] = False,
 ) -> None:
-    """Analyze a codebase and produce a narrated context bundle.
+    """Analyze a codebase and produce targeted context bundles.
 
-    The agent uses LSP, AST-grep, ripgrep, repomix, and git history
-    tools to understand the codebase, then produces a narrated markdown
-    bundle. Analysis depth is determined automatically based on repository
-    size and complexity.
+    The coordinator dispatches parallel specialist teams that use LSP,
+    AST-grep, ripgrep, repomix, and git history tools to understand
+    the codebase, then consolidates findings into targeted bundle files.
 
     Outputs:
-        .code-context/CONTEXT.md - The narrated context bundle
-        .code-context/CONTEXT.orientation.md - Token distribution tree
-        .code-context/CONTEXT.bundle.md - Curated source code pack
+        .code-context/bundles/BUNDLE.{area}.md - Targeted context bundles
+        .code-context/heuristic_summary.json - Deterministic index summary
 
     Example:
         $ code-context-agent analyze /path/to/repo
         $ code-context-agent analyze . --focus "authentication"
         $ code-context-agent analyze . --output-dir ./output
         $ code-context-agent analyze . --issue "gh:1694"
+        $ code-context-agent analyze . --bundles-only
     """
     import asyncio
     import sys
@@ -144,7 +147,7 @@ def analyze(  # noqa: C901, PLR0912
         raise SystemExit(1)
 
     # Validate flag combinations
-    _validate_flags(full=full, since=since)
+    _validate_flags(full=full, since=since, bundles_only=bundles_only)
 
     # Derive analysis mode
     mode = _derive_mode(full=full, focus=focus, since=since)
@@ -166,6 +169,8 @@ def analyze(  # noqa: C901, PLR0912
             console.print(f"  Focus: [magenta]{focus}[/magenta]")
         if full:
             console.print("  Mode: [bold magenta]FULL (exhaustive)[/bold magenta]")
+        if bundles_only:
+            console.print("  Mode: [bold magenta]BUNDLES ONLY (regenerate from findings)[/bold magenta]")
         console.print()
 
     # In debug mode or JSON mode, use quiet consumer (log output replaces Live display)
@@ -192,6 +197,7 @@ def analyze(  # noqa: C901, PLR0912
             issue_context=issue_context,
             since_context=since_context,
             mode=mode,
+            bundles_only=bundles_only,
         ),
     )
 
@@ -497,7 +503,7 @@ def _preflight_check() -> dict[str, dict[str, bool | str]]:
     return result
 
 
-def _validate_flags(*, full: bool = False, since: str = "") -> None:
+def _validate_flags(*, full: bool = False, since: str = "", bundles_only: bool = False) -> None:
     """Validate mutually exclusive flag combinations.
 
     Raises:
@@ -507,6 +513,14 @@ def _validate_flags(*, full: bool = False, since: str = "") -> None:
         console.print("[red]Error:[/red] --full and --since cannot be combined.")
         console.print("  --full runs exhaustive analysis on the entire repo.")
         console.print("  --since runs incremental analysis on changed files only.")
+        raise SystemExit(1)
+    if bundles_only and full:
+        console.print("[red]Error:[/red] --bundles-only and --full cannot be combined.")
+        console.print("  --bundles-only regenerates bundles from existing team findings.")
+        raise SystemExit(1)
+    if bundles_only and since:
+        console.print("[red]Error:[/red] --bundles-only and --since cannot be combined.")
+        console.print("  --bundles-only regenerates bundles from existing team findings.")
         raise SystemExit(1)
 
 
@@ -575,6 +589,8 @@ def _display_result(result: dict, *, debug: bool = False, quiet: bool = False) -
             console.print(f"  Output directory: [cyan]{result['output_dir']}[/cyan]")
             if result.get("context_path"):
                 console.print(f"  Context file: [cyan]{result['context_path']}[/cyan]")
+            # List bundle files if present
+            _display_bundles(result.get("output_dir"))
     elif result["status"] == "stopped":
         if quiet:
             print(
@@ -600,6 +616,26 @@ def _display_result(result: dict, *, debug: bool = False, quiet: bool = False) -
             if debug:
                 console.print(f"[dim]Status: {result.get('status')}, Turns: {result.get('turn_count', 0)}[/dim]")
         raise SystemExit(1)
+
+
+def _display_bundles(output_dir: str | None) -> None:
+    """List bundle files from the output directory.
+
+    Args:
+        output_dir: Path to the analysis output directory.
+    """
+    if not output_dir:
+        return
+
+    bundles_dir = Path(output_dir) / "bundles"
+    if not bundles_dir.exists():
+        return
+
+    bundle_files = sorted(bundles_dir.glob("BUNDLE.*.md"))
+    if bundle_files:
+        console.print("  Bundles:")
+        for bf in bundle_files:
+            console.print(f"    [cyan]{bf}[/cyan]")
 
 
 def _build_since_context(repo_path: Path, since: str, output_dir: Path) -> str | None:

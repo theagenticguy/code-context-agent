@@ -14,29 +14,31 @@ from pydantic import ConfigDict, Field
 from ..models.base import StrictModel
 
 
-class SwarmAgentState(StrictModel):
-    """State for a single Swarm specialist agent.
-
-    Tracks lifecycle, tool usage, and timing for one agent within a
-    multi-agent Swarm run.
+class TeamDispatchState(StrictModel):
+    """State for a dispatched specialist team.
 
     Attributes:
-        name: Display name of the specialist agent.
-        status: Current lifecycle status ("waiting", "running", "done").
-        tool_count: Number of tool calls completed by this agent.
-        duration_seconds: Total wall-clock seconds for this agent (set on completion).
-        current_tool: Name of the tool currently being executed, if any.
-        started_at: Monotonic timestamp when the agent started running.
-        findings: Summary strings of notable findings from this agent.
+        team_id: Unique identifier for the team (e.g., "security", "architecture").
+        mandate: One-line description of the team's investigation focus.
+        agent_count: Number of agents in the team swarm.
+        status: Current status ("running", "done", "error").
+        started_at: Monotonic timestamp when the team was dispatched.
+        duration_seconds: Total elapsed seconds (set when completed).
     """
 
-    name: str
-    status: str = "waiting"  # "waiting", "running", "done"
-    tool_count: int = 0
-    duration_seconds: float = 0.0
-    current_tool: str | None = None
+    model_config = ConfigDict(
+        frozen=False,
+        validate_assignment=True,
+        extra="forbid",
+        str_strip_whitespace=True,
+    )
+
+    team_id: str
+    mandate: str
+    agent_count: int = 0
+    status: str = "running"
     started_at: float | None = None
-    findings: list[str] = Field(default_factory=list)
+    duration_seconds: float = 0.0
 
 
 class ToolCallState(StrictModel):
@@ -45,7 +47,7 @@ class ToolCallState(StrictModel):
     Attributes:
         tool_call_id: Unique identifier for the tool call.
         tool_name: Name of the tool being executed.
-        agent_name: Name of the swarm agent that invoked this tool.
+        agent_name: Name of the agent that invoked this tool.
         args_buffer: Accumulated tool arguments (streaming).
         result: Tool execution result (when complete).
         status: Current status ("running", "completed", "error").
@@ -125,9 +127,8 @@ class AgentDisplayState(StrictModel):
     discoveries: list[Any] = Field(default_factory=list)  # list[DiscoveryEvent]
     max_discoveries: int = 50
 
-    # Multi-agent tracking (Swarm)
-    agents: list[SwarmAgentState] = Field(default_factory=list)
-    active_agent_name: str | None = None
+    # Team tracking (v10 coordinator pipeline)
+    teams: list[TeamDispatchState] = Field(default_factory=list)
 
     def clear_text_buffer(self) -> str:
         """Clear and return the text buffer.
@@ -246,55 +247,37 @@ class AgentDisplayState(StrictModel):
         while len(self.discoveries) > self.max_discoveries:
             self.discoveries.pop(0)
 
-    def init_swarm_agents(self, agent_names: list[str]) -> None:
-        """Initialize Swarm agent state for tracking.
+    def start_team(self, team_id: str, mandate: str, agent_count: int = 0) -> None:
+        """Register a newly dispatched team.
 
         Args:
-            agent_names: Ordered list of specialist agent names.
+            team_id: Unique team identifier.
+            mandate: One-line description of the team's focus.
+            agent_count: Number of agents in the team.
         """
-        self.agents = [SwarmAgentState(name=name) for name in agent_names]
+        self.teams.append(
+            TeamDispatchState(
+                team_id=team_id,
+                mandate=mandate,
+                agent_count=agent_count,
+                status="running",
+                started_at=time.monotonic(),
+            ),
+        )
 
-    def set_active_agent(self, name: str) -> None:
-        """Mark an agent as active/running.
+    def complete_team(self, team_id: str, status: str = "done") -> None:
+        """Mark a team as completed.
 
         Args:
-            name: Name of the agent to activate.
+            team_id: Team identifier to mark complete.
+            status: Final status ("done" or "error").
         """
-        self.active_agent_name = name
-        for agent in self.agents:
-            if agent.name == name:
-                agent.status = "running"
-                agent.started_at = time.monotonic()
+        for team in self.teams:
+            if team.team_id == team_id:
+                team.status = status
+                if team.started_at is not None:
+                    team.duration_seconds = time.monotonic() - team.started_at
                 break
-
-    def complete_agent(self, name: str) -> None:
-        """Mark an agent as done and record its duration.
-
-        Args:
-            name: Name of the agent to complete.
-        """
-        for agent in self.agents:
-            if agent.name == name:
-                agent.status = "done"
-                if agent.started_at:
-                    agent.duration_seconds = time.monotonic() - agent.started_at
-                break
-        # Clear active if it was this agent
-        if self.active_agent_name == name:
-            self.active_agent_name = None
-
-    def increment_agent_tool_count(self, agent_name: str | None = None) -> None:
-        """Increment tool count for the specified or active agent.
-
-        Args:
-            agent_name: Agent to increment for. Falls back to active_agent_name.
-        """
-        name = agent_name or self.active_agent_name
-        if name:
-            for agent in self.agents:
-                if agent.name == name:
-                    agent.tool_count += 1
-                    break
 
     def reset(self) -> None:
         """Reset state for a new run."""
@@ -315,6 +298,5 @@ class AgentDisplayState(StrictModel):
         self.phases = []
         self.current_phase_index = -1
         self.discoveries = []
-        # Reset multi-agent tracking (Swarm)
-        self.agents = []
-        self.active_agent_name = None
+        # Reset team tracking (v10)
+        self.teams = []

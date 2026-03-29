@@ -6,11 +6,11 @@ from pydantic import ValidationError
 from code_context_agent.models.output import (
     AnalysisResult,
     ArchitecturalRisk,
+    Bundle,
     BusinessLogicItem,
     CodeHealthMetrics,
     GeneratedFile,
     GraphStats,
-    PhaseTimingItem,
     RefactoringCandidate,
 )
 
@@ -227,33 +227,37 @@ class TestAnalysisResult:
         assert restored == result
 
 
-class TestAnalysisResultMode:
-    def test_analysis_mode_default(self) -> None:
-        result = AnalysisResult(
-            status="completed",
-            summary="test",
-            total_files_analyzed=10,
-        )
-        assert result.analysis_mode == "standard"
+class TestBundle:
+    """Tests for Bundle model."""
 
-    def test_analysis_mode_full(self) -> None:
-        result = AnalysisResult(
-            status="completed",
-            summary="test",
-            total_files_analyzed=10,
-            analysis_mode="full",
+    def test_valid(self) -> None:
+        b = Bundle(
+            area="auth",
+            path="bundles/BUNDLE.auth.md",
+            line_count=150,
+            summary="Authentication and authorization patterns.",
         )
-        assert result.analysis_mode == "full"
+        assert b.area == "auth"
+        assert b.line_count == 150
+        assert b.focus_match is False
 
-    def test_phase_timings_empty_default(self) -> None:
-        result = AnalysisResult(
-            status="completed",
-            summary="test",
-            total_files_analyzed=10,
+    def test_focus_match(self) -> None:
+        b = Bundle(
+            area="security",
+            path="bundles/BUNDLE.security.md",
+            line_count=200,
+            summary="Security analysis.",
+            focus_match=True,
         )
-        assert result.phase_timings == []
+        assert b.focus_match is True
 
-    def test_phase_timing_item(self) -> None:
-        item = PhaseTimingItem(phase=3, name="Semantic Discovery", duration_seconds=45.2, tool_count=12)
-        assert item.phase == 3
-        assert item.name == "Semantic Discovery"
+    def test_negative_line_count_rejected(self) -> None:
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            Bundle(
+                area="x",
+                path="x.md",
+                line_count=-1,
+                summary="test",
+            )
