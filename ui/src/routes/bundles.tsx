@@ -65,6 +65,7 @@ function BundlesView() {
   const bundles = useStore((s) => s.bundles)
   const theme = useStore((s) => s.theme)
   const contentRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   const areaKeys = useMemo(() => Object.keys(bundles).sort(), [bundles])
   const [activeArea, setActiveArea] = useState<string>('')
@@ -88,7 +89,12 @@ function BundlesView() {
   }, [html, theme])
 
   const handleTocClick = useCallback((id: string) => {
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
+    const el = document.getElementById(id)
+    const container = scrollContainerRef.current
+    if (el && container) {
+      const offset = container.scrollTop + el.getBoundingClientRect().top - container.getBoundingClientRect().top - 20
+      container.scrollTo({ top: offset, behavior: 'smooth' })
+    }
   }, [])
 
   if (areaKeys.length === 0) {
@@ -150,7 +156,7 @@ function BundlesView() {
       </aside>
 
       {/* Main content */}
-      <div className="flex-1 overflow-auto p-6 lg:p-10">
+      <div ref={scrollContainerRef} className="flex-1 overflow-auto p-6 lg:p-10">
         {/* Horizontal bundle tabs for small screens or when sidebar is hidden */}
         {areaKeys.length > 1 && (
           <div className="lg:hidden flex flex-wrap gap-2 mb-6">

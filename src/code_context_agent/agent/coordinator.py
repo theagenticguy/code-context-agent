@@ -214,6 +214,13 @@ def create_coordinator_agent(
     tools = _get_coordinator_tools(analysis_tools)
 
     # Create the coordinator Agent
+    from strands.agent.conversation_manager import SummarizingConversationManager
+
+    conversation_manager = SummarizingConversationManager(
+        summary_ratio=0.3,
+        preserve_recent_messages=10,
+    )
+
     agent = Agent(
         name="coordinator",
         system_prompt=system_prompt,
@@ -221,6 +228,7 @@ def create_coordinator_agent(
         tools=tools,
         structured_output_model=AnalysisResult,
         callback_handler=None,
+        conversation_manager=conversation_manager,
     )
 
     # Apply hooks

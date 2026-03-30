@@ -1,5 +1,8 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { hierarchy, pack } from 'd3-hierarchy'
+import { select } from 'd3-selection'
+import type { ZoomBehavior } from 'd3-zoom'
+import { zoom, zoomIdentity } from 'd3-zoom'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { EmptyState } from '../components/empty-state'
 import { StatCard } from '../components/stat-card'
@@ -8,6 +11,41 @@ import { NODE_COLORS, NODE_TYPE_LABELS, nodeColor } from '../constants/colors'
 import { buildHierarchy, shortPath } from '../lib/graph-utils'
 import { useStore } from '../store/use-store'
 import type { GraphNode } from '../types'
+
+const ZOOM_PADDING = 20
+const ZOOM_TRANSITION_MS = 800
+const ZOOM_SCALE_EXTENT: [number, number] = [0.3, 8]
+const ZOOM_NODE_PADDING = 2.2
+
+function fitTransform(g: SVGGElement, dims: { width: number; height: number }) {
+  const bounds = g.getBBox()
+  if (bounds.width <= 0 || bounds.height <= 0) return null
+  const scale = Math.min(
+    (dims.width - ZOOM_PADDING * 2) / bounds.width,
+    (dims.height - ZOOM_PADDING * 2) / bounds.height,
+    1,
+  )
+  const tx = (dims.width - bounds.width * scale) / 2 - bounds.x * scale
+  const ty = (dims.height - bounds.height * scale) / 2 - bounds.y * scale
+  return zoomIdentity.translate(tx, ty).scale(scale)
+}
+
+function animateFit(
+  svgEl: SVGSVGElement,
+  gEl: SVGGElement,
+  zoomBehavior: ZoomBehavior<SVGSVGElement, unknown>,
+  dims: { width: number; height: number },
+  animated = true,
+) {
+  const t = fitTransform(gEl, dims)
+  if (!t) return
+  const svg = select(svgEl)
+  if (animated) {
+    svg.transition().duration(ZOOM_TRANSITION_MS).call(zoomBehavior.transform, t)
+  } else {
+    svg.call(zoomBehavior.transform, t)
+  }
+}
 
 export const Route = createFileRoute('/modules')({
   component: ModulesView,
@@ -40,6 +78,8 @@ function ModulesView() {
   const navigate = useNavigate()
   const svgRef = useRef<SVGSVGElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const gRef = useRef<SVGGElement>(null)
+  const zoomBehaviorRef = useRef<ReturnType<typeof zoom<SVGSVGElement, unknown>> | null>(null)
   const tooltip = useTooltip()
 
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 })
@@ -78,6 +118,28 @@ function ModulesView() {
     return packer(root)
   }, [hierData, dimensions])
 
+  // Set up d3-zoom behavior
+  useEffect(() => {
+    if (!svgRef.current || !gRef.current || !packed) return
+
+    const svg = select(svgRef.current)
+    const g = select(gRef.current)
+
+    const zoomBehavior = zoom<SVGSVGElement, unknown>()
+      .scaleExtent(ZOOM_SCALE_EXTENT)
+      .on('zoom', (event) => {
+        g.attr('transform', event.transform.toString())
+      })
+
+    svg.call(zoomBehavior)
+    zoomBehaviorRef.current = zoomBehavior
+    animateFit(svgRef.current, gRef.current, zoomBehavior, dimensions, false)
+
+    return () => {
+      svg.on('.zoom', null)
+    }
+  }, [packed, dimensions])
+
   // KPIs
   const stats = useMemo(() => {
     if (!graph) return { modules: 0, symbols: 0, avgPerModule: 0 }
@@ -104,9 +166,37 @@ function ModulesView() {
   )
 
   // Handle branch click -> zoom
-  const handleBranchClick = useCallback((name: string) => {
-    setZoomedNode((prev) => (prev === name ? null : name))
-  }, [])
+  const handleBranchClick = useCallback(
+    (name: string) => {
+      setZoomedNode((prev) => {
+        const next = prev === name ? null : name
+        if (!svgRef.current || !zoomBehaviorRef.current || !packed) return next
+
+        const svg = select(svgRef.current)
+        const zoomBehavior = zoomBehaviorRef.current
+
+        if (next === null) {
+          if (gRef.current) {
+            animateFit(svgRef.current, gRef.current, zoomBehavior, dimensions)
+          }
+        } else {
+          const target = packed.descendants().find((d) => d.data.name === next)
+          if (target) {
+            const scale = Math.min(dimensions.width, dimensions.height) / (target.r * ZOOM_NODE_PADDING)
+            const tx = dimensions.width / 2 - target.x * scale
+            const ty = dimensions.height / 2 - target.y * scale
+            svg
+              .transition()
+              .duration(ZOOM_TRANSITION_MS)
+              .call(zoomBehavior.transform, zoomIdentity.translate(tx, ty).scale(scale))
+          }
+        }
+
+        return next
+      })
+    },
+    [packed, dimensions],
+  )
 
   if (!graph) {
     return (
@@ -137,19 +227,6 @@ function ModulesView() {
       })
     : []
 
-  // Compute zoom transform
-  let zoomTransform = ''
-  if (zoomedNode && packed) {
-    const zoomTarget = packed.descendants().find((d) => d.data.name === zoomedNode)
-    if (zoomTarget) {
-      const r = zoomTarget.r
-      const scale = Math.min(dimensions.width, dimensions.height) / (r * 2.2)
-      const tx = dimensions.width / 2 - zoomTarget.x * scale
-      const ty = dimensions.height / 2 - zoomTarget.y * scale
-      zoomTransform = `translate(${tx},${ty}) scale(${scale})`
-    }
-  }
-
   return (
     <div className="p-6 view-enter flex flex-col h-full gap-4">
       <div className="flex items-center justify-between">
@@ -157,7 +234,12 @@ function ModulesView() {
         {zoomedNode && (
           <button
             type="button"
-            onClick={() => setZoomedNode(null)}
+            onClick={() => {
+              setZoomedNode(null)
+              if (svgRef.current && zoomBehaviorRef.current && gRef.current) {
+                animateFit(svgRef.current, gRef.current, zoomBehaviorRef.current, dimensions)
+              }
+            }}
             className="text-xs px-3 py-1 rounded-base border-2 border-border bg-bg2 shadow-neo neo-pressable font-base cursor-pointer"
           >
             Reset Zoom
@@ -203,7 +285,7 @@ function ModulesView() {
             className="w-full h-full"
             aria-hidden="true"
           >
-            <g style={{ transition: 'transform 0.5s ease', transform: zoomTransform }}>
+            <g ref={gRef}>
               {(zoomedNode ? visibleNodes : packed.descendants()).map((d, i) => {
                 const isLeaf = !d.children
                 const isGroup = !!d.children && d.depth > 0
@@ -297,6 +379,7 @@ function ModulesView() {
           </svg>
         )}
       </div>
+      <p className="text-xs text-fg/40 text-center">Scroll to zoom · drag to pan · click module to drill in</p>
     </div>
   )
 }
