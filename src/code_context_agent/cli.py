@@ -476,51 +476,119 @@ def serve(
 
 @app.command
 def check() -> None:
-    """Check availability of external tool dependencies.
+    """Check availability of external tool dependencies and AWS credentials.
 
-    Verifies that ripgrep, ast-grep, repomix, and npx are installed
-    and accessible. Useful for diagnosing setup issues before running
-    analysis.
+    Verifies that all CLI tools used by the indexer and analysis pipeline
+    are installed, and that AWS credentials are configured for Bedrock access.
 
     Example:
         $ code-context-agent check
     """
     preflight = _preflight_check()
+    groups = [
+        ("Core tools (required)", "core", True),
+        ("Static analysis (optional, used by indexer)", "analysis", False),
+        ("Security scanners (optional)", "security", False),
+    ]
+
     all_ok = True
+    required_ok = True
+    for label, group, is_required in groups:
+        group_ok = _print_tool_group(preflight, label, group, is_required)
+        if not group_ok:
+            all_ok = False
+            if is_required:
+                required_ok = False
+
+    console.print("\n[bold]AWS credentials:[/bold]")
+    if _check_aws_credentials():
+        console.print("  [green]\u2713[/green] sts get-caller-identity")
+    else:
+        console.print("  [red]\u2717[/red] sts get-caller-identity \u2014 configure AWS credentials for Bedrock")
+        all_ok = False
+
+    if all_ok:
+        console.print("\n[green]All tools and credentials available.[/green]")
+    elif required_ok:
+        console.print("\n[yellow]Some optional tools are missing. Core analysis will work.[/yellow]")
+    else:
+        console.print("\n[red]Required tools are missing. Analysis will not work.[/red]")
+        raise SystemExit(1)
+
+
+def _print_tool_group(
+    preflight: dict[str, dict[str, bool | str]],
+    label: str,
+    group: str,
+    is_required: bool,
+) -> bool:
+    """Print tool availability for a group. Returns True if all tools available."""
+    console.print(f"\n[bold]{label}:[/bold]")
+    group_ok = True
     for name, info in preflight.items():
+        if info["group"] != group:
+            continue
         if info["available"]:
             console.print(f"  [green]\u2713[/green] {name}")
-        else:
+        elif is_required:
             console.print(f"  [red]\u2717[/red] {name} \u2014 install via {info['package']}")
-            all_ok = False
-    if all_ok:
-        console.print("\n[green]All tools available.[/green]")
-    else:
-        console.print("\n[yellow]Some tools are missing. Analysis may be limited.[/yellow]")
-        raise SystemExit(1)
+            group_ok = False
+        else:
+            console.print(f"  [dim]\u2022[/dim] {name} \u2014 {info['package']}")
+            group_ok = False
+    return group_ok
 
 
 def _preflight_check() -> dict[str, dict[str, bool | str]]:
     """Check availability of external tool dependencies.
 
     Returns:
-        Dict mapping tool name to status info.
+        Dict mapping tool name to status info with group classification.
     """
     import shutil
 
     tools = {
-        "ripgrep": {"cmd": "rg", "package": "ripgrep"},
-        "ast-grep": {"cmd": "ast-grep", "package": "ast-grep (npm)"},
-        "repomix": {"cmd": "repomix", "package": "repomix (npm)"},
-        "npx": {"cmd": "npx", "package": "Node.js"},
+        # Core (required for indexing)
+        "ripgrep": {"cmd": "rg", "package": "ripgrep", "group": "core"},
+        "ast-grep": {"cmd": "ast-grep", "package": "ast-grep (npm)", "group": "core"},
+        "repomix": {"cmd": "repomix", "package": "repomix (npm)", "group": "core"},
+        "npx": {"cmd": "npx", "package": "Node.js", "group": "core"},
+        # Static analysis (optional, enrich indexer output)
+        "semgrep": {"cmd": "semgrep", "package": "semgrep (pip or brew)", "group": "analysis"},
+        "ruff": {"cmd": "ruff", "package": "ruff (pip or brew)", "group": "analysis"},
+        "ty": {"cmd": "ty", "package": "ty (pip)", "group": "analysis"},
+        "pyright": {"cmd": "pyright-langserver", "package": "pyright (npm)", "group": "analysis"},
+        "radon": {"cmd": "radon", "package": "radon (pip)", "group": "analysis"},
+        "vulture": {"cmd": "vulture", "package": "vulture (pip)", "group": "analysis"},
+        "pipdeptree": {"cmd": "pipdeptree", "package": "pipdeptree (pip)", "group": "analysis"},
+        # Security scanners
+        "gitleaks": {"cmd": "gitleaks", "package": "gitleaks (brew or mise)", "group": "security"},
+        "bandit": {"cmd": "bandit", "package": "bandit (pip)", "group": "security"},
+        "osv-scanner": {"cmd": "osv-scanner", "package": "osv-scanner (mise)", "group": "security"},
     }
 
     result: dict[str, dict[str, bool | str]] = {}
     for name, info in tools.items():
         available = shutil.which(info["cmd"]) is not None
-        result[name] = {"available": available, "package": info["package"]}
+        result[name] = {"available": available, "package": info["package"], "group": info["group"]}
 
     return result
+
+
+def _check_aws_credentials() -> bool:
+    """Verify AWS credentials are configured and valid via sts get-caller-identity."""
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["aws", "sts", "get-caller-identity", "--query", "Account", "--output", "text"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        return result.returncode == 0 and result.stdout.strip() != ""
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
 
 
 def _validate_flags(*, full: bool = False, since: str = "", bundles_only: bool = False) -> None:
