@@ -7,6 +7,7 @@ from code_context_agent.models.output import (
     BusinessLogicItem,
     GeneratedFile,
     GraphStats,
+    PhaseTiming,
 )
 
 __all__ = [
@@ -16,5 +17,6 @@ __all__ = [
     "FrozenModel",
     "GeneratedFile",
     "GraphStats",
+    "PhaseTiming",
     "StrictModel",
 ]

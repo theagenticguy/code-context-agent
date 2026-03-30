@@ -37,7 +37,7 @@ const FILE_MAP: Record<
   {
     setter: keyof Pick<
       ReturnType<typeof useStore.getState>,
-      'setGraph' | 'setAnalysisResult' | 'setNarrative' | 'setBundle' | 'setSignatures' | 'setFilesList'
+      'setGraph' | 'setAnalysisResult' | 'setNarrative' | 'setBundle' | 'setBundles' | 'setSignatures' | 'setFilesList'
     >
     isGraph?: boolean
     isJson?: boolean
@@ -51,6 +51,12 @@ const FILE_MAP: Record<
   'files.all.txt': { setter: 'setFilesList' },
 }
 
+/** Extract a bundle area name from a filename like BUNDLE.auth.md → "auth" */
+function parseBundleArea(filename: string): string | null {
+  const match = /^BUNDLE\.(.+)\.md$/i.exec(filename)
+  return match ? match[1] : null
+}
+
 export async function loadFromFiles(fileList: FileList): Promise<void> {
   const store = useStore.getState()
   store.setLoading(true)
@@ -58,8 +64,20 @@ export async function loadFromFiles(fileList: FileList): Promise<void> {
 
   try {
     const promises: Promise<void>[] = []
+    const bundleEntries: Record<string, string> = {}
 
     for (const file of fileList) {
+      // Check for individual bundle files (BUNDLE.{area}.md)
+      const area = parseBundleArea(file.name)
+      if (area) {
+        promises.push(
+          file.text().then((text) => {
+            bundleEntries[area] = text
+          }),
+        )
+        continue
+      }
+
       const mapping = FILE_MAP[file.name]
       if (!mapping) continue
 
@@ -78,6 +96,11 @@ export async function loadFromFiles(fileList: FileList): Promise<void> {
     }
 
     await Promise.all(promises)
+
+    // If individual bundle files were found, store them (takes priority over CONTEXT.bundle.md)
+    if (Object.keys(bundleEntries).length > 0) {
+      useStore.getState().setBundles(bundleEntries)
+    }
   } catch (err) {
     useStore.getState().setError(`File load error: ${(err as Error).message}`)
   } finally {
@@ -120,6 +143,34 @@ export async function loadFromServer(baseUrl: string): Promise<void> {
     })
 
     await Promise.all(promises)
+
+    // Discover and load individual bundle files from the bundles directory
+    try {
+      const listResp = await fetch(`${baseUrl}/data/bundles/`)
+      if (listResp.ok) {
+        const filenames = (await listResp.json()) as string[]
+        if (filenames.length > 0) {
+          const bundleEntries: Record<string, string> = {}
+          const bundlePromises = filenames.map(async (filename) => {
+            try {
+              const area = parseBundleArea(filename)
+              if (!area) return
+              const resp = await fetch(`${baseUrl}/data/bundles/${filename}`)
+              if (!resp.ok) return
+              bundleEntries[area] = await resp.text()
+            } catch {
+              // silently skip individual bundle errors
+            }
+          })
+          await Promise.all(bundlePromises)
+          if (Object.keys(bundleEntries).length > 0) {
+            useStore.getState().setBundles(bundleEntries)
+          }
+        }
+      }
+    } catch {
+      // bundles directory listing not available; fall back to CONTEXT.bundle.md loaded above
+    }
   } catch (err) {
     useStore.getState().setError(`Server load error: ${(err as Error).message}`)
   } finally {

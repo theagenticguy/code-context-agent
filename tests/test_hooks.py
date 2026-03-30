@@ -1,6 +1,7 @@
 """Tests for hook providers."""
 
 import json
+import tempfile
 
 import pytest
 
@@ -8,6 +9,7 @@ from code_context_agent.agent.hooks import (
     FailFastHook,
     FullModeToolError,
     JsonLogHook,
+    NarrativeQualityHook,
     OutputQualityHook,
     ReasoningCheckpointHook,
     ToolDisplayHook,
@@ -53,10 +55,10 @@ class TestCreateAllHooks:
         result = create_all_hooks()
         assert isinstance(result, list)
 
-    def test_returns_four_hooks(self) -> None:
-        """Test that create_all_hooks returns 4 hook providers by default."""
+    def test_returns_five_hooks(self) -> None:
+        """Test that create_all_hooks returns 5 hook providers by default."""
         hooks = create_all_hooks()
-        assert len(hooks) == 4  # Compaction + OutputQuality + ToolEfficiency + ReasoningCheckpoint
+        assert len(hooks) == 5  # Compaction + OutputQuality + ToolEfficiency + ReasoningCheckpoint + NarrativeQuality
 
     def test_contains_expected_types(self) -> None:
         """Test that the hooks are the expected types."""
@@ -191,13 +193,13 @@ class TestReasoningCheckpointHook:
 
 
 class TestCreateAllHooksWithMode:
-    def test_standard_mode_returns_four_hooks(self):
+    def test_standard_mode_returns_five_hooks(self):
         hooks = create_all_hooks()
-        assert len(hooks) == 4
-
-    def test_full_mode_returns_five_hooks(self):
-        hooks = create_all_hooks(full_mode=True)
         assert len(hooks) == 5
+
+    def test_full_mode_returns_six_hooks(self):
+        hooks = create_all_hooks(full_mode=True)
+        assert len(hooks) == 6
         assert any(isinstance(h, FailFastHook) for h in hooks)
 
     def test_standard_mode_no_failfast(self):
@@ -229,3 +231,233 @@ class TestCreateAllHooksWithMode:
         hooks = create_all_hooks(quiet=True, state=state)
         assert any(isinstance(h, JsonLogHook) for h in hooks)
         assert not any(isinstance(h, ToolDisplayHook) for h in hooks)
+
+    def test_output_dir_passed_to_narrative_hook(self, tmp_path):
+        """Output dir is forwarded to NarrativeQualityHook."""
+        hooks = create_all_hooks(output_dir=tmp_path)
+        narrative = [h for h in hooks if isinstance(h, NarrativeQualityHook)]
+        assert len(narrative) == 1
+        assert narrative[0]._output_dir == tmp_path
+
+    def test_always_has_narrative_quality_hook(self):
+        """NarrativeQualityHook is always included."""
+        hooks_standard = create_all_hooks()
+        hooks_full = create_all_hooks(full_mode=True)
+        assert any(isinstance(h, NarrativeQualityHook) for h in hooks_standard)
+        assert any(isinstance(h, NarrativeQualityHook) for h in hooks_full)
+
+
+class TestNarrativeQualityHook:
+    """Tests for NarrativeQualityHook."""
+
+    def test_instantiates(self):
+        hook = NarrativeQualityHook()
+        assert hook is not None
+        assert hook._pass_count == 0
+        assert hook._output_dir is None
+
+    def test_instantiates_with_output_dir(self, tmp_path):
+        hook = NarrativeQualityHook(output_dir=tmp_path)
+        assert hook._output_dir == tmp_path
+
+    def test_has_register_hooks(self):
+        hook = NarrativeQualityHook()
+        assert hasattr(hook, "register_hooks")
+
+    def test_heuristic_score_empty_content(self):
+        """Empty content scores low."""
+        score = NarrativeQualityHook._heuristic_score("")
+        assert score < 1.0
+
+    def test_heuristic_score_rich_content(self):
+        """Content with headings, file refs, and diagrams scores high."""
+        content = "\n".join(
+            [
+                "# Bundle Title",
+                "",
+                "## Architecture Overview",
+                "The main module lives in main.py:10 and imports from config.py:5.",
+                "See also utils.py:20, helpers.py:30, and core.py:1.",
+                "",
+                "### Data Flow",
+                "```mermaid",
+                "graph LR",
+                "A --> B",
+                "```",
+                "",
+                "### Entry Points",
+                "```mermaid",
+                "graph TD",
+                "X --> Y",
+                "```",
+                "",
+                "## Dependencies",
+                "The system depends on api.py:100 for external calls.",
+                "Also router.py:42, handler.py:88, and service.py:200.",
+                "",
+                "### Internal Dependencies",
+                "Internal coupling between models.py:50 and schema.py:60.",
+                "Cross-cutting in auth.py:15, logging.py:25, and middleware.py:35.",
+                "",
+                "## Error Handling",
+                "### Exception Hierarchy",
+                "Errors originate in errors.py:1 and propagate through handler.py:90.",
+                "",
+                "## Security Considerations",
+                "### Auth Flow",
+                "Token validation in auth.py:100, session.py:200, and crypto.py:300.",
+                "",
+                "### Input Validation",
+                "Schema enforcement in validator.py:50 and sanitizer.py:75.",
+                "",
+            ]
+            + [f"Detail line {i} covering implementation specifics." for i in range(200)],
+        )
+        score = NarrativeQualityHook._heuristic_score(content)
+        assert score >= 3.5
+
+    def test_heuristic_score_minimal_content(self):
+        """Minimal content with no structure scores below threshold."""
+        content = "Just a few lines.\nNothing here.\nNo refs."
+        score = NarrativeQualityHook._heuristic_score(content)
+        assert score < 3.5
+
+    def test_skips_when_no_output_dir(self):
+        """Hook does nothing when output_dir is None."""
+        hook = NarrativeQualityHook(output_dir=None)
+
+        class FakeEvent:
+            resume = None
+
+        event = FakeEvent()
+        hook._check_narrative_quality(event)
+        assert event.resume is None
+
+    def test_skips_when_budget_exhausted(self):
+        """Hook does nothing after max passes."""
+        from pathlib import Path
+
+        hook = NarrativeQualityHook(output_dir=Path(tempfile.mkdtemp()))
+        hook._pass_count = NarrativeQualityHook.MAX_ENRICHMENT_PASSES
+
+        class FakeEvent:
+            resume = None
+
+        event = FakeEvent()
+        hook._check_narrative_quality(event)
+        assert event.resume is None
+
+    def test_skips_when_no_bundles_dir(self, tmp_path):
+        """Hook does nothing when bundles/ directory doesn't exist."""
+        hook = NarrativeQualityHook(output_dir=tmp_path)
+
+        class FakeEvent:
+            resume = None
+
+        event = FakeEvent()
+        hook._check_narrative_quality(event)
+        assert event.resume is None
+
+    def test_skips_when_no_bundle_files(self, tmp_path):
+        """Hook does nothing when bundles/ has no BUNDLE.*.md files."""
+        bundles_dir = tmp_path / "bundles"
+        bundles_dir.mkdir()
+
+        hook = NarrativeQualityHook(output_dir=tmp_path)
+
+        class FakeEvent:
+            resume = None
+
+        event = FakeEvent()
+        hook._check_narrative_quality(event)
+        assert event.resume is None
+
+    def test_triggers_enrichment_for_weak_bundles(self, tmp_path):
+        """Hook sets event.resume when bundle quality is below threshold."""
+        bundles_dir = tmp_path / "bundles"
+        bundles_dir.mkdir()
+        (bundles_dir / "BUNDLE.api.md").write_text("Thin content.\nNo refs.")
+
+        hook = NarrativeQualityHook(output_dir=tmp_path)
+
+        class FakeEvent:
+            resume = None
+
+        event = FakeEvent()
+        hook._check_narrative_quality(event)
+        assert event.resume is not None
+        assert "ENRICHMENT PASS 1" in event.resume
+        assert "api" in event.resume
+        assert hook._pass_count == 1
+
+    def test_passes_for_high_quality_bundles(self, tmp_path):
+        """Hook does not trigger enrichment when quality is above threshold."""
+        bundles_dir = tmp_path / "bundles"
+        bundles_dir.mkdir()
+        rich_content = "\n".join(
+            [
+                "## Architecture Overview",
+                "### Core Modules",
+                "### Data Flow",
+                "### Entry Points",
+                "### Dependencies",
+                "### Error Handling",
+                "### Security",
+                "### Testing Strategy",
+                "```mermaid",
+                "graph LR",
+                "A --> B --> C",
+                "```",
+                "```mermaid",
+                "graph TD",
+                "X --> Y",
+                "```",
+                "The module app.py:1 imports config.py:10, utils.py:20,",
+                "models.py:30, schema.py:40, api.py:50.",
+                "Also see router.py:60, handler.py:70, service.py:80,",
+                "auth.py:90, middleware.py:100, errors.py:110,",
+                "validator.py:120, serializer.py:130, cache.py:140,",
+                "db.py:150, queue.py:160, worker.py:170,",
+                "logger.py:180, monitor.py:190, health.py:200,",
+                "session.py:210, crypto.py:220, rate_limiter.py:230,",
+                "retry.py:240, circuit.py:250, fallback.py:260,",
+                "transform.py:270, pipeline.py:280, scheduler.py:290.",
+            ]
+            + [f"Detailed analysis line {i} covering implementation specifics." for i in range(200)],
+        )
+        (bundles_dir / "BUNDLE.core.md").write_text(rich_content)
+
+        hook = NarrativeQualityHook(output_dir=tmp_path)
+
+        class FakeEvent:
+            resume = None
+
+        event = FakeEvent()
+        hook._check_narrative_quality(event)
+        assert event.resume is None
+        assert hook._pass_count == 0
+
+    def test_increments_pass_count(self, tmp_path):
+        """Hook increments pass count on each enrichment trigger."""
+        bundles_dir = tmp_path / "bundles"
+        bundles_dir.mkdir()
+        (bundles_dir / "BUNDLE.api.md").write_text("Thin.")
+
+        hook = NarrativeQualityHook(output_dir=tmp_path)
+
+        class FakeEvent:
+            resume = None
+
+        event1 = FakeEvent()
+        hook._check_narrative_quality(event1)
+        assert hook._pass_count == 1
+
+        event2 = FakeEvent()
+        hook._check_narrative_quality(event2)
+        assert hook._pass_count == 2
+
+        # Third call should be blocked by budget
+        event3 = FakeEvent()
+        hook._check_narrative_quality(event3)
+        assert event3.resume is None
+        assert hook._pass_count == 2

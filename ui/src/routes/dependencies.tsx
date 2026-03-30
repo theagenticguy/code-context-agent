@@ -14,16 +14,7 @@ export const Route = createFileRoute('/dependencies')({
 })
 
 /** Edge types that represent dependency relationships (excludes structural 'contains' and correlation-based 'cochanges'/'similar_to'). */
-const DEP_EDGE_TYPES = new Set([
-  'imports',
-  'calls',
-  'inherits',
-  'implements',
-  'references',
-  'tests',
-  'type_reference',
-  'uses',
-])
+const DEP_EDGE_TYPES = new Set(['imports', 'calls', 'inherits', 'implements', 'references', 'tests'])
 
 interface TreeDatum {
   name: string

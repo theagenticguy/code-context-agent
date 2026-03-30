@@ -295,6 +295,9 @@ def viz(  # noqa: C901
             if self.path == "/api/stats" or self.path.startswith("/api/stats?"):
                 self._serve_graph_stats()
                 return
+            if self.path in {"/data/bundles/", "/data/bundles"}:
+                self._serve_bundle_listing()
+                return
             super().do_GET()
 
         def translate_path(self, path):
@@ -346,6 +349,23 @@ def viz(  # noqa: C901
                 self.wfile.write(body)
             except (KeyError, ValueError, OSError) as exc:
                 self.send_error(500, str(exc))
+
+        def _serve_bundle_listing(self) -> None:
+            """List bundle files in the bundles/ subdirectory as JSON array."""
+            import json
+
+            bundles_dir = agent_dir / "bundles"
+            if not bundles_dir.is_dir():
+                body = json.dumps([]).encode("utf-8")
+            else:
+                filenames = sorted(f.name for f in bundles_dir.iterdir() if f.is_file() and f.suffix == ".md")
+                body = json.dumps(filenames).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(body)
 
         def log_message(self, format, *args):
             pass  # Suppress request logs

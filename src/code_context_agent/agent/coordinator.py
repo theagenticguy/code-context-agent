@@ -90,7 +90,8 @@ def _get_coordinator_tools(analysis_tools: list[Any]) -> list[Any]:
     """Get ALL tools for the coordinator agent.
 
     Includes:
-    - 4 coordinator-specific tools (dispatch_team, read_team_findings, etc.)
+    - 6 coordinator-specific tools (dispatch_team, read_team_findings,
+      write_bundle, read_heuristic_summary, score_narrative, enrich_bundle)
     - All analysis tools (inherited by team agents via the swarm `tools` field)
 
     Args:
@@ -98,12 +99,22 @@ def _get_coordinator_tools(analysis_tools: list[Any]) -> list[Any]:
     """
     from ..tools.coordinator_tools import (
         dispatch_team,
+        enrich_bundle,
         read_heuristic_summary,
         read_team_findings,
+        score_narrative,
         write_bundle,
     )
 
-    return [dispatch_team, read_team_findings, write_bundle, read_heuristic_summary, *analysis_tools]
+    return [
+        dispatch_team,
+        read_team_findings,
+        write_bundle,
+        read_heuristic_summary,
+        score_narrative,
+        enrich_bundle,
+        *analysis_tools,
+    ]
 
 
 def create_coordinator_agent(

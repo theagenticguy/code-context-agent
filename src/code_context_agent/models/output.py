@@ -73,6 +73,17 @@ class CodeHealthMetrics(FrozenModel):
     code_smell_count: int = Field(ge=0, default=0)
 
 
+class PhaseTiming(FrozenModel):
+    """Timing data for an analysis phase."""
+
+    phase: int = Field(description="Phase number (1-based)")
+    name: str = Field(description="Phase name (e.g., 'indexing', 'team-structure', 'synthesis')")
+    start_offset_seconds: float = Field(ge=0.0, default=0.0, description="Seconds from analysis start")
+    duration_seconds: float = Field(ge=0.0, description="Phase duration in seconds")
+    tool_count: int = Field(ge=0, default=0, description="Number of tool calls in this phase")
+    status: str = Field(default="completed", description="Phase status")
+
+
 class Bundle(FrozenModel):
     """A narrative bundle about a specific codebase area."""
 
@@ -118,3 +129,8 @@ class AnalysisResult(FrozenModel):
         default_factory=list,
         description="Generated narrative bundles for codebase areas",
     )
+    phase_timings: list[PhaseTiming] = Field(
+        default_factory=list,
+        description="Timing data for each analysis phase",
+    )
+    analysis_mode: str = Field(default="standard", description="Analysis mode used")

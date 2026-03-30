@@ -155,6 +155,7 @@ def _setup_analysis_context(
         full_mode=full_mode,
         state=state,
         quiet=quiet,
+        output_dir=output,
     )
 
     # Create coordinator agent
@@ -338,6 +339,9 @@ async def run_analysis(
                 result_data = stream_result.structured_output.model_dump(mode="json")
             else:
                 result_data = stream_result.structured_output
+            # Inject analysis_mode from the runner context
+            if isinstance(result_data, dict):
+                result_data.setdefault("analysis_mode", context.mode)
             result_path.write_text(_json.dumps(result_data, indent=2, default=str))
             logger.info(f"Wrote analysis_result.json to {result_path}")
         except (OSError, TypeError, ValueError) as e:

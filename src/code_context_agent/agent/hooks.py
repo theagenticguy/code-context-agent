@@ -11,6 +11,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, ClassVar
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from ..consumer.state import AgentDisplayState
 
 from loguru import logger
@@ -62,6 +64,15 @@ _REASONING_PROMPTS: dict[str, str] = {
         "[REASONING CHECKPOINT] Now that you have read this code, compare what you see against "
         "what the graph metrics predicted. Does the code complexity match its structural importance? "
         "What domain invariants does this file maintain? What would break if it were changed naively?"
+    ),
+    "write_bundle": (
+        "[ENRICHMENT CHECKPOINT] Before writing the next bundle or finishing, review what you just wrote. "
+        "1) Does every claim have a file:line reference? "
+        "2) Did you cross-reference this area with findings from other teams? "
+        "3) What would a developer find surprising here that you haven't mentioned? "
+        "4) What cross-cutting concerns (error handling, logging, auth) span this area and others? "
+        "After writing each bundle, call score_narrative to evaluate quality. "
+        "If the score is below 3.5, call enrich_bundle and rewrite."
     ),
 }
 
@@ -417,11 +428,121 @@ class JsonLogHook(HookProvider):
             )
 
 
+class NarrativeQualityHook(HookProvider):
+    """Hook that triggers enrichment passes when narrative quality is below threshold.
+
+    After the coordinator finishes an invocation, checks if bundles exist and scores
+    them. If average quality is below threshold, triggers a re-invocation via
+    event.resume with enrichment instructions.
+
+    Max 2 enrichment passes to avoid infinite loops.
+    """
+
+    MAX_ENRICHMENT_PASSES = 2
+    QUALITY_THRESHOLD = 3.5  # Out of 5.0
+
+    def __init__(self, output_dir: Path | None = None) -> None:  # noqa: D107
+        self._pass_count = 0
+        self._output_dir = output_dir
+
+    def register_hooks(self, registry: HookRegistry, **kwargs: Any) -> None:
+        """Register narrative quality check callback."""
+        from strands.hooks.events import AfterInvocationEvent
+
+        registry.add_callback(AfterInvocationEvent, self._check_narrative_quality)
+
+    def _check_narrative_quality(self, event: Any, **kwargs: Any) -> None:
+        """Check bundle quality after coordinator invocation and trigger enrichment if needed."""
+        if self._pass_count >= self.MAX_ENRICHMENT_PASSES:
+            return  # Budget exhausted
+
+        if not self._output_dir:
+            return
+
+        bundles_dir = self._output_dir / "bundles"
+        if not bundles_dir.exists():
+            return
+
+        # Score all bundles
+        bundle_files = list(bundles_dir.glob("BUNDLE.*.md"))
+        if not bundle_files:
+            return
+
+        scores: list[float] = []
+        weak_bundles: list[tuple[str, float]] = []
+        for bf in bundle_files:
+            content = bf.read_text()
+            score = self._heuristic_score(content)
+            scores.append(score)
+            area = bf.stem.replace("BUNDLE.", "")
+            if score < self.QUALITY_THRESHOLD:
+                weak_bundles.append((area, score))
+
+        avg_score = sum(scores) / len(scores) if scores else 0.0
+
+        if avg_score >= self.QUALITY_THRESHOLD and not weak_bundles:
+            logger.info(f"Narrative quality check passed: avg={avg_score:.1f}/5.0")
+            return
+
+        # Trigger enrichment pass
+        self._pass_count += 1
+        weak_list = ", ".join(f"{a} ({s:.1f})" for a, s in weak_bundles)
+
+        event.resume = (
+            f"[ENRICHMENT PASS {self._pass_count}/{self.MAX_ENRICHMENT_PASSES}] "
+            f"Quality check: avg score {avg_score:.1f}/5.0. "
+            f"Weak bundles: {weak_list}. "
+            "For each weak bundle: "
+            "1) Call score_narrative(area) to get detailed dimension scores. "
+            "2) Call enrich_bundle(area, feedback) with the suggestions. "
+            "3) Rewrite the bundle via write_bundle with richer content. "
+            "4) Call score_narrative again to verify improvement. "
+            "Focus on adding file:line references, cross-cutting insights, and surprising findings."
+        )
+        logger.info(
+            f"Narrative enrichment pass {self._pass_count} triggered: "
+            f"avg={avg_score:.1f}, weak={len(weak_bundles)} bundles",
+        )
+
+    @staticmethod
+    def _heuristic_score(content: str) -> float:
+        """Quick heuristic score for a bundle (0.0-5.0).
+
+        Scores based on four dimensions:
+        - depth_score: Line count (longer = more detailed)
+        - spec_score: File:line references (specificity)
+        - struct_score: Heading count (structure)
+        - diag_score: Mermaid diagram count (visual aids)
+
+        Args:
+            content: Bundle markdown content.
+
+        Returns:
+            Score from 0.0 to 5.0.
+        """
+        import re
+
+        lines = content.split("\n")
+        line_count = len(lines)
+        file_refs = len(re.findall(r"\w+\.\w+:\d+", content))
+        headings = sum(1 for line in lines if line.startswith("## ") or line.startswith("### "))
+        mermaid = content.count("```mermaid")
+
+        # Simple scoring
+        depth_score = min(5.0, line_count / 40)
+        spec_score = min(5.0, file_refs / 5)
+        struct_score = min(5.0, headings / 2)
+        diag_score = min(5.0, mermaid * 2.5) if mermaid else 1.0
+
+        return (depth_score + spec_score + struct_score + diag_score) / 4
+
+
 def create_all_hooks(
     *,
     full_mode: bool = False,
     state: Any | None = None,
     quiet: bool = False,
+    output_dir: Path | None = None,
 ) -> list[HookProvider]:
     """Create all hook providers for agent guidance and display.
 
@@ -431,6 +552,8 @@ def create_all_hooks(
         full_mode: If True, include FailFastHook.
         state: AgentDisplayState for TUI display. None if quiet mode.
         quiet: If True, use JsonLogHook instead of display hooks.
+        output_dir: Output directory for narrative quality checks. None disables
+            NarrativeQualityHook scoring.
 
     Returns:
         List of HookProvider instances.
@@ -440,6 +563,7 @@ def create_all_hooks(
         OutputQualityHook(),
         ToolEfficiencyHook(),
         ReasoningCheckpointHook(),
+        NarrativeQualityHook(output_dir=output_dir),
     ]
     if full_mode:
         hooks.append(FailFastHook())

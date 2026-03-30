@@ -15,7 +15,7 @@ export interface AppState {
   graph: CodeGraph | null
   analysisResult: AnalysisResult | null
   narrative: string | null
-  bundle: string | null
+  bundles: Record<string, string>
   signatures: string | null
   filesList: string | null
 
@@ -33,7 +33,9 @@ export interface AppState {
   setGraph: (graph: CodeGraph) => void
   setAnalysisResult: (result: AnalysisResult) => void
   setNarrative: (text: string) => void
+  /** @deprecated Use setBundles instead. Stores as {"default": text} for backward compat. */
   setBundle: (text: string) => void
+  setBundles: (bundles: Record<string, string>) => void
   setSignatures: (text: string) => void
   setFilesList: (text: string) => void
   setLoading: (loading: boolean) => void
@@ -46,7 +48,7 @@ export const useStore = create<AppState>((set) => ({
   graph: null,
   analysisResult: null,
   narrative: null,
-  bundle: null,
+  bundles: {},
   signatures: null,
   filesList: null,
   nodeTypes: {},
@@ -65,7 +67,8 @@ export const useStore = create<AppState>((set) => ({
 
   setAnalysisResult: (result) => set({ analysisResult: result }),
   setNarrative: (text) => set({ narrative: text }),
-  setBundle: (text) => set({ bundle: text }),
+  setBundle: (text) => set({ bundles: { default: text } }),
+  setBundles: (bundles) => set({ bundles }),
   setSignatures: (text) => set({ signatures: text }),
   setFilesList: (text) => set({ filesList: text }),
   setLoading: (loading) => set({ isLoading: loading }),

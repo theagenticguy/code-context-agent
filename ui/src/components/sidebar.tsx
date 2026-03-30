@@ -17,7 +17,7 @@ const NAV_ITEMS = [
 function useViewHasData(id: string): boolean {
   const graph = useStore((s) => s.graph)
   const narrative = useStore((s) => s.narrative)
-  const bundle = useStore((s) => s.bundle)
+  const bundles = useStore((s) => s.bundles)
   const signatures = useStore((s) => s.signatures)
   const analysisResult = useStore((s) => s.analysisResult)
 
@@ -32,7 +32,7 @@ function useViewHasData(id: string): boolean {
     case 'narrative':
       return !!narrative
     case 'bundles':
-      return !!bundle
+      return Object.keys(bundles).length > 0
     case 'insights':
       return !!analysisResult
     case 'signatures':
