@@ -1,4 +1,10 @@
-## Unreleased
+## v10.2.0 (2026-03-30)
+
+### Feat
+
+- expand check command with full tool inventory and AWS credential validation (#29)
+
+## v10.1.0 (2026-03-30)
 
 ### Feat
 
