@@ -1,3 +1,9 @@
+## v10.1.0 (2026-03-30)
+
+### Feat
+
+- fix viz UI, enrich graph with semantic edges, add multi-pass narrative quality (#28)
+
 ## v10.0.1 (2026-03-29)
 
 ## v10.0.0 (2026-03-29)
