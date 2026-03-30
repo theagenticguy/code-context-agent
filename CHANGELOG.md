@@ -1,3 +1,9 @@
+## v10.3.0 (2026-03-30)
+
+### Feat
+
+- fix context overflow, TOC scroll, and add module zoom (#30)
+
 ## v10.2.0 (2026-03-30)
 
 ### Feat
