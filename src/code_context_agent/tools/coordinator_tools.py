@@ -7,6 +7,7 @@ Their docstrings encode all behavioral guidance so the coordinator prompt stays 
 from __future__ import annotations
 
 import json
+import re
 import time
 from pathlib import Path  # noqa: TC003 — used at runtime for _output_dir/_repo_path
 from typing import Any
@@ -457,3 +458,162 @@ def read_heuristic_summary() -> str:
             logger.warning(f"Failed to read index metadata: {e}")
 
     return json.dumps({"status": "error", "message": "No heuristic summary or index metadata found"})
+
+
+# ============================================================================
+# Tool 5: score_narrative
+# ============================================================================
+
+# Scoring thresholds: (upper_bound_exclusive, score) pairs evaluated in order.
+_SPECIFICITY_THRESHOLDS = [(5, 1.0), (10, 2.0), (20, 3.0), (30, 4.0)]
+_STRUCTURE_THRESHOLDS = [(3, 1.0), (5, 2.0), (8, 3.0), (11, 4.0)]
+_DEPTH_THRESHOLDS = [(20, 1.0), (50, 2.0), (100, 3.0), (200, 4.0)]
+_XREF_THRESHOLDS = [(3, 1.0), (8, 2.0), (15, 3.0), (25, 4.0)]
+
+_FILE_LINE_RE = re.compile(r"\w+\.\w+:\d+")
+_HEADING_RE = re.compile(r"^#{2,3}\s", re.MULTILINE)
+_MERMAID_RE = re.compile(r"```mermaid", re.IGNORECASE)
+# Match paths like src/foo/bar.py, ./utils/helpers.ts, foo_bar.rs — at least one slash.
+_FILE_PATH_RE = re.compile(r"(?:\.?/)?(?:[\w.-]+/)+[\w.-]+\.\w+")
+
+_REVISION_THRESHOLD = 3.5
+
+
+def _score_by_thresholds(count: int, thresholds: list[tuple[int, float]], max_score: float = 5.0) -> float:
+    """Return a score for *count* using ascending (upper_bound, score) thresholds."""
+    for upper, score in thresholds:
+        if count < upper:
+            return score
+    return max_score
+
+
+@tool
+def score_narrative(bundle_area: str) -> str:
+    """Score a narrative bundle's quality on multiple dimensions.
+
+    Call this after write_bundle to evaluate quality. If total score < 3.5,
+    call enrich_bundle to improve it.
+
+    Scoring dimensions (each 0.0-5.0):
+      - specificity: density of file:line references
+      - structure: number of markdown headings (## and ###)
+      - diagrams: presence of mermaid code blocks
+      - depth: total line count
+      - cross_references: unique file paths mentioned
+
+    Args:
+        bundle_area: The bundle area to score (e.g., 'auth', 'hotspots').
+
+    Returns:
+        JSON with area, per-dimension scores, total average, needs_revision flag, and suggestions.
+    """
+    bundle_path = _bundles_dir() / f"BUNDLE.{bundle_area}.md"
+    if not bundle_path.exists():
+        return json.dumps({"status": "error", "message": f"Bundle not found: {bundle_path}"})
+
+    content = bundle_path.read_text()
+
+    # --- Specificity: file:line references ---
+    file_line_count = len(_FILE_LINE_RE.findall(content))
+    specificity = _score_by_thresholds(file_line_count, _SPECIFICITY_THRESHOLDS)
+
+    # --- Structure: markdown headings ---
+    heading_count = len(_HEADING_RE.findall(content))
+    structure = _score_by_thresholds(heading_count, _STRUCTURE_THRESHOLDS)
+
+    # --- Diagrams: mermaid blocks ---
+    mermaid_count = len(_MERMAID_RE.findall(content))
+    if mermaid_count == 0:
+        diagrams = 1.0
+    elif mermaid_count == 1:
+        diagrams = 3.0
+    else:
+        diagrams = 5.0
+
+    # --- Depth: line count ---
+    line_count = len(content.splitlines())
+    depth = _score_by_thresholds(line_count, _DEPTH_THRESHOLDS)
+
+    # --- Cross-references: unique file paths ---
+    unique_paths = len(set(_FILE_PATH_RE.findall(content)))
+    cross_references = _score_by_thresholds(unique_paths, _XREF_THRESHOLDS)
+
+    scores = {
+        "specificity": specificity,
+        "structure": structure,
+        "diagrams": diagrams,
+        "depth": depth,
+        "cross_references": cross_references,
+    }
+    total = sum(scores.values()) / len(scores)
+    needs_revision = total < _REVISION_THRESHOLD
+
+    suggestions: list[str] = []
+    if specificity <= 2.0:
+        suggestions.append(f"Add more file:line references (currently {file_line_count}).")
+    if structure <= 2.0:
+        suggestions.append(f"Add more section headings for structure (currently {heading_count}).")
+    if diagrams <= 1.0:
+        suggestions.append("Add at least one mermaid diagram for call flow or architecture.")
+    if depth <= 2.0:
+        suggestions.append(f"Expand content depth (currently {line_count} lines).")
+    if cross_references <= 2.0:
+        suggestions.append(f"Cross-reference more files/modules (currently {unique_paths} unique paths).")
+
+    return json.dumps(
+        {
+            "area": bundle_area,
+            "scores": scores,
+            "total": round(total, 2),
+            "needs_revision": needs_revision,
+            "suggestions": suggestions,
+        },
+    )
+
+
+# ============================================================================
+# Tool 6: enrich_bundle
+# ============================================================================
+
+
+@tool
+def enrich_bundle(bundle_area: str, feedback: str) -> str:
+    """Read an existing bundle and prepare enrichment context.
+
+    Call this when score_narrative indicates revision needed (total < 3.5).
+    Returns the current bundle content together with the feedback so you
+    can rewrite it with improvements via write_bundle.
+
+    ENRICHMENT PATTERN (Chain-of-Density):
+      1. Call score_narrative to identify weak dimensions.
+      2. Call enrich_bundle with the suggestions as feedback.
+      3. Rewrite the bundle incorporating the feedback via write_bundle.
+      4. Optionally re-score to verify improvement.
+
+    Args:
+        bundle_area: The bundle area to enrich (e.g., 'auth', 'hotspots').
+        feedback: Specific feedback from score_narrative about what to improve.
+
+    Returns:
+        JSON with the current bundle content, line count, and the feedback for rewriting.
+    """
+    bundle_path = _bundles_dir() / f"BUNDLE.{bundle_area}.md"
+    if not bundle_path.exists():
+        return json.dumps({"status": "error", "message": f"Bundle not found: {bundle_path}"})
+
+    content = bundle_path.read_text()
+
+    return json.dumps(
+        {
+            "status": "ok",
+            "area": bundle_area,
+            "current_content": content,
+            "line_count": len(content.splitlines()),
+            "feedback": feedback,
+            "instruction": (
+                "Rewrite this bundle incorporating the feedback above. "
+                "Use write_bundle to save the improved version. "
+                "Preserve all existing accurate information while adding depth."
+            ),
+        },
+    )

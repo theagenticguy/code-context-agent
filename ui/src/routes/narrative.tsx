@@ -89,15 +89,18 @@ function NarrativeView() {
         <h2 className="font-heading text-sm uppercase tracking-wide text-fg/50 mb-3">Contents</h2>
         <nav className="space-y-1">
           {toc.map((entry) => (
-            <a
+            <button
+              type="button"
               key={entry.id}
-              href={`#${entry.id}`}
-              className={`block text-sm font-base truncate-line hover:text-main transition-colors ${
+              onClick={() => {
+                document.getElementById(entry.id)?.scrollIntoView({ behavior: 'smooth' })
+              }}
+              className={`block text-left text-sm font-base truncate-line hover:text-main transition-colors ${
                 entry.level === 3 ? 'pl-4 text-fg/60' : 'text-fg/80'
               }`}
             >
               {entry.text}
-            </a>
+            </button>
           ))}
         </nav>
       </aside>

@@ -7,12 +7,20 @@ This module provides functions to ingest outputs from:
 - Test file mappings
 """
 
+from __future__ import annotations
+
+import itertools
+import posixpath
+import random
 import re
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import unquote, urlparse
 
 from .model import CodeEdge, CodeNode, EdgeType, NodeType, lsp_kind_to_node_type
+
+if TYPE_CHECKING:
+    from .model import CodeGraph
 
 
 def _uri_to_path(uri: str) -> str:
@@ -726,5 +734,317 @@ def ingest_clone_results(
                 },
             ),
         )
+
+    return edges
+
+
+def ingest_static_imports(
+    import_map: dict[str, list[dict[str, str]]],
+    all_files: set[str],
+) -> list[CodeEdge]:
+    """Create IMPORTS edges between FILE nodes based on statically parsed import statements.
+
+    Resolves imported module names to file paths within the repository and creates
+    FILE-to-FILE IMPORTS edges for each successful resolution.
+
+    Args:
+        import_map: Mapping of ``{relative_file_path: [{"module": "dotted.module.name",
+            "statement": "from X import Y"}]}``.
+        all_files: Set of all relative file paths in the repository (for fast lookups).
+
+    Returns:
+        List of CodeEdge objects with ``EdgeType.IMPORTS`` between FILE nodes.
+    """
+    edges: list[CodeEdge] = []
+    seen: set[tuple[str, str]] = set()
+
+    for source_file, imports in import_map.items():
+        for imp in imports:
+            module = imp.get("module", "")
+            statement = imp.get("statement", "")
+            if not module:
+                continue
+
+            # Resolve relative imports for Python
+            if module.startswith("."):
+                resolved = _resolve_relative_import(source_file, module)
+                if resolved is None:
+                    continue
+                module = resolved
+
+            target_file = _resolve_module_to_file(module, source_file, all_files)
+            if target_file is None or target_file == source_file:
+                continue
+
+            pair = (source_file, target_file)
+            if pair in seen:
+                continue
+            seen.add(pair)
+
+            edges.append(
+                CodeEdge(
+                    source=source_file,
+                    target=target_file,
+                    edge_type=EdgeType.IMPORTS,
+                    confidence=0.90,
+                    metadata={
+                        "source": "static_import",
+                        "import_statement": statement,
+                    },
+                ),
+            )
+
+    return edges
+
+
+def _resolve_relative_import(source_file: str, module: str) -> str | None:
+    """Resolve a Python relative import to an absolute dotted module path.
+
+    Args:
+        source_file: Relative path of the importing file (e.g. ``src/pkg/sub/foo.py``).
+        module: Relative import module string (e.g. ``..bar`` or ``.utils``).
+
+    Returns:
+        Absolute dotted module path, or ``None`` if unresolvable.
+    """
+    # Count leading dots
+    dots = 0
+    for ch in module:
+        if ch == ".":
+            dots += 1
+        else:
+            break
+
+    remainder = module[dots:]
+
+    # Determine the package path of the source file
+    source = Path(source_file)
+    # Start from the parent directory of the source file
+    package_parts = list(source.parent.parts)
+
+    # Go up ``dots - 1`` levels (one dot = current package, two dots = parent, etc.)
+    levels_up = dots - 1
+    if levels_up > len(package_parts):
+        return None
+    if levels_up > 0:
+        package_parts = package_parts[:-levels_up]
+
+    if remainder:
+        package_parts.append(remainder)
+
+    return ".".join(package_parts)
+
+
+def _resolve_module_to_file(
+    module: str,
+    source_file: str,
+    all_files: set[str],
+) -> str | None:
+    """Resolve a dotted module name to a relative file path in the repository.
+
+    Tries common file-path conventions for Python and JS/TS modules.
+
+    Args:
+        module: Dotted or path-based module name.
+        source_file: The importing file (used to detect language).
+        all_files: Set of all relative file paths for fast membership tests.
+
+    Returns:
+        Relative file path if resolved, ``None`` otherwise.
+    """
+    source_ext = Path(source_file).suffix.lower()
+
+    if source_ext == ".py":
+        return _resolve_python_module(module, all_files)
+    if source_ext in {".ts", ".tsx", ".js", ".jsx"}:
+        return _resolve_js_module(module, source_file, all_files)
+    return None
+
+
+def _resolve_python_module(module: str, all_files: set[str]) -> str | None:
+    """Resolve a Python dotted module to a file path.
+
+    Tries ``module/path.py`` and ``module/path/__init__.py``.
+
+    Args:
+        module: Dotted Python module name.
+        all_files: Set of relative file paths.
+
+    Returns:
+        Matching relative file path or ``None``.
+    """
+    parts = module.replace(".", "/")
+
+    # Try direct module file: a.b.c -> a/b/c.py
+    candidate = f"{parts}.py"
+    if candidate in all_files:
+        return candidate
+
+    # Try package init: a.b.c -> a/b/c/__init__.py
+    candidate = f"{parts}/__init__.py"
+    if candidate in all_files:
+        return candidate
+
+    return None
+
+
+def _resolve_js_module(module: str, source_file: str, all_files: set[str]) -> str | None:
+    """Resolve a JS/TS import specifier to a file path.
+
+    Handles relative paths (``./foo``, ``../bar``) common in JS/TS projects.
+    Does not resolve bare specifiers (npm packages).
+
+    Args:
+        module: Import specifier (e.g. ``./utils``, ``../components/Button``).
+        source_file: The importing file path (for resolving relative paths).
+        all_files: Set of relative file paths.
+
+    Returns:
+        Matching relative file path or ``None``.
+    """
+    # Only resolve relative imports (starting with . or ..)
+    if not module.startswith("."):
+        return None
+
+    # Resolve relative to the importing file's directory and normalize ../
+    source_dir = Path(source_file).parent
+    resolved = (source_dir / module).as_posix()
+    normalized = posixpath.normpath(resolved)
+
+    # JS/TS extension candidates
+    extensions = [".ts", ".tsx", ".js", ".jsx"]
+    index_files = ["index.ts", "index.tsx", "index.js", "index.jsx"]
+
+    # Try exact path (already has extension)
+    if normalized in all_files:
+        return normalized
+
+    # Try adding extensions
+    for ext in extensions:
+        candidate = f"{normalized}{ext}"
+        if candidate in all_files:
+            return candidate
+
+    # Try as directory with index file
+    for index in index_files:
+        candidate = f"{normalized}/{index}"
+        if candidate in all_files:
+            return candidate
+
+    return None
+
+
+def create_file_bridge_nodes(
+    graph: CodeGraph,
+) -> tuple[list[CodeNode], list[CodeEdge]]:
+    """Create FILE nodes for each source file and CONTAINS edges to child symbols.
+
+    Bridges the file-path/symbol-ID namespace gap so that git co-change,
+    test mapping, and clone detection edges (which use raw file paths as
+    node IDs) connect to the symbol subgraph (which uses
+    ``file_path:symbol_name:line`` IDs).
+
+    For each unique ``file_path`` found in existing symbol nodes, creates a
+    FILE node whose ID is the raw file path (matching the format used by
+    ``ingest_test_mapping``, ``ingest_git_cochanges``, and
+    ``ingest_clone_results``), then adds a CONTAINS edge from that FILE node
+    to every symbol node in the file.
+
+    Args:
+        graph: The CodeGraph to read existing nodes from.
+
+    Returns:
+        Tuple of (file_nodes, contains_edges) that were created.
+    """
+    # Collect symbol nodes grouped by their file_path attribute.
+    # Skip nodes that are already FILE type (e.g. from git hotspots).
+    file_to_symbols: dict[str, list[str]] = {}
+    for node_id, data in graph.nodes(data=True):
+        node_type = data.get("node_type", "")
+        file_path = data.get("file_path", "")
+        if not file_path or node_type == NodeType.FILE.value:
+            continue
+        file_to_symbols.setdefault(file_path, []).append(node_id)
+
+    nodes: list[CodeNode] = []
+    edges: list[CodeEdge] = []
+
+    for file_path, symbol_ids in file_to_symbols.items():
+        # Only create a FILE node if one doesn't already exist for this path
+        # (git hotspots may have already created one).
+        if not graph.has_node(file_path):
+            nodes.append(
+                CodeNode(
+                    id=file_path,
+                    name=Path(file_path).name,
+                    node_type=NodeType.FILE,
+                    file_path=file_path,
+                    line_start=0,
+                    line_end=0,
+                    metadata={"source": "file_bridge"},
+                ),
+            )
+
+        for symbol_id in symbol_ids:
+            edges.append(
+                CodeEdge(
+                    source=file_path,
+                    target=symbol_id,
+                    edge_type=EdgeType.CONTAINS,
+                    confidence=0.95,
+                    metadata={"source": "file_bridge"},
+                ),
+            )
+
+    return nodes, edges
+
+
+# Maximum category group size before representative sampling kicks in.
+_MAX_CATEGORY_GROUP = 20
+
+
+def create_category_edges(graph: CodeGraph) -> list[CodeEdge]:
+    """Create SIMILAR_TO edges between nodes sharing the same AST-grep category.
+
+    Groups PATTERN_MATCH nodes by their category metadata and creates edges
+    between all pairs in each category group. Uses a representative sampling
+    strategy to avoid quadratic edge explosion for large categories.
+
+    Args:
+        graph: CodeGraph with PATTERN_MATCH nodes that have category metadata.
+
+    Returns:
+        List of created CodeEdge instances.
+    """
+    # Group nodes by category
+    category_groups: dict[str, list[str]] = {}
+    for node_id, data in graph.nodes(data=True):
+        category = data.get("category")
+        if category:
+            category_groups.setdefault(category, []).append(node_id)
+
+    edges: list[CodeEdge] = []
+
+    for category, node_ids in category_groups.items():
+        if len(node_ids) < 2:
+            continue
+
+        # Sample representative nodes for large groups
+        if len(node_ids) > _MAX_CATEGORY_GROUP:
+            sampled = random.Random(42).sample(node_ids, _MAX_CATEGORY_GROUP)  # noqa: S311
+        else:
+            sampled = node_ids
+
+        for source, target in itertools.combinations(sampled, 2):
+            edges.append(
+                CodeEdge(
+                    source=source,
+                    target=target,
+                    edge_type=EdgeType.SIMILAR_TO,
+                    weight=0.8,
+                    confidence=0.70,
+                    metadata={"source": "category", "category": category},
+                ),
+            )
 
     return edges

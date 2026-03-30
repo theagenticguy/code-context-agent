@@ -21,11 +21,14 @@ from loguru import logger
 
 from code_context_agent.config import DEFAULT_OUTPUT_DIR, get_settings
 from code_context_agent.tools.graph.adapters import (
+    create_category_edges,
+    create_file_bridge_nodes,
     ingest_astgrep_rule_pack,
     ingest_clone_results,
     ingest_git_cochanges,
     ingest_git_hotspots,
     ingest_lsp_symbols,
+    ingest_static_imports,
     ingest_test_mapping,
 )
 from code_context_agent.tools.graph.frameworks import detect_frameworks
@@ -97,8 +100,17 @@ async def build_index(
     # Step 3: LSP symbols (if available)
     await _ingest_lsp_symbols(graph, repo, lang_files, quiet)
 
+    # Step 3a: File bridge nodes (connect file-path namespace to symbol namespace)
+    _create_file_bridge(graph, quiet)
+
     # Step 4: AST-grep rule packs
     _ingest_astgrep(graph, repo, lang_files, quiet)
+
+    # Step 4a: Static import parsing (FILE→FILE IMPORTS edges)
+    _ingest_static_imports(graph, repo, files, lang_files, quiet)
+
+    # Step 4b: Category-based semantic edges (SIMILAR_TO between same-category PATTERN_MATCH nodes)
+    _ingest_category_edges(graph, quiet)
 
     # Step 5: Git analysis
     _ingest_git(graph, repo, quiet)
@@ -122,6 +134,9 @@ async def build_index(
 
     # Step 11: BM25 index prebuild
     _prebuild_bm25(files, repo, quiet)
+
+    # Step 11a: Semantic embedding enrichment (optional, adds SIMILAR_TO edges)
+    _run_semantic_enrichment(graph, repo, out, files, quiet)
 
     # Step 12: Save graph
     graph_path = out / "code_graph.json"
@@ -277,6 +292,24 @@ async def _ingest_lsp_symbols(  # noqa: C901
         logger.debug(f"LSP shutdown error: {e}")
 
 
+def _create_file_bridge(graph: CodeGraph, quiet: bool) -> None:
+    """Create FILE bridge nodes linking file-path IDs to symbol-level IDs.
+
+    Git co-change, test mapping, and clone detection edges use raw file paths
+    as node IDs, while LSP symbols use ``file_path:symbol_name:line``.  This
+    step creates a FILE node per source file and CONTAINS edges to every child
+    symbol, bridging the two namespaces so the graph is fully connected.
+    """
+    nodes, edges = create_file_bridge_nodes(graph)
+    for node in nodes:
+        graph.add_node(node)
+    for edge in edges:
+        graph.add_edge(edge)
+
+    if not quiet:
+        logger.info(f"File bridge: {len(nodes)} FILE nodes, {len(edges)} CONTAINS edges")
+
+
 def _ingest_astgrep(  # noqa: C901
     graph: CodeGraph,
     repo: Path,
@@ -343,6 +376,191 @@ def _ingest_astgrep(  # noqa: C901
 
                 if not quiet:
                     logger.info(f"ast-grep {pack_name}: {total_count} matches in {len(matches_by_rule)} rules")
+
+
+def _ingest_category_edges(graph: CodeGraph, quiet: bool) -> None:
+    """Create SIMILAR_TO edges between PATTERN_MATCH nodes sharing the same category."""
+    edges = create_category_edges(graph)
+    for edge in edges:
+        graph.add_edge(edge)
+
+    if not quiet and edges:
+        logger.info(f"Category edges: {len(edges)} SIMILAR_TO edges")
+
+
+def _ingest_static_imports(  # noqa: C901
+    graph: CodeGraph,
+    repo: Path,
+    files: list[str],
+    lang_files: dict[str, list[str]],
+    quiet: bool,
+) -> None:
+    """Parse import statements via ripgrep and create FILE→FILE IMPORTS edges.
+
+    Uses ``rg`` to find import/require lines, then resolves each imported module
+    to a file path in the repository. Only creates edges where both the source
+    and target FILE nodes exist (or exist in the file list).
+    """
+    if shutil.which("rg") is None:
+        logger.debug("ripgrep not found -- skipping static import parsing")
+        return
+
+    all_files = set(files)
+    import_map: dict[str, list[dict[str, str]]] = {}
+
+    # --- Python imports ---
+    if "py" in lang_files:
+        py_imports = _rg_python_imports(repo)
+        for file_path, raw_imports in py_imports.items():
+            for stmt, module in raw_imports:
+                import_map.setdefault(file_path, []).append({"module": module, "statement": stmt})
+
+    # --- JS/TS imports ---
+    if "ts" in lang_files:
+        js_imports = _rg_js_imports(repo)
+        for file_path, raw_imports in js_imports.items():
+            for stmt, module in raw_imports:
+                import_map.setdefault(file_path, []).append({"module": module, "statement": stmt})
+
+    if not import_map:
+        return
+
+    edges = ingest_static_imports(import_map, all_files)
+    for edge in edges:
+        graph.add_edge(edge)
+
+    if not quiet:
+        logger.info(f"Static imports: {len(edges)} IMPORTS edges from {len(import_map)} files")
+
+
+# Python import regex patterns
+_PY_FROM_IMPORT = re.compile(r"^from\s+([\w.]+)\s+import\s+")
+_PY_IMPORT = re.compile(r"^import\s+([\w.]+)")
+_PY_FROM_RELATIVE = re.compile(r"^from\s+(\.+[\w.]*)\s+import\s+")
+
+# JS/TS import regex patterns
+_JS_IMPORT_FROM = re.compile(r"""import\s+.*?\s+from\s+['"]([^'"]+)['"]""")
+_JS_REQUIRE = re.compile(r"""require\s*\(\s*['"]([^'"]+)['"]\s*\)""")
+
+
+def _parse_python_import_line(line_text: str) -> str | None:
+    """Extract the module name from a single Python import line.
+
+    Args:
+        line_text: A stripped line of Python source code.
+
+    Returns:
+        The dotted module name, or ``None`` if no import pattern matched.
+    """
+    for pattern in (_PY_FROM_RELATIVE, _PY_FROM_IMPORT, _PY_IMPORT):
+        m = pattern.match(line_text)
+        if m:
+            return m.group(1)
+    return None
+
+
+def _rg_python_imports(repo: Path) -> dict[str, list[tuple[str, str]]]:
+    """Use ripgrep to find Python import statements and parse them.
+
+    Returns:
+        Mapping of ``{relative_file_path: [(raw_statement, dotted_module), ...]}``.
+    """
+    try:
+        result = subprocess.run(
+            ["rg", "-n", r"^(?:from|import)\s+", "--type", "py", "--json"],
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError) as e:
+        logger.debug(f"rg Python imports failed: {e}")
+        return {}
+
+    imports: dict[str, list[tuple[str, str]]] = {}
+    if not result.stdout:
+        return imports
+
+    for line in result.stdout.strip().splitlines():
+        if not line:
+            continue
+        try:
+            data = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+
+        if data.get("type") != "match":
+            continue
+
+        match_data = data.get("data", {})
+        file_path = match_data.get("path", {}).get("text", "")
+        line_text = match_data.get("lines", {}).get("text", "").strip()
+
+        if not file_path or not line_text:
+            continue
+
+        module = _parse_python_import_line(line_text)
+        if module:
+            imports.setdefault(file_path, []).append((line_text, module))
+
+    return imports
+
+
+def _rg_js_imports(repo: Path) -> dict[str, list[tuple[str, str]]]:
+    """Use ripgrep to find JS/TS import/require statements and parse them.
+
+    Returns:
+        Mapping of ``{relative_file_path: [(raw_statement, module_specifier), ...]}``.
+    """
+    try:
+        result = subprocess.run(
+            ["rg", "-n", r"(?:import\s+|require\s*\()", "--type", "ts", "--type", "js", "--json"],
+            cwd=str(repo),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError) as e:
+        logger.debug(f"rg JS/TS imports failed: {e}")
+        return {}
+
+    imports: dict[str, list[tuple[str, str]]] = {}
+    if not result.stdout:
+        return imports
+
+    for line in result.stdout.strip().splitlines():
+        if not line:
+            continue
+        try:
+            data = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+
+        if data.get("type") != "match":
+            continue
+
+        match_data = data.get("data", {})
+        file_path = match_data.get("path", {}).get("text", "")
+        line_text = match_data.get("lines", {}).get("text", "").strip()
+
+        if not file_path or not line_text:
+            continue
+
+        # Try `import ... from '...'`
+        m = _JS_IMPORT_FROM.search(line_text)
+        if m:
+            module = m.group(1)
+            imports.setdefault(file_path, []).append((line_text, module))
+            continue
+
+        # Try `require('...')`
+        m = _JS_REQUIRE.search(line_text)
+        if m:
+            module = m.group(1)
+            imports.setdefault(file_path, []).append((line_text, module))
+            continue
+
+    return imports
 
 
 def _ingest_git(graph: CodeGraph, repo: Path, quiet: bool) -> None:  # noqa: C901
@@ -640,6 +858,34 @@ def _prebuild_bm25(files: list[str], repo: Path, quiet: bool) -> None:
             logger.info(f"BM25 index: {len(files)} files indexed")
     except Exception as e:  # noqa: BLE001
         logger.debug(f"BM25 prebuild failed: {e}")
+
+
+def _run_semantic_enrichment(graph: CodeGraph, repo: Path, out: Path, files: list[str], quiet: bool) -> None:
+    """Step 11a: Run semantic embedding enrichment (optional).
+
+    Chunks source code at function/method level via tree-sitter, embeds via
+    Voyage Code 3 or Bedrock Cohere Embed 4, builds cosine similarity edges,
+    and runs community detection. Adds SIMILAR_TO edges to the graph.
+
+    This step is entirely optional -- if dependencies are missing, API keys
+    are not configured, or embedding_enabled is False, it is silently skipped.
+    """
+    settings = get_settings()
+    if not settings.embedding_enabled:
+        if not quiet:
+            logger.info("Semantic enrichment disabled (embedding_enabled=False)")
+        return
+
+    try:
+        from code_context_agent.tools.graph.embeddings import run_semantic_enrichment
+
+        edge_count = run_semantic_enrichment(graph, repo, out, files, settings)
+        if not quiet and edge_count:
+            logger.info(f"Semantic enrichment: {edge_count} SIMILAR_TO edges added")
+    except ImportError as e:
+        logger.warning(f"Semantic enrichment unavailable (missing dependency): {e}")
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"Semantic enrichment failed (non-fatal): {e}")
 
 
 def _write_index_metadata(

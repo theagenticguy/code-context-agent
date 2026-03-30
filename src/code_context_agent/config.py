@@ -166,6 +166,32 @@ class Settings(BaseSettings):
         description="Reasoning effort level for --full mode (default: 'max', Opus 4.6 only)",
     )
 
+    # Semantic embedding enrichment
+    embedding_enabled: bool = Field(
+        default=True,
+        description="Enable semantic embedding enrichment during indexing (tree-sitter + Voyage/Bedrock)",
+    )
+    embedding_model: str = Field(
+        default="amazon.titan-embed-text-v2:0",
+        description="Bedrock model ID for embeddings (Titan V2 primary, Cohere Embed 4 fallback)",
+    )
+    embedding_similarity_threshold: float = Field(
+        default=0.75,
+        ge=0.5,
+        le=0.99,
+        description="Minimum cosine similarity to create a SIMILAR_TO edge from embeddings",
+    )
+    embedding_cache_enabled: bool = Field(
+        default=True,
+        description="Cache embeddings by content hash to avoid re-embedding unchanged code",
+    )
+    embedding_max_chunk_tokens: int = Field(
+        default=500,
+        ge=50,
+        le=8000,
+        description="Maximum tokens per code chunk for embedding",
+    )
+
     # Graph storage backend
     graph_backend: str = Field(
         default="networkx",

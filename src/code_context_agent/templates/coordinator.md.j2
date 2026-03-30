@@ -31,3 +31,26 @@ Produce:
 Use `read_heuristic_summary` for the full data, then `dispatch_team` to send
 specialist teams. After teams finish, use `read_team_findings` to consolidate,
 then `write_bundle` to produce output.
+
+{# ── Tool orchestration and rules ── #}
+{% include "partials/_rules.md.j2" %}
+
+{# ── Analysis tool guidance ── #}
+{% include "partials/_code_graph.md.j2" %}
+{% include "partials/_git_history.md.j2" %}
+{% include "partials/_astgrep.md.j2" %}
+
+{# ── Quality and reasoning ── #}
+{% include "partials/_synthesis.md.j2" %}
+{% include "partials/_reasoning.md.j2" %}
+{% include "partials/_business_logic.md.j2" %}
+
+{# ── Output formatting ── #}
+{% include "partials/_output_format.md.j2" %}
+
+{# ── Steering directives ── #}
+{% include "steering/_conciseness.md.j2" %}
+{% include "steering/_anti_patterns.md.j2" %}
+{% include "steering/_size_limits.md.j2" %}
+{% include "steering/_tool_efficiency.md.j2" %}
+{% include "steering/_graph_exploration.md.j2" %}
