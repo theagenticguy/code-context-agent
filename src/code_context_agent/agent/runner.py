@@ -221,6 +221,8 @@ async def _execute_analysis(
     Returns:
         StreamResult with execution details
     """
+    from strands.types.exceptions import ContextWindowOverflowException
+
     start_time = time.monotonic()
     error_message: str | None = None
     structured_output = None
@@ -234,6 +236,13 @@ async def _execute_analysis(
 
         status, error_message, structured_output = await _run_coordinator(context.coordinator, prompt)
 
+    except ContextWindowOverflowException:
+        logger.error("Context window overflow: conversation exceeded model limits after compaction")
+        error_message = (
+            "Analysis exceeded the model's context window. "
+            "Try narrowing the focus area or using standard mode instead of --full."
+        )
+        status = "error"
     except Exception as e:  # noqa: BLE001
         import traceback
 

@@ -57,6 +57,7 @@ function NarrativeView() {
   const narrative = useStore((s) => s.narrative)
   const theme = useStore((s) => s.theme)
   const contentRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   const toc = useMemo(() => (narrative ? buildToc(narrative) : []), [narrative])
   const html = useMemo(() => (narrative ? (marked.parse(narrative) as string) : ''), [narrative])
@@ -93,7 +94,13 @@ function NarrativeView() {
               type="button"
               key={entry.id}
               onClick={() => {
-                document.getElementById(entry.id)?.scrollIntoView({ behavior: 'smooth' })
+                const el = document.getElementById(entry.id)
+                const container = scrollContainerRef.current
+                if (el && container) {
+                  const offset =
+                    container.scrollTop + el.getBoundingClientRect().top - container.getBoundingClientRect().top - 20
+                  container.scrollTo({ top: offset, behavior: 'smooth' })
+                }
               }}
               className={`block text-left text-sm font-base truncate-line hover:text-main transition-colors ${
                 entry.level === 3 ? 'pl-4 text-fg/60' : 'text-fg/80'
@@ -106,7 +113,7 @@ function NarrativeView() {
       </aside>
 
       {/* Main content */}
-      <div className="flex-1 overflow-auto p-6 lg:p-10">
+      <div ref={scrollContainerRef} className="flex-1 overflow-auto p-6 lg:p-10">
         <div ref={contentRef} className="prose max-w-none font-base" dangerouslySetInnerHTML={{ __html: html }} />
       </div>
     </div>
