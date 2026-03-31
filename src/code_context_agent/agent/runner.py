@@ -135,6 +135,8 @@ def _setup_analysis_context(
     # Override execution bounds for full mode
     full_mode = mode in ("full", "full+focus")
     if full_mode:
+        team_exec_timeout = settings.full_team_execution_timeout
+        team_node_timeout = settings.full_team_node_timeout
         settings = settings.model_copy(
             update={
                 "agent_max_duration": settings.full_max_duration,
@@ -142,6 +144,9 @@ def _setup_analysis_context(
                 "lsp_max_files": 50_000,
             },
         )
+    else:
+        team_exec_timeout = settings.team_execution_timeout
+        team_node_timeout = settings.team_node_timeout
 
     max_duration = settings.agent_max_duration
 
@@ -166,6 +171,8 @@ def _setup_analysis_context(
         output_dir=output,
         focus=focus,
         hooks=hooks,
+        team_execution_timeout=team_exec_timeout,
+        team_node_timeout=team_node_timeout,
     )
 
     # Start Rich Live display if not quiet

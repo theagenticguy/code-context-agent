@@ -499,7 +499,7 @@ class CodeAnalyzer:
         unused.sort(key=lambda x: (x["file_path"], x.get("line_start", 0)))
         return unused
 
-    def find_refactoring_candidates(self, top_k: int = 10) -> list[dict[str, Any]]:  # noqa: C901
+    def find_refactoring_candidates(self, top_k: int = 10) -> list[dict[str, Any]]:
         """Identify refactoring opportunities by combining multiple signals.
 
         Combines:
@@ -683,7 +683,7 @@ class CodeAnalyzer:
             "affected_nodes": affected_nodes,
         }
 
-    def diff_impact(  # noqa: C901
+    def diff_impact(
         self,
         changed_files: list[dict[str, Any]],
         max_depth: int = 3,
@@ -793,7 +793,7 @@ class CodeAnalyzer:
             "suggested_tests": suggested_tests,
         }
 
-    def trace_execution_flows(  # noqa: C901, PLR0915
+    def trace_execution_flows(
         self,
         max_depth: int = 8,
         min_flow_length: int = 3,

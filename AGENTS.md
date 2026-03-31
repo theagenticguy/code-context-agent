@@ -269,6 +269,10 @@ All env vars use the `CODE_CONTEXT_` prefix:
 | `CODE_CONTEXT_AGENT_MAX_DURATION` | `1200` | Standard mode: 20 min default |
 | `CODE_CONTEXT_FULL_MAX_TURNS` | `3000` | Full mode max agent turns |
 | `CODE_CONTEXT_FULL_MAX_DURATION` | `3600` | Full mode: 60 min default |
+| `CODE_CONTEXT_TEAM_EXECUTION_TIMEOUT` | `900` | Max seconds per team swarm (standard) |
+| `CODE_CONTEXT_TEAM_NODE_TIMEOUT` | `900` | Max seconds per agent node in team (standard) |
+| `CODE_CONTEXT_FULL_TEAM_EXECUTION_TIMEOUT` | `2400` | Max seconds per team swarm (full) |
+| `CODE_CONTEXT_FULL_TEAM_NODE_TIMEOUT` | `1800` | Max seconds per agent node in team (full) |
 | `CODE_CONTEXT_CONTEXT7_ENABLED` | `true` | Requires npx |
 | `CODE_CONTEXT_GRAPH_BACKEND` | `networkx` | `networkx` or `kuzu` (KuzuDB persistent graph) |
 | `CODE_CONTEXT_OTEL_DISABLED` | `true` | Avoids context detachment errors |

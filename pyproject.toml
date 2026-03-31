@@ -116,7 +116,7 @@ max-complexity = 10  # Enforce complexity limit after refactoring
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["D", "S101", "ARG", "PLR2004"]
 "**/__init__.py" = ["F401", "RUF022"]  # Allow unused imports and unsorted __all__ in init files
-"src/code_context_agent/tools/**/*.py" = ["PLR2004", "PLR0911", "PLR0912", "SIM102", "SIM108"]  # Allow magic numbers and dispatcher patterns in tools
+"src/code_context_agent/tools/**/*.py" = ["PLR2004", "PLR0911", "PLR0912", "PLR0915", "C901", "SIM102", "SIM108"]  # Allow magic numbers, complexity, and dispatcher patterns in tools
 
 [tool.ruff.format]
 quote-style = "double"

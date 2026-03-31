@@ -109,7 +109,7 @@ def code_graph_create(
 
 
 @tool
-def code_graph_ingest_lsp(  # noqa: C901
+def code_graph_ingest_lsp(
     graph_id: str,
     lsp_result: str,
     result_type: str,
@@ -568,7 +568,7 @@ def code_graph_ingest_tests(
 
 
 @tool
-def code_graph_analyze(  # noqa: C901
+def code_graph_analyze(
     graph_id: str,
     analysis_type: str,
     top_k: int = 10,
@@ -804,7 +804,7 @@ def code_graph_analyze(  # noqa: C901
 
 
 @tool
-def code_graph_explore(  # noqa: C901
+def code_graph_explore(
     graph_id: str,
     action: str,
     node_id: str = "",

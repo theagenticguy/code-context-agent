@@ -19,7 +19,7 @@ RULES_DIR = Path(__file__).parent.parent / "rules"
 
 
 @tool
-def astgrep_scan(  # noqa: C901
+def astgrep_scan(
     language: str,
     pattern: str,
     repo_path: str,
@@ -147,7 +147,7 @@ def astgrep_scan(  # noqa: C901
 
 
 @tool
-def astgrep_scan_rule_pack(  # noqa: C901
+def astgrep_scan_rule_pack(
     rule_pack: str,
     repo_path: str,
     include_globs: list[str] | None = None,
@@ -290,7 +290,7 @@ def astgrep_scan_rule_pack(  # noqa: C901
 
 
 @tool
-def astgrep_inline_rule(  # noqa: C901
+def astgrep_inline_rule(
     language: str,
     rule_yaml: str,
     repo_path: str,

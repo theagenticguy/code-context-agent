@@ -201,7 +201,7 @@ def repomix_orientation(
 
 
 @tool
-def repomix_bundle(  # noqa: C901
+def repomix_bundle(
     file_list_path: str,
     output_path: str,
     compress: bool = True,
@@ -756,7 +756,7 @@ def repomix_split_bundle(
     )
 
 
-def _rg_count(  # noqa: C901
+def _rg_count(
     pattern: str,
     repo: Path,
     *,
@@ -824,7 +824,7 @@ def _rg_count(  # noqa: C901
 
 
 @tool
-def rg_search(  # noqa: C901
+def rg_search(
     pattern: str,
     repo_path: str,
     glob: str | None = None,
