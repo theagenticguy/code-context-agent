@@ -1,3 +1,9 @@
+## v0.2.1 (2026-03-31)
+
+### Fix
+
+- wire team swarm timeouts to config and scale with analysis mode
+
 ## v0.2.0 (2026-03-31)
 
 ### Feat
