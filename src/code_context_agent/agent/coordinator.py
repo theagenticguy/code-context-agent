@@ -39,7 +39,7 @@ def _create_model() -> BedrockModel:
         model_id=settings.model_id,
         region_name=settings.region,
         temperature=settings.temperature,
-        boto_client_config=BotoConfig(read_timeout=600, retries={"max_attempts": 3, "mode": "adaptive"}),
+        boto_client_config=BotoConfig(read_timeout=600, retries={"max_attempts": 10, "mode": "adaptive"}),
         additional_request_fields={
             "thinking": {"type": "adaptive"},
             "output_config": {"effort": settings.full_reasoning_effort},

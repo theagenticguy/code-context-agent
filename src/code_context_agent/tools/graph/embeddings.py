@@ -255,12 +255,17 @@ def _embed_bedrock_titan(texts: list[str], model: str, region: str) -> np.ndarra
     """Embed via Amazon Titan Text Embeddings V2 on Bedrock."""
     try:
         import boto3
+        from botocore.config import Config as BotoConfig
     except ImportError:
         logger.debug("boto3 not installed -- cannot use Bedrock")
         return None
 
     try:
-        client = boto3.client("bedrock-runtime", region_name=region)
+        client = boto3.client(
+            "bedrock-runtime",
+            region_name=region,
+            config=BotoConfig(retries={"max_attempts": 10, "mode": "adaptive"}),
+        )
         all_embeddings: list[list[float]] = []
 
         for text in texts:
@@ -292,12 +297,17 @@ def _embed_bedrock_cohere(texts: list[str], region: str) -> np.ndarray | None:
     """Embed via Bedrock Cohere Embed 4 (fallback)."""
     try:
         import boto3
+        from botocore.config import Config as BotoConfig
     except ImportError:
         logger.debug("boto3 not installed -- cannot use Bedrock fallback")
         return None
 
     try:
-        client = boto3.client("bedrock-runtime", region_name=region)
+        client = boto3.client(
+            "bedrock-runtime",
+            region_name=region,
+            config=BotoConfig(retries={"max_attempts": 10, "mode": "adaptive"}),
+        )
         all_embeddings: list[list[float]] = []
 
         for i in range(0, len(texts), _BEDROCK_BATCH_SIZE):
