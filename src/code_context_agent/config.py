@@ -150,6 +150,33 @@ class Settings(BaseSettings):
         description="Maximum turns for --full mode",
     )
 
+    # Team (swarm) timeout bounds — used as defaults when the coordinator
+    # does not pass explicit values to dispatch_team.
+    team_execution_timeout: int = Field(
+        default=900,
+        ge=120,
+        le=7200,
+        description="Max seconds for entire team swarm execution (standard mode)",
+    )
+    team_node_timeout: int = Field(
+        default=900,
+        ge=120,
+        le=7200,
+        description="Max seconds per agent node within a team (standard mode)",
+    )
+    full_team_execution_timeout: int = Field(
+        default=2400,
+        ge=300,
+        le=14400,
+        description="Max seconds for entire team swarm execution (--full mode)",
+    )
+    full_team_node_timeout: int = Field(
+        default=1800,
+        ge=300,
+        le=14400,
+        description="Max seconds per agent node within a team (--full mode)",
+    )
+
     # MCP tool sources for the analysis agent
     context7_enabled: bool = Field(
         default=True,

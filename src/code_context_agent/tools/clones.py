@@ -16,7 +16,7 @@ from .validation import ValidationError, validate_glob_pattern, validate_repo_pa
 
 
 @tool
-def detect_clones(  # noqa: C901
+def detect_clones(
     repo_path: str,
     min_lines: int = 5,
     min_tokens: int = 50,

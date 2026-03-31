@@ -122,6 +122,9 @@ def create_coordinator_agent(
     output_dir: Path,
     focus: str | None = None,
     hooks: list[HookProvider] | None = None,
+    *,
+    team_execution_timeout: float,
+    team_node_timeout: float,
 ) -> Agent:
     """Create a coordinator Agent that dispatches Swarm teams.
 
@@ -133,6 +136,8 @@ def create_coordinator_agent(
         output_dir: Path to output directory with index artifacts.
         focus: Optional focus area for targeted analysis.
         hooks: Optional HookProviders for the coordinator.
+        team_execution_timeout: Default max seconds for entire team swarm execution.
+        team_node_timeout: Default max seconds per agent node within a team.
 
     Returns:
         Configured Agent ready for invocation.
@@ -145,7 +150,13 @@ def create_coordinator_agent(
     # Configure coordinator tools with output dir, repo path, and tool registry
     from ..tools.coordinator_tools import configure as configure_coordinator_tools
 
-    configure_coordinator_tools(output_dir=output_dir, repo_path=repo_path, tools=analysis_tools)
+    configure_coordinator_tools(
+        output_dir=output_dir,
+        repo_path=repo_path,
+        tools=analysis_tools,
+        execution_timeout=team_execution_timeout,
+        node_timeout=team_node_timeout,
+    )
 
     # Load heuristic summary (preferred) or fall back to index metadata
     heuristic: dict[str, Any] = {}

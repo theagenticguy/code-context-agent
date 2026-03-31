@@ -22,10 +22,19 @@ from strands import tool
 _output_dir: Path | None = None
 _repo_path: Path | None = None
 _tool_registry: dict[str, Any] = {}  # tool_name → tool function, populated by configure()
+_execution_timeout: float | None = None
+_node_timeout: float | None = None
 
 
-def configure(output_dir: Path, repo_path: Path, tools: list[Any] | None = None) -> None:
-    """Set the output directory, repo path, and tool registry for coordinator tools.
+def configure(
+    output_dir: Path,
+    repo_path: Path,
+    tools: list[Any] | None = None,
+    *,
+    execution_timeout: float,
+    node_timeout: float,
+) -> None:
+    """Set the output directory, repo path, tool registry, and timeout defaults.
 
     Must be called before the coordinator agent is created.
 
@@ -34,10 +43,14 @@ def configure(output_dir: Path, repo_path: Path, tools: list[Any] | None = None)
         repo_path: Path to the repository root.
         tools: List of tool functions from get_analysis_tools(). Used by dispatch_team
                to resolve string tool names to actual function objects for swarm agents.
+        execution_timeout: Default max seconds for entire team execution.
+        node_timeout: Default max seconds per agent node within a team.
     """
-    global _output_dir, _repo_path, _tool_registry  # noqa: PLW0603
+    global _output_dir, _repo_path, _tool_registry, _execution_timeout, _node_timeout  # noqa: PLW0603
     _output_dir = output_dir
     _repo_path = repo_path
+    _execution_timeout = execution_timeout
+    _node_timeout = node_timeout
     if tools:
         _tool_registry = {}
         for t in tools:
@@ -76,8 +89,8 @@ def dispatch_team(
     key_questions: list[str] | None = None,
     artifact_pointers: list[str] | None = None,
     max_handoffs: int = 10,
-    execution_timeout: float = 600.0,
-    node_timeout: float = 600.0,
+    execution_timeout: float | None = None,
+    node_timeout: float | None = None,
 ) -> str:
     """Dispatch a specialist team to investigate a specific area of the codebase.
 
@@ -130,12 +143,29 @@ def dispatch_team(
         artifact_pointers: Optional Phase 1 artifact paths to consult.
         max_handoffs: Max handoffs between agents within the team.
         execution_timeout: Max seconds for the entire team execution.
+            Omit to use the configured default (scales with analysis mode).
         node_timeout: Max seconds per individual agent turn.
+            Omit to use the configured default (scales with analysis mode).
 
     Returns:
         JSON with team_id, status, findings_path, and result summary.
     """
     from strands_tools.swarm import swarm as _swarm
+
+    # Apply configured defaults when the coordinator omits explicit timeouts
+    configured_exec = _execution_timeout
+    configured_node = _node_timeout
+    if configured_exec is None or configured_node is None:
+        msg = "coordinator_tools.configure() must be called before using coordinator tools"
+        raise RuntimeError(msg)
+    effective_exec_timeout = execution_timeout if execution_timeout is not None else configured_exec
+    effective_node_timeout = node_timeout if node_timeout is not None else configured_node
+
+    agent_names = [a.get("name", "?") for a in agents]
+    logger.debug(
+        f"dispatch_team({team_id}): execution_timeout={effective_exec_timeout}s, "
+        f"node_timeout={effective_node_timeout}s, agents={agent_names}",
+    )
 
     output_dir = _get_output_dir()
 
@@ -208,8 +238,8 @@ Repository: {_repo_path}""",
             agents=resolved_agents,
             max_handoffs=max_handoffs,
             max_iterations=max_handoffs,
-            execution_timeout=execution_timeout,
-            node_timeout=node_timeout,
+            execution_timeout=effective_exec_timeout,
+            node_timeout=effective_node_timeout,
         )
         duration = time.monotonic() - start
         status = "completed"
@@ -219,6 +249,24 @@ Repository: {_repo_path}""",
         status = "error"
         summary = str(e)[:500]
         logger.warning(f"Team {team_id} failed after {duration:.1f}s: {e}")
+
+    # Append structured debug entry to team_debug.jsonl
+    debug_entry = {
+        "team_id": team_id,
+        "status": status,
+        "duration_seconds": round(duration, 1),
+        "execution_timeout": effective_exec_timeout,
+        "node_timeout": effective_node_timeout,
+        "agents": agent_names,
+        "agent_count": len(agents),
+        "mandate_preview": mandate[:200],
+    }
+    try:
+        debug_log = _teams_dir() / "team_debug.jsonl"
+        with debug_log.open("a") as f:
+            f.write(json.dumps(debug_entry) + "\n")
+    except OSError as e:
+        logger.debug(f"Failed to write team_debug.jsonl: {e}")
 
     return json.dumps(
         {

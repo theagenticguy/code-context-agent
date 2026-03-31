@@ -295,7 +295,7 @@ class LspClient:
         self._process.stdin.write(header + body)
         await self._process.stdin.drain()
 
-    async def _read_responses(self) -> None:  # noqa: C901
+    async def _read_responses(self) -> None:
         """Background task to read and dispatch responses."""
         if self._process is None or self._process.stdout is None:
             return
