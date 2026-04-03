@@ -1,3 +1,13 @@
+## v0.3.0 (2026-04-03)
+
+### Feat
+
+- add grype, SLSA provenance, rescan-on-advisory, and SBOM enhancements
+
+### Fix
+
+- harden shift-left security and resolve ACAT findings
+
 ## v0.2.1 (2026-03-31)
 
 ### Fix
