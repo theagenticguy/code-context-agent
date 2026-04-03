@@ -5,7 +5,8 @@ on:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
 
-permissions: read-all
+permissions:
+  contents: read
 
 env:
   UV_CACHE_DIR: .uv-cache
@@ -13,6 +14,8 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      hashes: ${{ steps.hash.outputs.hashes }}
     permissions:
       contents: read
     container:
@@ -27,14 +30,56 @@ jobs:
           restore-keys: uv-
       - name: Build package
         run: uv build
+      - name: Compute artifact hashes
+        id: hash
+        run: |
+          cd dist && echo "hashes=$(sha256sum * | base64 -w0)" >> "$GITHUB_OUTPUT"
       - name: Upload dist
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
         with:
           name: dist
           path: dist/
 
-  release:
+  # ── SLSA L3 Provenance ──────────────────────────────────────
+  provenance:
     needs: build
+    permissions:
+      actions: read
+      id-token: write
+      contents: write
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
+    with:
+      base64-subjects: "${{ needs.build.outputs.hashes }}"
+      upload-assets: true
+
+  # ── SBOM ────────────────────────────────────────────────────
+  sbom:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Generate CycloneDX SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          format: cyclonedx-json
+          output-file: sbom.cdx.json
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          format: spdx-json
+          output-file: sbom.spdx.json
+      - name: Upload SBOMs
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: sbom-release
+          path: |
+            sbom.cdx.json
+            sbom.spdx.json
+
+  release:
+    needs: [build, provenance, sbom]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -45,6 +90,11 @@ jobs:
         with:
           name: dist
           path: dist/
+      - name: Download SBOMs
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: sbom-release
+          path: sbom/
       - name: Extract changelog
         id: changelog
         run: |
@@ -60,5 +110,7 @@ jobs:
         uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2
         with:
           body: ${{ steps.changelog.outputs.notes }}
-          files: dist/*
+          files: |
+            dist/*
+            sbom/*
           generate_release_notes: false

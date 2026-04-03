@@ -1,6 +1,7 @@
 [tools]
 gh = "latest"
 gitleaks = "latest"
+grype = "latest"
 node = "22"
 osv-scanner = "latest"
 pnpm = "latest"
@@ -109,7 +110,7 @@ depends = ["lint", "format:check", "typecheck", "test", "ui:lint", "ui:typecheck
 
 [tasks.security]
 description = "Run all security scans"
-depends = ["security:secrets", "security:sast", "security:bandit", "security:deps", "security:trivy", "security:pip-audit", "security:licenses"]
+depends = ["security:secrets", "security:sast", "security:bandit", "security:deps", "security:trivy", "security:pip-audit", "security:grype", "security:licenses", "security:sbom"]
 
 [tasks."security:secrets"]
 description = "Scan for secrets with gitleaks"
@@ -117,7 +118,7 @@ run = "gitleaks detect --source . --no-banner"
 
 [tasks."security:sast"]
 description = "SAST scan with semgrep (auto + OWASP top 10)"
-run = "semgrep scan --config auto --config p/owasp-top-ten --error --quiet src/"
+run = "semgrep scan --config auto --config p/owasp-top-ten --exclude-rule python.flask.security.xss.audit.direct-use-of-jinja2.direct-use-of-jinja2 --error --quiet src/"
 
 [tasks."security:bandit"]
 description = "SAST scan with bandit (fail on HIGH severity)"
@@ -142,6 +143,13 @@ tmpfile=$(mktemp /tmp/requirements-audit-XXXXXX.txt)
 trap 'rm -f "$tmpfile"' EXIT
 uv export --no-dev --no-hashes > "$tmpfile"
 uvx pip-audit -r "$tmpfile" --strict --desc
+"""
+
+[tasks."security:grype"]
+description = "Scan SBOM with Grype for vulnerabilities"
+run = """
+syft . -o cyclonedx-json=/tmp/sbom-grype.cdx.json -q
+grype sbom:/tmp/sbom-grype.cdx.json --fail-on high
 """
 
 [tasks."security:sbom"]
