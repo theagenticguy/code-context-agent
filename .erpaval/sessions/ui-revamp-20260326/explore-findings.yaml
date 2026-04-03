@@ -1,0 +1,87 @@
+session: ui-revamp-20260326
+phase: explore
+status: completed
+
+project:
+  name: code-context-agent
+  version: 8.0.1
+  python: ">=3.13"
+  build: uv + mise.toml
+  cli_framework: cyclopts
+
+existing_ui:
+  stack: React 19 + Vite 8 + TypeScript 5.9 + Tailwind v4 + shadcn base-nova
+  location: ui/
+  views: [dashboard, graph, modules, hotspots, dependencies, narrative]
+  note: "User wants PURE HTML/CSS/JS replacement — NOT modifying React UI"
+
+output_artifacts:
+  directory: .code-context/
+  files:
+    code_graph.json:
+      format: NetworkX node_link_data
+      size: "1.1MB / 35,530 lines (self-analysis)"
+      node_id_format: "{file_path}:{symbol_name}:{line_start}"
+      node_types: [file, class, function, method, variable, module, pattern_match]
+      edge_types: [calls, imports, references, contains, inherits, implements, tests, cochanges, similar_to]
+      confidence_ranges:
+        lsp: 0.95
+        ast_grep: 0.85
+        git_cochanges: 0.70
+        clone_detection: 0.60
+    analysis_result.json:
+      top_level_fields: [status, summary, total_files_analyzed, business_logic_items, risks, generated_files, graph_stats, refactoring_candidates, code_health, analysis_mode, phase_timings]
+      business_logic_item: {rank: int, name: str, role: str, location: str, score: float, category: str|null}
+      architectural_risk: {description: str, severity: "high|medium|low", location: str|null, mitigation: str|null}
+      refactoring_candidate: {type: "extract_helper|inline_wrapper|dead_code|code_smell", pattern: str, files: list, occurrence_count: int, duplicated_lines: int, score: float}
+      code_health: {duplication_percentage: float, total_clone_groups: int, unused_symbol_count: int, code_smell_count: int}
+      phase_timing: {phase: int, name: str, duration_seconds: float, tool_count: int}
+    CONTEXT.md: narrative markdown document
+    CONTEXT.bundle.md: focused analysis for --focus flag
+    CONTEXT.signatures.md: extracted function/method signatures
+    files.all.txt: complete file manifest
+
+graph_algorithms:
+  - find_hotspots (betweenness centrality)
+  - find_foundations (PageRank)
+  - find_trusted_foundations (TrustRank)
+  - find_entry_points (no incoming + outgoing)
+  - detect_modules (Louvain/Leiden community)
+  - find_clusters_by_pattern (AST-grep rule grouping)
+  - find_clusters_by_category (business logic categories)
+  - find_triangles (tightly-coupled triads)
+  - get_similar_nodes (personalized PageRank)
+  - calculate_coupling (shared neighbors + path)
+  - get_dependency_chain (BFS traversal)
+  - find_unused_symbols (dead code)
+  - find_refactoring_candidates (clones + smells)
+  - blast_radius (BFS reverse with confidence decay)
+  - diff_impact (git diff to graph nodes)
+  - trace_execution_flows (DFS from entry points)
+
+progressive_explorer:
+  methods: [get_overview, expand_node, expand_module, get_path_between, explore_category]
+
+color_scheme:
+  node_colors:
+    file: "#60a5fa"
+    class: "#a78bfa"
+    function: "#34d399"
+    method: "#22d3ee"
+    variable: "#fbbf24"
+    module: "#f472b6"
+    pattern_match: "#fb923c"
+  edge_colors:
+    calls: "#c4b5fd"
+    imports: "#93c5fd"
+    references: "#a1a1aa"
+    contains: "#71717a"
+    inherits: "#d8b4fe"
+    implements: "#67e8f9"
+    tests: "#6ee7b7"
+    cochanges: "#fde68a"
+    similar_to: "#fb923c"
+  severity_colors:
+    high: "#f87171"
+    medium: "#fbbf24"
+    low: "#4ade80"

@@ -1,0 +1,152 @@
+session: ui-revamp-20260326
+phase: plan
+status: completed
+
+architecture:
+  directory: ui-next/
+  approach: pure HTML/CSS/JS with ES modules
+  no_framework: true
+  cdn_dependencies:
+    - tailwindcss/browser@4 (CDN, @theme for neobrutalism tokens)
+    - d3@7 (CDN, force-directed graphs, tree layouts, circle packing)
+    - marked (CDN, markdown rendering for narrative/bundles)
+  routing: hash-based (#/dashboard, #/graph, etc.)
+  state: observer-pattern Store class
+  components: template literal functions (not Web Components)
+  design_system: neobrutalism via @theme CSS variables
+
+file_structure:
+  ui-next/:
+    index.html: shell with CDN imports, sidebar, content area
+    css/:
+      theme.css: neobrutalism design tokens (@theme), dark mode, custom styles
+    js/:
+      app.js: entry point, router init, data loading
+      router.js: hash-based SPA router
+      store.js: observer-pattern state management
+      data-loader.js: file loading, drag-drop, fetch from viz server
+      graph-utils.js: graph parsing, algorithms (port from existing)
+      colors.js: node/edge/severity color maps
+      markdown.js: markdown rendering utility
+    js/components/:
+      sidebar.js: navigation sidebar with view links
+      stat-card.js: neobrutalist stat card component
+      filter-chips.js: toggle chips for node/edge type filtering
+      search-bar.js: search input component
+      tooltip.js: D3 tooltip component
+      gauge.js: SVG gauge chart component
+      bar-chart.js: D3 bar chart component
+    js/views/:
+      landing.js: file upload/drop zone
+      dashboard.js: overview with stat cards, distributions, health, risks
+      graph.js: D3 force-directed graph explorer
+      modules.js: D3 circle packing by module
+      hotspots.js: centrality/foundations/entry points charts
+      dependencies.js: D3 tree layout for dependency chains
+      narrative.js: CONTEXT.md rendering with TOC
+      bundles.js: CONTEXT.bundle.md focused analysis view
+      insights.js: refactoring candidates, code health details, phase timings
+      signatures.js: CONTEXT.signatures.md display
+
+phases:
+  phase_1:
+    name: Foundation
+    description: Core infrastructure (shell, routing, store, data loading, design tokens)
+    tasks:
+      - id: T1
+        name: Create index.html shell with CDN imports and neobrutalism theme
+        scope: [ui-next/index.html, ui-next/css/theme.css]
+        model: sonnet
+      - id: T2
+        name: Build router, store, and data-loader modules
+        scope: [ui-next/js/router.js, ui-next/js/store.js, ui-next/js/data-loader.js, ui-next/js/app.js]
+        model: sonnet
+      - id: T3
+        name: Port graph-utils, colors, and markdown utility
+        scope: [ui-next/js/graph-utils.js, ui-next/js/colors.js, ui-next/js/markdown.js]
+        model: sonnet
+    parallel: true (T1, T2, T3 are independent)
+
+  phase_2:
+    name: Shared Components
+    description: Reusable UI components used across multiple views
+    blocked_by: [T1]
+    tasks:
+      - id: T4
+        name: Build sidebar, stat-card, filter-chips, search-bar, tooltip, gauge, bar-chart components
+        scope: [ui-next/js/components/sidebar.js, ui-next/js/components/stat-card.js, ui-next/js/components/filter-chips.js, ui-next/js/components/search-bar.js, ui-next/js/components/tooltip.js, ui-next/js/components/gauge.js, ui-next/js/components/bar-chart.js]
+        model: sonnet
+    parallel: false (single task)
+
+  phase_3:
+    name: Core Views
+    description: The primary views that visualize graph data
+    blocked_by: [T2, T3, T4]
+    tasks:
+      - id: T5
+        name: Build landing view (file upload, drag-drop, demo mode)
+        scope: [ui-next/js/views/landing.js]
+        model: sonnet
+      - id: T6
+        name: Build dashboard view (stat cards, distributions, health, risks, business logic)
+        scope: [ui-next/js/views/dashboard.js]
+        model: sonnet
+      - id: T7
+        name: Build graph explorer view (D3 force-directed, filtering, search, zoom/pan)
+        scope: [ui-next/js/views/graph.js]
+        model: opus
+      - id: T8
+        name: Build modules view (D3 circle packing by file path)
+        scope: [ui-next/js/views/modules.js]
+        model: sonnet
+    parallel: true (T5, T6, T7, T8 are independent)
+
+  phase_4:
+    name: Secondary Views
+    description: Additional views for analysis insights
+    blocked_by: [T2, T3, T4]
+    tasks:
+      - id: T9
+        name: Build hotspots view (centrality bars, foundations, entry points)
+        scope: [ui-next/js/views/hotspots.js]
+        model: sonnet
+      - id: T10
+        name: Build dependencies view (D3 tree layout, BFS chains, direction toggle)
+        scope: [ui-next/js/views/dependencies.js]
+        model: sonnet
+      - id: T11
+        name: Build narrative view (markdown rendering, TOC, scroll-spy)
+        scope: [ui-next/js/views/narrative.js]
+        model: sonnet
+      - id: T12
+        name: Build bundles view (focused analysis display)
+        scope: [ui-next/js/views/bundles.js]
+        model: sonnet
+      - id: T13
+        name: Build insights view (refactoring candidates, code health, phase timings)
+        scope: [ui-next/js/views/insights.js]
+        model: sonnet
+      - id: T14
+        name: Build signatures view
+        scope: [ui-next/js/views/signatures.js]
+        model: sonnet
+    parallel: true (T9-T14 are independent)
+
+  phase_5:
+    name: Integration
+    description: Wire everything together, test with real data
+    blocked_by: [T5, T6, T7, T8, T9, T10, T11, T12, T13, T14]
+    tasks:
+      - id: T15
+        name: Integration - wire all views into app.js, test with .code-context/code_graph.json
+        scope: [ui-next/js/app.js, all views]
+        model: opus
+
+success_criteria:
+  - All 10 views render without JS errors
+  - Graph explorer handles 1000+ nodes with zoom/pan
+  - Neobrutalism design tokens applied consistently
+  - Dark/light mode toggle works
+  - File drag-drop loads code_graph.json, analysis_result.json, CONTEXT.md
+  - Keyboard shortcuts 1-0 for view switching
+  - All data from .code-context/ artifacts is displayable
