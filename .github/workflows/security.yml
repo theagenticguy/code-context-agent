@@ -32,7 +32,7 @@ jobs:
             src/
       - name: Upload SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@38697555549f1db7851b81482ff19f1fa5c4fedc # v4
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4
         with:
           sarif_file: semgrep.sarif
           category: semgrep
@@ -44,7 +44,7 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57 # v8.0.0
         with:
           enable-cache: true
       - name: Install system dependencies
@@ -55,7 +55,7 @@ jobs:
         run: uv run bandit -c pyproject.toml -r src/ -f sarif -o bandit.sarif --exit-zero
       - name: Upload SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@38697555549f1db7851b81482ff19f1fa5c4fedc # v4
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4
         with:
           sarif_file: bandit.sarif
           category: bandit
@@ -75,7 +75,7 @@ jobs:
           GITLEAKS_ENABLE_SARIF: true
       - name: Upload SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@38697555549f1db7851b81482ff19f1fa5c4fedc # v4
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4
         with:
           sarif_file: results.sarif
           category: gitleaks
@@ -96,7 +96,7 @@ jobs:
           scan-args: --lockfile uv.lock
       - name: Upload SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@38697555549f1db7851b81482ff19f1fa5c4fedc # v4
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4
         with:
           sarif_file: results.sarif
           category: osv-scanner
@@ -138,7 +138,7 @@ jobs:
           output: trivy.sarif
       - name: Upload SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@38697555549f1db7851b81482ff19f1fa5c4fedc # v4
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4
         with:
           sarif_file: trivy.sarif
           category: trivy
@@ -149,7 +149,7 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57 # v8.0.0
         with:
           enable-cache: true
       - name: Install system dependencies
