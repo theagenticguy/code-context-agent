@@ -17,3 +17,12 @@ updates:
       python-deps:
         patterns:
           - "*"
+
+  - package-ecosystem: "npm"
+    directory: "/ui"
+    schedule:
+      interval: "weekly"
+    groups:
+      npm-deps:
+        patterns:
+          - "*"

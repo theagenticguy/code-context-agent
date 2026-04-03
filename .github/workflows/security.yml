@@ -25,7 +25,6 @@ jobs:
           semgrep scan \
             --config auto \
             --config p/owasp-top-ten \
-            --exclude-rule python.flask.security.xss.audit.direct-use-of-jinja2.direct-use-of-jinja2 \
             --sarif \
             --output semgrep.sarif \
             --error \
@@ -93,7 +92,9 @@ jobs:
         uses: google/osv-scanner-action/osv-scanner-action@c51854704019a247608d928f370c98740469d4b5 # v2.3.5
         continue-on-error: true # findings are surfaced via SARIF + step summary, not CI failure
         with:
-          scan-args: --lockfile uv.lock
+          scan-args: |-
+            --lockfile=uv.lock
+            --lockfile=ui/pnpm-lock.yaml
       - name: Upload SARIF
         if: always()
         uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4

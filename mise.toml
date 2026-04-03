@@ -109,7 +109,7 @@ depends = ["lint", "format:check", "typecheck", "test", "ui:lint", "ui:typecheck
 
 [tasks.security]
 description = "Run all security scans"
-depends = ["security:secrets", "security:sast", "security:bandit", "security:deps", "security:licenses"]
+depends = ["security:secrets", "security:sast", "security:bandit", "security:deps", "security:trivy", "security:pip-audit", "security:licenses"]
 
 [tasks."security:secrets"]
 description = "Scan for secrets with gitleaks"
@@ -130,6 +130,19 @@ run = "osv-scanner scan --lockfile uv.lock --lockfile ui/pnpm-lock.yaml"
 [tasks."security:licenses"]
 description = "Check 3P dependency licenses against allowlist"
 run = "uv run --with pip-licenses pip-licenses"
+
+[tasks."security:trivy"]
+description = "Filesystem vulnerability scan with Trivy"
+run = "trivy fs --severity HIGH,CRITICAL --exit-code 1 ."
+
+[tasks."security:pip-audit"]
+description = "Audit Python dependencies with pip-audit"
+run = """
+tmpfile=$(mktemp /tmp/requirements-audit-XXXXXX.txt)
+trap 'rm -f "$tmpfile"' EXIT
+uv export --no-dev --no-hashes > "$tmpfile"
+uvx pip-audit -r "$tmpfile" --strict --desc
+"""
 
 [tasks."security:sbom"]
 description = "Generate CycloneDX and SPDX SBOMs via syft"

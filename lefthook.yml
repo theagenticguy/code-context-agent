@@ -51,4 +51,10 @@ pre-push:
       run: gitleaks detect --source . --no-banner
 
     - name: semgrep
-      run: semgrep scan --config auto --config p/owasp-top-ten --exclude-rule python.flask.security.xss.audit.direct-use-of-jinja2.direct-use-of-jinja2 --error --quiet src/
+      run: semgrep scan --config auto --config p/owasp-top-ten --error --quiet src/
+
+    - name: osv-scanner
+      run: osv-scanner scan --lockfile uv.lock --lockfile ui/pnpm-lock.yaml
+
+    - name: trivy
+      run: trivy fs --severity HIGH,CRITICAL --exit-code 1 .
