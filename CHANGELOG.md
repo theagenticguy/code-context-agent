@@ -1,3 +1,9 @@
+## v0.3.2 (2026-04-04)
+
+### Fix
+
+- **ci**: restore ty: ignore directives and set private-repository for SLSA
+
 ## v0.3.1 (2026-04-04)
 
 ### Fix
