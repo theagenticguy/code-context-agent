@@ -36,7 +36,7 @@ def bind_live_renderable(live: Live, builder: Callable[[], RenderableType]) -> N
     *builder* lets the dashboard show fresh state (timer, tool elapsed, etc.)
     without manually calling ``live.update()`` on every change.
     """
-    live.get_renderable = builder  # type: ignore[assignment]
+    live.get_renderable = builder  # type: ignore[assignment]  # ty: ignore[invalid-assignment]
 
 
 class RichEventConsumer(EventConsumer):

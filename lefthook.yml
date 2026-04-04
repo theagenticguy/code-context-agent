@@ -17,7 +17,7 @@ pre-commit:
       stage_fixed: true
 
     - name: ty-check
-      run: uvx ty check src/
+      run: uv run ty check src/
 
     - name: biome-check
       run: pnpm --dir ui lint
@@ -36,7 +36,7 @@ pre-push:
       run: uvx ruff format --check src/
 
     - name: typecheck
-      run: uvx ty check src/
+      run: uv run ty check src/
 
     - name: test
       run: uv run pytest
