@@ -1,3 +1,9 @@
+## v0.3.1 (2026-04-04)
+
+### Fix
+
+- use grype outputs.cmd path and remove unused ty: ignore directives
+
 ## v0.3.0 (2026-04-03)
 
 ### Feat
