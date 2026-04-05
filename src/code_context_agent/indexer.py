@@ -143,6 +143,8 @@ async def build_index(
     graph_data = graph.to_node_link_data()
     graph_path.write_text(json.dumps(graph_data, indent=2))
 
+    _write_parquet_artifacts(graph_data, out, quiet)
+
     graph_stats = graph.describe()
     if not quiet:
         logger.info(
@@ -177,6 +179,71 @@ async def build_index(
     _generate_heuristic_summary(graph, graph_stats, files, lang_files, frameworks, out, repo, quiet)
 
     return graph
+
+
+def _flatten_records(
+    raw_items: list[dict[str, Any]],
+    core_fields: set[str],
+    promoted_fields: set[str],
+    extra_skip: set[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Flatten graph dicts into records with core, promoted, and catch-all metadata columns.
+
+    Args:
+        raw_items: Raw node or edge dicts from graph export.
+        core_fields: Fields always included (extracted via ``.get``).
+        promoted_fields: Optional fields included only when present.
+        extra_skip: Additional keys to exclude from the metadata catch-all.
+
+    Returns:
+        List of flat dicts suitable for ``pl.DataFrame``.
+    """
+    skip = core_fields | promoted_fields | (extra_skip or set())
+    records = []
+    for item in raw_items:
+        record = {f: item.get(f) for f in core_fields}
+        for f in promoted_fields:
+            if f in item:
+                record[f] = item[f]
+        extra = {k: v for k, v in item.items() if k not in skip}
+        record["metadata_json"] = json.dumps(extra) if extra else None
+        records.append(record)
+    return records
+
+
+def _write_parquet_artifacts(graph_data: dict[str, Any], out: Path, quiet: bool) -> None:
+    """Write nodes and edges as parquet files for fast dashboard loading."""
+    try:
+        import polars as pl  # ty: ignore[unresolved-import]
+    except ImportError:
+        if not quiet:
+            logger.debug("polars not installed, skipping parquet export")
+        return
+
+    nodes_raw = graph_data.get("nodes", [])
+    if not nodes_raw:
+        return
+
+    node_records = _flatten_records(
+        nodes_raw,
+        core_fields={"id", "name", "node_type", "file_path", "line_start", "line_end"},
+        promoted_fields={"lsp_kind", "category", "rule_id", "commits", "churn_percentage", "source"},
+    )
+    nodes_df = pl.DataFrame(node_records)
+    nodes_df.write_parquet(out / "nodes.parquet", compression="zstd")
+
+    edges_raw = graph_data.get("links", graph_data.get("edges", []))
+    edge_records = _flatten_records(
+        edges_raw,
+        core_fields={"source", "target", "edge_type", "weight", "confidence"},
+        promoted_fields={"count", "percentage", "duplicated_lines", "import_statement"},
+        extra_skip={"key"},
+    )
+    edges_df = pl.DataFrame(edge_records)
+    edges_df.write_parquet(out / "edges.parquet", compression="zstd")
+
+    if not quiet:
+        logger.info(f"Parquet artifacts: {len(nodes_raw)} nodes, {len(edges_raw)} edges")
 
 
 def _get_file_manifest(repo: Path) -> list[str]:

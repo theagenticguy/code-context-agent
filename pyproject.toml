@@ -53,6 +53,17 @@ docs = [
 security = [
     "bandit[sarif]>=1.9.3",
 ]
+viz = [
+    "panel>=1.8.10",
+    "altair>=6.0.0",
+    "hvplot>=0.12.2",
+    "holoviews>=1.22.1",
+    "datashader>=0.19.0",
+    "pygments>=2.18.0",
+    "polars>=1.39.0",
+    "duckdb>=1.5.0",
+    "pyarrow>=19.0.0",
+]
 
 # =============================================================================
 # Ruff Configuration (Linting & Formatting)
@@ -117,6 +128,8 @@ max-complexity = 10  # Enforce complexity limit after refactoring
 "tests/**/*.py" = ["D", "S101", "ARG", "PLR2004"]
 "**/__init__.py" = ["F401", "RUF022"]  # Allow unused imports and unsorted __all__ in init files
 "src/code_context_agent/tools/**/*.py" = ["PLR2004", "PLR0911", "PLR0912", "PLR0915", "C901", "SIM102", "SIM108"]  # Allow magic numbers, complexity, and dispatcher patterns in tools
+"src/code_context_agent/dashboard/views/**/*.py" = ["ARG001", "PLR2004", "PLR0912", "PLR0915", "C901", "BLE001", "SLF001", "SIM102"]  # Visualization views: unused param, magic numbers, complexity, broad except, private access, nested ifs
+"src/code_context_agent/dashboard/_data.py" = ["C901", "PLR0912", "PLR0915", "BLE001", "SLF001"]  # Data loader has many sequential branches, broad except for optional deps, private graph access
 
 [tool.ruff.format]
 quote-style = "double"
@@ -143,7 +156,10 @@ python-version = "3.13"
 
 [tool.ty.src]
 include = ["src"]
-exclude = ["src/code_context_agent/tools/graph/storage.py"]  # kuzu has imprecise type stubs
+exclude = [
+    "src/code_context_agent/tools/graph/storage.py",  # kuzu has imprecise type stubs
+    "src/code_context_agent/dashboard/views/",  # HoloViews/datashader use param metaclasses ty can't resolve
+]
 
 # =============================================================================
 # Bandit Configuration (SAST)

@@ -43,8 +43,14 @@ Multi-Repo Registry (~/.code-context/registry.json)
     ├── Lazy graph cache with 5-min TTL
     └── list_repos MCP tool
 
-Web Visualization (code-context-agent viz)
-    └── D3.js force-directed graph with controls, info panel, dark theme
+Panel Dashboard (code-context-agent viz)
+    ├── FastListTemplate (dark theme, sidebar nav)
+    ├── 9 views: Overview, Graph, Modules, Hotspots, Dependencies,
+    │   Narrative, Bundles, Insights, Signatures
+    ├── Altair charts (bar, scatter, histogram, waterfall)
+    ├── HoloViews + datashader (6K+ node interactive graphs)
+    ├── Markdown + Mermaid rendering (vendored mermaid.min.js)
+    └── Served via pn.serve() on port 8765
 ```
 
 ### Key source locations
@@ -70,7 +76,7 @@ Web Visualization (code-context-agent viz)
 | `src/code_context_agent/tools/graph/frameworks.py` | Framework detection patterns |
 | `src/code_context_agent/indexer.py` | Deterministic index pipeline (no LLM) |
 | `src/code_context_agent/mcp/registry.py` | Multi-repo registry with lazy graph cache |
-| `src/code_context_agent/ui/` | Multi-view web visualizer (10 views, D3.js + Tailwind CSS) |
+| `src/code_context_agent/dashboard/` | Panel + Altair dashboard: 9 views, dark theme, HoloViews graph viz |
 | `src/code_context_agent/templates/` | Jinja2 prompts: `coordinator.md.j2` (~35 lines), partials/, steering/. Rendering in `templates/__init__.py` |
 | `src/code_context_agent/models/output.py` | AnalysisResult, Bundle, BusinessLogicItem, ArchitecturalRisk, RefactoringCandidate, CodeHealthMetrics |
 
@@ -173,9 +179,9 @@ Both are in `models/base.py`. Use `FrozenModel` for new data models.
 - Python 3.13+ (managed via `mise`)
 - Node.js 22+ (managed via `mise`)
 - `uv` for Python package management
-- `pnpm` for frontend package management (managed via `mise`)
 - External CLIs: `rg` (ripgrep), `ast-grep`, `repomix`, `npx` (for context7)
 - AWS credentials configured for Bedrock access
+- Viz dependency group (`uv sync --group viz`) for the Panel dashboard
 
 ### Commands
 
@@ -183,22 +189,19 @@ Both are in `models/base.py`. Use `FrozenModel` for new data models.
 |------|---------|
 | Install all deps | `mise run install:all` |
 | Install Python deps | `mise run install` |
-| Install frontend deps | `mise run ui:install` |
+| Install viz deps | `uv sync --group viz` |
 | Run CLI | `uv run code-context-agent` |
 | Analyze a repo | `uv run code-context-agent analyze /path/to/repo` |
 | Analyze (bundles only) | `uv run code-context-agent analyze /path --bundles-only` |
 | Index a repo | `uv run code-context-agent index /path/to/repo` |
 | Start MCP server | `uv run code-context-agent serve` |
 | Lint (Python) | `mise run lint` |
-| Lint (frontend) | `mise run ui:lint` |
 | Format (Python) | `mise run format` |
-| Format (frontend) | `mise run ui:format` |
 | Type check (Python) | `mise run typecheck` |
-| Type check (frontend) | `mise run ui:typecheck` |
 | Test | `mise run test` |
 | All checks | `mise run check` |
-| Build (frontend + package) | `mise run build` |
-| Frontend dev server | `mise run ui:dev` |
+| Build package | `mise run build` |
+| Launch dashboard | `mise run viz` |
 | Commit | `uv run cz commit` |
 | Bump + tag | `uv run cz bump` then `git push origin <tag>` |
 
@@ -206,9 +209,9 @@ Both are in `models/base.py`. Use `FrozenModel` for new data models.
 
 Hooks are enforced automatically. Do not skip them.
 
-- **pre-commit**: ruff check+fix, ruff format, ty check, biome check (frontend), gitleaks
+- **pre-commit**: ruff check+fix, ruff format, ty check, gitleaks
 - **commit-msg**: conventional commit validation via commitizen
-- **pre-push**: lint, format-check, typecheck, test, ui-lint, ui-typecheck, gitleaks, semgrep OWASP
+- **pre-push**: lint, format-check, typecheck, test, gitleaks, semgrep OWASP
 
 ### Conventional commits
 

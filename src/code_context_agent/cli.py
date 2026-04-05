@@ -208,7 +208,7 @@ def analyze(  # noqa: C901, PLR0912, PLR0915
 
 
 @app.command
-def viz(  # noqa: C901
+def viz(
     path: Annotated[
         Path,
         Parameter(help="Path to the repository (must contain .code-context/ output)."),
@@ -220,17 +220,17 @@ def viz(  # noqa: C901
     ] = None,
     port: Annotated[
         int,
-        Parameter(help="Port for the local HTTP server."),
+        Parameter(help="Port for the dashboard server."),
     ] = 8765,
     no_open: Annotated[
         bool,
         Parameter(help="Don't auto-open the browser."),
     ] = False,
 ) -> None:
-    """Launch an interactive visualization of analysis results.
+    """Launch an interactive Panel dashboard for analysis results.
 
-    Serves a local web UI with 10 views: dashboard, graph, modules, hotspots,
-    dependencies, narrative, bundles, insights, signatures, and landing.
+    Serves a local dashboard with 9 views: overview, graph, modules, hotspots,
+    dependencies, narrative, bundles, insights, and signatures.
 
     Requires a prior `analyze` or `index` run to generate .code-context/ output files.
 
@@ -238,10 +238,15 @@ def viz(  # noqa: C901
         $ code-context-agent viz /path/to/repo
         $ code-context-agent viz . --port 9000
     """
-    import http.server
-    import socketserver
-    import threading
-    import webbrowser
+    try:
+        import panel as pn
+    except ImportError:
+        console.print(
+            "[red]Error:[/red] Panel not installed. Install the viz dependencies: [cyan]uv sync --group viz[/cyan]",
+        )
+        raise SystemExit(1) from None
+
+    from code_context_agent.dashboard import build_dashboard
 
     repo_path = path.resolve()
     agent_dir = (output_dir or repo_path / DEFAULT_OUTPUT_DIR).resolve()
@@ -251,142 +256,43 @@ def viz(  # noqa: C901
         console.print("Run [cyan]code-context-agent analyze[/cyan] first.")
         raise SystemExit(1)
 
-    # Resolve viz directory — bundled inside the package as code_context_agent/ui/
-    viz_dir = Path(__file__).parent / "ui"
-    if not (viz_dir / "index.html").exists() or not (viz_dir / "assets").exists():
-        console.print("[red]Error:[/red] Frontend not built. Run [cyan]mise run ui:build[/cyan] first.")
-        raise SystemExit(1)
-
-    # Build URL params pointing to the agent output files
-    params = []
-    graph_file = agent_dir / "code_graph.json"
-    context_file = agent_dir / "CONTEXT.md"
-    result_file = agent_dir / "analysis_result.json"
-
-    # Check what files exist
+    # Check what data files exist
     files_found = []
-    if graph_file.exists():
-        params.append("graph=/data/code_graph.json")
-        files_found.append("code_graph.json")
-    if context_file.exists():
-        params.append("narrative=/data/CONTEXT.md")
-        files_found.append("CONTEXT.md")
-    if result_file.exists():
-        params.append("result=/data/analysis_result.json")
-        files_found.append("analysis_result.json")
+    for name in ["code_graph.json", "analysis_result.json", "CONTEXT.md", "heuristic_summary.json"]:
+        if (agent_dir / name).exists():
+            files_found.append(name)
 
     if not files_found:
         console.print(f"[yellow]Warning:[/yellow] No analysis files found in {agent_dir}")
-        console.print("The visualizer will open but you'll need to load data manually.")
 
-    query = "&".join(params)
-    url = f"http://localhost:{port}/{'?' + query if query else ''}"
+    # Resolve vendor dir for mermaid.min.js static serving
+    vendor_dir = Path(__file__).parent / "dashboard" / "_vendor"
+    static_dirs: dict[str, str] = {}
+    if vendor_dir.is_dir():
+        static_dirs["vendor"] = str(vendor_dir)
 
-    # Custom handler that serves viz files and proxies /data/ to agent_dir
-    class VizHandler(http.server.SimpleHTTPRequestHandler):
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, directory=str(viz_dir), **kwargs)
-
-        def do_GET(self):
-            """Handle GET requests with API endpoints and file serving."""
-            if self.path == "/api/graph" or self.path.startswith("/api/graph?"):
-                self._serve_json_file("code_graph.json")
-                return
-            if self.path == "/api/stats" or self.path.startswith("/api/stats?"):
-                self._serve_graph_stats()
-                return
-            if self.path in {"/data/bundles/", "/data/bundles"}:
-                self._serve_bundle_listing()
-                return
-            super().do_GET()
-
-        def translate_path(self, path):
-            """Route /data/ requests to the agent output directory."""
-            if path.startswith("/data/"):
-                relative = path[6:]  # strip /data/
-                resolved = (agent_dir / relative).resolve()
-                # Prevent path traversal outside agent_dir
-                if not str(resolved).startswith(str(agent_dir)):
-                    return str(agent_dir / "404")
-                return str(resolved)
-            return super().translate_path(path)
-
-        def _serve_json_file(self, filename: str) -> None:
-            """Serve a JSON file from agent_dir."""
-            filepath = agent_dir / filename
-            if not filepath.exists():
-                self.send_error(404, f"{filename} not found")
-                return
-            data = filepath.read_text(encoding="utf-8")
-            encoded = data.encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(encoded)))
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.end_headers()
-            self.wfile.write(encoded)
-
-        def _serve_graph_stats(self) -> None:
-            """Load graph and serve describe() as JSON."""
-            import json
-
-            filepath = agent_dir / "code_graph.json"
-            if not filepath.exists():
-                self.send_error(404, "code_graph.json not found")
-                return
-            try:
-                raw = json.loads(filepath.read_text(encoding="utf-8"))
-                from code_context_agent.tools.graph.model import CodeGraph
-
-                graph = CodeGraph.from_node_link_data(raw)
-                stats = graph.describe()
-                body = json.dumps(stats, indent=2).encode("utf-8")
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Content-Length", str(len(body)))
-                self.send_header("Access-Control-Allow-Origin", "*")
-                self.end_headers()
-                self.wfile.write(body)
-            except (KeyError, ValueError, OSError) as exc:
-                self.send_error(500, str(exc))
-
-        def _serve_bundle_listing(self) -> None:
-            """List bundle files in the bundles/ subdirectory as JSON array."""
-            import json
-
-            bundles_dir = agent_dir / "bundles"
-            if not bundles_dir.is_dir():
-                body = json.dumps([]).encode("utf-8")
-            else:
-                filenames = sorted(f.name for f in bundles_dir.iterdir() if f.is_file() and f.suffix == ".md")
-                body = json.dumps(filenames).encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.end_headers()
-            self.wfile.write(body)
-
-        def log_message(self, format, *args):
-            pass  # Suppress request logs
+    pn.extension("vega", sizing_mode="stretch_width")
 
     console.print()
-    console.print("[bold]Code Context Visualizer[/bold]")
-    console.print(f"  Data: [cyan]{agent_dir}[/cyan]")
+    console.print("[bold]Code Context Dashboard[/bold]")
+    console.print(f"  Data:  [cyan]{agent_dir}[/cyan]")
     console.print(f"  Files: {', '.join(files_found) or 'none'}")
-    console.print(f"  URL: [link={url}]{url}[/link]")
+    console.print(f"  URL:   [link=http://localhost:{port}]http://localhost:{port}[/link]")
     console.print()
     console.print("[dim]Press Ctrl+C to stop[/dim]")
 
-    if not no_open:
-        threading.Timer(0.5, lambda: webbrowser.open(url)).start()
-
-    with socketserver.TCPServer(("127.0.0.1", port), VizHandler) as httpd:
-        httpd.allow_reuse_address = True
-        try:
-            httpd.serve_forever()
-        except KeyboardInterrupt:
-            console.print("\n[dim]Server stopped[/dim]")
+    try:
+        pn.serve(
+            {"": lambda: build_dashboard(agent_dir)},
+            port=port,
+            show=not no_open,
+            start=True,
+            threaded=False,
+            websocket_origin=[f"localhost:{port}"],
+            static_dirs=static_dirs,
+        )
+    except KeyboardInterrupt:
+        console.print("\n[dim]Dashboard stopped[/dim]")
 
 
 @app.command

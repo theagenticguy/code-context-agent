@@ -19,10 +19,6 @@ pre-commit:
     - name: ty-check
       run: uv run ty check src/
 
-    - name: biome-check
-      run: pnpm --dir ui lint
-      glob: "ui/**/*.{ts,tsx,js,jsx}"
-
     - name: gitleaks
       run: gitleaks protect --staged --no-banner
 
@@ -41,12 +37,6 @@ pre-push:
     - name: test
       run: uv run pytest
 
-    - name: ui-lint
-      run: pnpm --dir ui lint
-
-    - name: ui-typecheck
-      run: pnpm --dir ui typecheck
-
     - name: gitleaks
       run: gitleaks detect --source . --no-banner
 
@@ -54,7 +44,7 @@ pre-push:
       run: semgrep scan --config auto --config p/owasp-top-ten --exclude-rule python.flask.security.xss.audit.direct-use-of-jinja2.direct-use-of-jinja2 --error --quiet src/
 
     - name: osv-scanner
-      run: osv-scanner scan --lockfile uv.lock --lockfile ui/pnpm-lock.yaml || echo "⚠ OSV-Scanner found vulnerabilities (informational)"
+      run: osv-scanner scan --lockfile uv.lock || echo "⚠ OSV-Scanner found vulnerabilities (informational)"
 
     - name: trivy
       run: trivy fs --severity HIGH,CRITICAL . || echo "⚠ Trivy found vulnerabilities (informational)"
