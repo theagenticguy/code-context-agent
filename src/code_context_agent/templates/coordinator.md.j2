@@ -10,7 +10,6 @@ Output directory: {{ output_dir }}
 The repository has been deterministically indexed. Key metrics:
 - **{{ heuristic.volume.total_files }}** files across **{{ heuristic.volume.languages | length }}** languages
 - **{{ heuristic.volume.estimated_tokens | int }}** estimated tokens
-- **{{ heuristic.topology.graph_nodes }}** graph nodes, **{{ heuristic.topology.graph_edges }}** edges
 - Frameworks: {{ heuristic.volume.frameworks | join(", ") or "none detected" }}
 
 {% if heuristic.health.semgrep_findings.critical > 0 %}
@@ -36,9 +35,8 @@ then `write_bundle` to produce output.
 {% include "partials/_rules.md.j2" %}
 
 {# ── Analysis tool guidance ── #}
-{% include "partials/_code_graph.md.j2" %}
 {% include "partials/_git_history.md.j2" %}
-{% include "partials/_astgrep.md.j2" %}
+{% include "partials/_gitnexus.md.j2" %}
 
 {# ── Quality and reasoning ── #}
 {% include "partials/_synthesis.md.j2" %}
@@ -53,4 +51,3 @@ then `write_bundle` to produce output.
 {% include "steering/_anti_patterns.md.j2" %}
 {% include "steering/_size_limits.md.j2" %}
 {% include "steering/_tool_efficiency.md.j2" %}
-{% include "steering/_graph_exploration.md.j2" %}

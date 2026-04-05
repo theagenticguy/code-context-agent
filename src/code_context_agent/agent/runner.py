@@ -141,7 +141,6 @@ def _setup_analysis_context(
             update={
                 "agent_max_duration": settings.full_max_duration,
                 "agent_max_turns": settings.full_max_turns,
-                "lsp_max_files": 50_000,
             },
         )
     else:
@@ -276,12 +275,7 @@ async def _cleanup_context(context: AnalysisContext) -> None:
         except Exception as e:  # noqa: BLE001
             logger.debug(f"Error stopping Rich Live display: {e}")
 
-    from ..tools.lsp.session import get_session_manager
-
-    try:
-        await asyncio.wait_for(get_session_manager().shutdown_all(), timeout=10.0)
-    except TimeoutError:
-        logger.warning("LSP session cleanup timed out after 10s, forcing exit")
+    # No LSP sessions to clean up — GitNexus MCP handles its own lifecycle
 
 
 async def run_analysis(
@@ -297,8 +291,8 @@ async def run_analysis(
 ) -> dict[str, Any]:
     """Run code context analysis on a repository.
 
-    This function orchestrates the V10 progressive disclosure pipeline:
-    1. Auto-index if no pre-built graph exists (deterministic, ~30-90s)
+    This function orchestrates the analysis pipeline:
+    1. Auto-index if no pre-built index exists (deterministic, ~30-90s)
     2. Create coordinator agent with hook-based display
     3. Run coordinator: plan teams → dispatch → consolidate → write bundles
     4. Return analysis results
@@ -317,12 +311,12 @@ async def run_analysis(
     Returns:
         Dict with analysis status and output paths.
     """
-    # Auto-index if no pre-built graph exists (skip in bundles_only mode)
+    # Auto-index if no pre-built index exists (skip in bundles_only mode)
     repo = Path(repo_path).resolve()
     output = Path(output_dir).resolve() if output_dir else repo / DEFAULT_OUTPUT_DIR
     if not bundles_only:
-        graph_file = output / "code_graph.json"
-        if not graph_file.exists():
+        summary_file = output / "heuristic_summary.json"
+        if not summary_file.exists():
             from ..indexer import build_index
 
             logger.info("No pre-built index found, running deterministic indexer")

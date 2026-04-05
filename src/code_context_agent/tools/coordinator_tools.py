@@ -116,14 +116,13 @@ def dispatch_team(
         - tools (list[str]): tool names this agent can use, inherited from
           the coordinator's tool registry. Common subsets:
 
-          Structure: code_graph_stats, code_graph_analyze, code_graph_explore,
-                     lsp_start, lsp_document_symbols, lsp_references,
-                     astgrep_scan, rg_search, bm25_search, read_file_bounded
+          Structure: gitnexus_query, gitnexus_context, gitnexus_impact,
+                     gitnexus_cypher, rg_search, bm25_search, read_file_bounded
           Git:       git_hotspots, git_files_changed_together, git_blame_summary,
                      git_file_history, git_contributors, git_recent_commits,
                      read_file_bounded
-          Reading:   read_file_bounded, rg_search, bm25_search, lsp_references,
-                     lsp_definition, lsp_hover, code_graph_analyze
+          Reading:   read_file_bounded, rg_search, bm25_search, gitnexus_context,
+                     gitnexus_query
 
     FINDING PERSISTENCE:
 
@@ -224,7 +223,7 @@ When your analysis is complete, the LAST agent in the chain MUST:
 
 Use the write_file tool for both files. The coordinator will read these after your team completes.
 
-The pre-built code graph is loaded as "main". Use code_graph_analyze("main", ...) to query it.
+Use gitnexus_query/gitnexus_context/gitnexus_impact for structural code intelligence.
 Output directory: {output_dir}
 Repository: {_repo_path}""",
     )
@@ -380,7 +379,7 @@ def write_bundle(area: str, content: str, is_context: bool = False) -> str:
     BUNDLE STRUCTURE (7 sections):
       1. One-paragraph summary — what this area does in business terms
       2. Key files — ranked list with role descriptions and file:line ranges
-      3. Call flow — how data/control flows through this area (use mermaid)
+      3. Call flow — how data/control flows through this area (use mermaid, informed by gitnexus_context/gitnexus_query)
       4. Blast radius — what breaks if you change this area
       5. Risk assessment — security, complexity, coupling, test coverage
       6. Change guidance — where to start, what to watch out for
@@ -446,10 +445,6 @@ def read_heuristic_summary() -> str:
       volume:
         total_files, total_lines, estimated_tokens, languages (dict), frameworks (list)
 
-      symbols:
-        functions, classes, modules, top_complex_functions
-        (list of {name, file, lines, complexity})
-
       health:
         semgrep_findings: {critical, high, medium, low, info}
         owasp_findings: {category: count}
@@ -459,13 +454,9 @@ def read_heuristic_summary() -> str:
         clone_groups: int
         avg_cyclomatic_complexity: float
 
-      topology:
-        graph_nodes, graph_edges, connected_components
-        max_fan_in: {node, count}  — most depended-upon symbol
-        max_fan_out: {node, count} — symbol with most outgoing deps
-        entry_points: list         — likely entry points with scores
-        hotspots: list             — high-churn structurally central files
-        bus_factor_risks: list     — directories with single contributor
+      gitnexus:
+        indexed: bool              — whether GitNexus has indexed this repo
+        repo_name: str             — the repo identifier in the GitNexus graph
 
       git:
         total_commits_analyzed, active_contributors
@@ -476,8 +467,7 @@ def read_heuristic_summary() -> str:
       Signal                               | Action
       -------------------------------------|---------------------------------------
       health.semgrep_findings.critical > 0 | MANDATORY security team
-      topology.max_fan_in.count > 50       | High blast radius — dedicated team
-      topology.bus_factor_risks non-empty  | Ownership analysis in git team mandate
+      gitnexus.indexed is True             | Use gitnexus_impact for blast radius
       health.avg_cyclomatic_complexity > 10| Complexity team for deep code reading
       volume.total_files > 2000            | Domain-scoped teams, not one mega-team
       git.most_coupled_pairs coupling > 0.7| Implicit coupling — needs investigation

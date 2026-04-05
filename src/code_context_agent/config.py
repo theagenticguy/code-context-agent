@@ -18,10 +18,6 @@ Environment Variables:
     CODE_CONTEXT_MODEL_ID: Bedrock model ID for the agent (default: Opus 4.6)
     CODE_CONTEXT_REGION: AWS region for Bedrock
     CODE_CONTEXT_TEMPERATURE: Model temperature (default 1.0 for thinking)
-    CODE_CONTEXT_LSP_SERVERS: Ordered fallback chains of LSP server commands per language (JSON dict)
-    CODE_CONTEXT_LSP_TIMEOUT: LSP operation timeout in seconds
-    CODE_CONTEXT_LSP_STARTUP_TIMEOUT: Maximum seconds to wait for LSP server to initialize
-    CODE_CONTEXT_LSP_MAX_FILES: Maximum files before LSP analysis is skipped
     CODE_CONTEXT_AGENT_MAX_TURNS: Maximum agent turns before stopping (default: 1000)
     CODE_CONTEXT_AGENT_MAX_DURATION: Maximum agent duration in seconds (default: 1200)
     CODE_CONTEXT_OTEL_DISABLED: Disable OpenTelemetry tracing (default: True)
@@ -92,36 +88,6 @@ class Settings(BaseSettings):
         description="Model temperature (must be 1.0 when thinking is enabled)",
     )
 
-    # LSP settings
-    lsp_servers: dict[str, list[str]] = Field(
-        default={
-            "py": ["ty server", "pyright-langserver --stdio"],
-            "ts": ["typescript-language-server --stdio"],
-            "rust": ["rust-analyzer"],
-            "go": ["gopls serve"],
-            "java": ["jdtls"],
-        },
-        description="Ordered fallback chain of LSP server commands per language",
-    )
-    lsp_timeout: int = Field(
-        default=30,
-        ge=5,
-        le=300,
-        description="Timeout in seconds for LSP operations",
-    )
-    lsp_startup_timeout: int = Field(
-        default=30,
-        ge=5,
-        le=120,
-        description="Maximum seconds to wait for LSP server to initialize",
-    )
-    lsp_max_files: int = Field(
-        default=5000,
-        ge=100,
-        le=50000,
-        description="Maximum files before LSP analysis is skipped",
-    )
-
     # Agent execution bounds
     agent_max_turns: int = Field(
         default=1000,
@@ -178,6 +144,10 @@ class Settings(BaseSettings):
     )
 
     # MCP tool sources for the analysis agent
+    gitnexus_enabled: bool = Field(
+        default=True,
+        description="Enable GitNexus MCP server for structural code intelligence during analysis",
+    )
     context7_enabled: bool = Field(
         default=True,
         description="Enable context7 MCP server for library documentation lookup during analysis",
@@ -191,38 +161,6 @@ class Settings(BaseSettings):
     full_reasoning_effort: Literal["low", "medium", "high", "max"] = Field(
         default="max",
         description="Reasoning effort level for --full mode (default: 'max', Opus 4.6 only)",
-    )
-
-    # Semantic embedding enrichment
-    embedding_enabled: bool = Field(
-        default=True,
-        description="Enable semantic embedding enrichment during indexing (tree-sitter + Voyage/Bedrock)",
-    )
-    embedding_model: str = Field(
-        default="amazon.titan-embed-text-v2:0",
-        description="Bedrock model ID for embeddings (Titan V2 primary, Cohere Embed 4 fallback)",
-    )
-    embedding_similarity_threshold: float = Field(
-        default=0.75,
-        ge=0.5,
-        le=0.99,
-        description="Minimum cosine similarity to create a SIMILAR_TO edge from embeddings",
-    )
-    embedding_cache_enabled: bool = Field(
-        default=True,
-        description="Cache embeddings by content hash to avoid re-embedding unchanged code",
-    )
-    embedding_max_chunk_tokens: int = Field(
-        default=500,
-        ge=50,
-        le=8000,
-        description="Maximum tokens per code chunk for embedding",
-    )
-
-    # Graph storage backend
-    graph_backend: str = Field(
-        default="networkx",
-        description="Graph storage backend: 'networkx' (in-memory, default) or 'kuzu' (persistent KuzuDB)",
     )
 
     # Telemetry settings

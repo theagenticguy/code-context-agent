@@ -36,23 +36,30 @@ def _is_error_result(result: Any) -> bool:
 
 # Reasoning prompts injected after key analysis tools to force LLM interpretation
 _REASONING_PROMPTS: dict[str, str] = {
-    "code_graph_analyze": (
-        "[REASONING CHECKPOINT] Before calling the next tool, interpret these graph results. "
-        "What structural pattern do they reveal? Which files appear as bottlenecks or foundations? "
-        "How does this change your understanding of the architecture?"
+    "gitnexus_query": (
+        "[REASONING CHECKPOINT] Which search results are most relevant to the investigation? "
+        "Look at confidence scores and process groupings. Symbols appearing in multiple processes "
+        "are likely core business logic. Plan which symbols to expand with gitnexus_context."
     ),
-    "code_graph_explore": (
-        "[REASONING CHECKPOINT] What does this exploration reveal about the code structure? "
-        "Are there unexpected clusters, isolated components, or surprising dependency directions?"
+    "gitnexus_context": (
+        "[REASONING CHECKPOINT] What does this symbol's relationship map reveal? "
+        "High incoming relationships = widely depended on (foundational). "
+        "High outgoing = orchestrator/coordinator. "
+        "Process participation across multiple flows = critical business logic."
+    ),
+    "gitnexus_impact": (
+        "[REASONING CHECKPOINT] How wide is the blast radius? "
+        "Depth-1 impacts are direct risks. Depth-2+ are cascading risks. "
+        "Cross-reference with git_hotspots — high churn + wide blast radius = fragile bottleneck."
     ),
     "git_hotspots": (
-        "[REASONING CHECKPOINT] Which high-churn files overlap with structurally central files from graph analysis? "
-        "High churn + high centrality = fragile bottleneck. Note any files that are hot but structurally peripheral "
-        "(may indicate config thrash or generated code)."
+        "[REASONING CHECKPOINT] Which high-churn files overlap with structurally important symbols from GitNexus? "
+        "High churn + high relationship count = fragile bottleneck. Note any files that are hot but structurally "
+        "peripheral (may indicate config thrash or generated code)."
     ),
     "git_files_changed_together": (
-        "[REASONING CHECKPOINT] Do these co-change patterns match the static dependency graph? "
-        "Files that change together WITHOUT a static dependency edge indicate an implicit coupling "
+        "[REASONING CHECKPOINT] Do these co-change patterns match the structural dependencies from GitNexus? "
+        "Files that change together WITHOUT a structural relationship indicate an implicit coupling "
         "that an AI coding assistant must know about."
     ),
     "git_blame_summary": (
@@ -62,7 +69,7 @@ _REASONING_PROMPTS: dict[str, str] = {
     ),
     "read_file_bounded": (
         "[REASONING CHECKPOINT] Now that you have read this code, compare what you see against "
-        "what the graph metrics predicted. Does the code complexity match its structural importance? "
+        "what GitNexus context/impact data predicted. Does the code complexity match its structural importance? "
         "What domain invariants does this file maintain? What would break if it were changed naively?"
     ),
     "write_bundle": (
@@ -254,11 +261,6 @@ class FailFastHook(HookProvider):
         {
             # Search tools may legitimately return no results
             "rg_search",
-            "lsp_workspace_symbols",
-            # Shutdown is best-effort
-            "lsp_shutdown",
-            # Graph load may fail if no prior graph exists
-            "code_graph_load",
             # MCP tools are external and may be unavailable
             "context7_resolve-library-id",
             "context7_query-docs",
@@ -277,7 +279,7 @@ class FailFastHook(HookProvider):
 
         tool_name = event.tool_use.get("name", "")
 
-        if tool_name in self.EXEMPT_TOOLS:
+        if tool_name in self.EXEMPT_TOOLS or tool_name.startswith(("context7_", "gitnexus_")):
             return
 
         result_str = str(event.result) if event.result else ""

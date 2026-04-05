@@ -28,17 +28,8 @@ class TestToolPhaseMap:
     def test_dispatch_team_maps_to_team_execution(self):
         assert TOOL_PHASE_MAP["dispatch_team"] == AnalysisPhase.TEAM_EXECUTION
 
-    def test_lsp_start_maps_to_team_execution(self):
-        assert TOOL_PHASE_MAP["lsp_start"] == AnalysisPhase.TEAM_EXECUTION
-
-    def test_astgrep_maps_to_team_execution(self):
-        assert TOOL_PHASE_MAP["astgrep_scan"] == AnalysisPhase.TEAM_EXECUTION
-
     def test_git_maps_to_team_execution(self):
         assert TOOL_PHASE_MAP["git_hotspots"] == AnalysisPhase.TEAM_EXECUTION
-
-    def test_graph_create_maps_to_team_execution(self):
-        assert TOOL_PHASE_MAP["code_graph_create"] == AnalysisPhase.TEAM_EXECUTION
 
     def test_read_team_findings_maps_to_consolidation(self):
         assert TOOL_PHASE_MAP["read_team_findings"] == AnalysisPhase.CONSOLIDATION

@@ -4,21 +4,19 @@
 - Prefer tools over shell: `rg_search`, `repomix_*`, `read_file_bounded`
 - Shell commands: non-interactive, bounded (`head -N`), quick
 - ALWAYS use `read_file_bounded` to read a file before writing or modifying it
-- LSP sequence: `lsp_start` → then `lsp_*` operations
-- Graph sequence: `code_graph_create` → ingest → analyze → explore → export
+- GitNexus workflow: `gitnexus_query` → `gitnexus_context` → `gitnexus_impact`
 - Evidence format: `path/file.ext:line` + symbol + confidence
 - Diagrams: ALWAYS use mermaid code fences — never ASCII art or box-drawing characters
 
 ## Tool Orchestration
-Use the code graph to unify discovery results and surface structural insights:
+Use GitNexus and git tools to surface structural insights:
 
 ```mermaid
 graph LR
   subgraph DISCOVERY
-    A1[lsp_*]
-    A2[astgrep_*]
-    A3[rg_search]
-    A4[repomix_*]
+    A1[gitnexus_query]
+    A2[rg_search]
+    A3[repomix_*]
   end
   subgraph GIT_CONTEXT[GIT CONTEXT]
     B1[git_hotspots]
@@ -26,11 +24,11 @@ graph LR
     B3[git_blame]
     B4[git_history]
   end
-  subgraph GRAPH
-    C1[ingest → graph]
-    C2[analyze]
-    C3[explore]
-    C4[export mermaid]
+  subgraph GITNEXUS[GITNEXUS ANALYSIS]
+    C1[gitnexus_context]
+    C2[gitnexus_impact]
+    C3[gitnexus_detect_changes]
+    C4[gitnexus_cypher]
   end
   subgraph OUTPUTS
     D1[CONTEXT.md]
@@ -38,23 +36,14 @@ graph LR
     D3[files.business]
     D4[CONTEXT.bundle]
   end
-  DISCOVERY --> GIT_CONTEXT --> GRAPH --> OUTPUTS
+  DISCOVERY --> GIT_CONTEXT --> GITNEXUS --> OUTPUTS
 ```
 
-The graph adds value when you need:
-- Hotspots (betweenness centrality) - find bottleneck code
-- Foundations (PageRank) - find core infrastructure
-- Modules (Louvain clustering) - detect logical groupings
-- Coupling analysis - understand dependencies (static + git-based)
+GitNexus adds value when you need:
+- Symbol relationships (gitnexus_context) - find callers, callees, process participation
+- Blast radius (gitnexus_impact) - assess what breaks if a symbol changes
+- Domain search (gitnexus_query) - find code by concept or domain terms
+- Custom queries (gitnexus_cypher) - structural queries beyond built-in tools
 
 ## Critical Tool Failures (FAST EXIT)
-If `lsp_start` returns an error status, IMMEDIATELY:
-1. Report the exact error message from the tool result
-2. Signal failure and stop:
-```
-[ANALYSIS FAILED]
-Tool: lsp_start
-Error: <exact error message>
-Action: Fix the LSP server issue and retry
-```
-Do NOT continue without LSP. Do NOT say "I'll proceed without LSP".
+If a `gitnexus_*` tool returns an error status, report the error and attempt alternative tools (e.g., fall back to `rg_search` + `git_*` tools). Do NOT abandon the analysis entirely.

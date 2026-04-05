@@ -14,15 +14,6 @@ from pydantic import Field
 from .base import FrozenModel
 
 
-class GraphStats(FrozenModel):
-    """Code graph statistics from analysis."""
-
-    node_count: int = Field(ge=0)
-    edge_count: int = Field(ge=0)
-    module_count: int = Field(ge=0, default=0)
-    hotspot_count: int = Field(ge=0, default=0)
-
-
 class BusinessLogicItem(FrozenModel):
     """A ranked business logic item discovered during analysis."""
 
@@ -116,7 +107,6 @@ class AnalysisResult(FrozenModel):
         default_factory=list,
         description="Files created during analysis",
     )
-    graph_stats: GraphStats | None = Field(default=None, description="Code graph statistics")
     refactoring_candidates: list[RefactoringCandidate] = Field(
         default_factory=list,
         description="Suggested refactoring opportunities from code health analysis",

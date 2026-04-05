@@ -1,0 +1,37 @@
+## GitNexus Code Intelligence
+
+GitNexus provides structural code understanding via MCP tools. All tool names
+are prefixed with `gitnexus_` (e.g., `gitnexus_query`, `gitnexus_context`).
+
+### Available Tools
+
+| Tool | Purpose | When to Use |
+|------|---------|-------------|
+| `gitnexus_query` | Hybrid search (BM25 + semantic) | Finding code by concept, domain terms, or keywords |
+| `gitnexus_context` | 360° symbol view | Understanding a symbol's callers, callees, and process participation |
+| `gitnexus_impact` | Blast radius analysis | Assessing what breaks if a symbol changes |
+| `gitnexus_detect_changes` | Map git diffs to affected code | Understanding downstream impact of changes |
+| `gitnexus_cypher` | Raw graph queries | Custom structural queries beyond built-in tools |
+| `gitnexus_list_repos` | List indexed repositories | Discovering available repos |
+
+### Recommended Workflow
+
+1. **Search**: `gitnexus_query` to find relevant symbols by domain terms
+2. **Context**: `gitnexus_context` on top results for relationship details
+3. **Impact**: `gitnexus_impact` for blast radius of key symbols
+4. **Custom**: `gitnexus_cypher` for queries the built-in tools don't cover
+
+### For Bundle Sections
+
+- **Key files**: Use `gitnexus_query` (ranked search) + `git_hotspots` (churn)
+- **Call flow**: Use `gitnexus_context` for call chains, generate mermaid diagrams
+- **Blast radius**: Use `gitnexus_impact` (depth-grouped with confidence)
+- **Risk assessment**: Combine `gitnexus_impact` with heuristic_summary health data
+- **Change guidance**: Use `gitnexus_context` for deps + `gitnexus_impact` for what breaks
+
+### Business Logic Discovery
+
+To find business logic in a specific category:
+1. `gitnexus_query` with domain terms (e.g., "payment processing", "auth middleware")
+2. `gitnexus_context` on top symbols — check process participation
+3. Symbols appearing in multiple execution flows are likely core business logic

@@ -43,9 +43,9 @@ def test_register_creates_entry(registry, fake_repo):
     assert repos[0]["alias"] == "myrepo"
 
 
-def test_register_detects_graph(registry, fake_repo_with_graph):
+def test_register_detects_indexed(registry, fake_repo_with_graph):
     entry = registry.register("graphed", str(fake_repo_with_graph))
-    assert entry.graph_exists is True
+    assert entry.indexed is False  # no heuristic_summary.json in fixture
     assert entry.artifact_count == 2
 
 
@@ -71,7 +71,3 @@ def test_find_by_path_exact_match(registry, fake_repo):
 
 def test_find_by_path_not_found(registry):
     assert registry.find_by_path("/does/not/exist") is None
-
-
-def test_load_graph_returns_none_for_missing(registry):
-    assert registry.load_graph("nonexistent") is None

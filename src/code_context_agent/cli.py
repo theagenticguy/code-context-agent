@@ -102,9 +102,9 @@ def analyze(  # noqa: C901, PLR0912, PLR0915
 ) -> None:
     """Analyze a codebase and produce targeted context bundles.
 
-    The coordinator dispatches parallel specialist teams that use LSP,
-    AST-grep, ripgrep, repomix, and git history tools to understand
-    the codebase, then consolidates findings into targeted bundle files.
+    The coordinator dispatches parallel specialist teams that use GitNexus,
+    ripgrep, repomix, and git history tools to understand the codebase,
+    then consolidates findings into targeted bundle files.
 
     Outputs:
         .code-context/bundles/BUNDLE.{area}.md - Targeted context bundles
@@ -208,188 +208,6 @@ def analyze(  # noqa: C901, PLR0912, PLR0915
 
 
 @app.command
-def viz(  # noqa: C901
-    path: Annotated[
-        Path,
-        Parameter(help="Path to the repository (must contain .code-context/ output)."),
-    ] = Path(),
-    *,
-    output_dir: Annotated[
-        Path | None,
-        Parameter(help="Output directory containing analysis results. Defaults to <path>/.code-context"),
-    ] = None,
-    port: Annotated[
-        int,
-        Parameter(help="Port for the local HTTP server."),
-    ] = 8765,
-    no_open: Annotated[
-        bool,
-        Parameter(help="Don't auto-open the browser."),
-    ] = False,
-) -> None:
-    """Launch an interactive visualization of analysis results.
-
-    Serves a local web UI with 10 views: dashboard, graph, modules, hotspots,
-    dependencies, narrative, bundles, insights, signatures, and landing.
-
-    Requires a prior `analyze` or `index` run to generate .code-context/ output files.
-
-    Example:
-        $ code-context-agent viz /path/to/repo
-        $ code-context-agent viz . --port 9000
-    """
-    import http.server
-    import socketserver
-    import threading
-    import webbrowser
-
-    repo_path = path.resolve()
-    agent_dir = (output_dir or repo_path / DEFAULT_OUTPUT_DIR).resolve()
-
-    if not agent_dir.exists():
-        console.print(f"[red]Error:[/red] No analysis output found at {agent_dir}")
-        console.print("Run [cyan]code-context-agent analyze[/cyan] first.")
-        raise SystemExit(1)
-
-    # Resolve viz directory — bundled inside the package as code_context_agent/ui/
-    viz_dir = Path(__file__).parent / "ui"
-    if not (viz_dir / "index.html").exists() or not (viz_dir / "assets").exists():
-        console.print("[red]Error:[/red] Frontend not built. Run [cyan]mise run ui:build[/cyan] first.")
-        raise SystemExit(1)
-
-    # Build URL params pointing to the agent output files
-    params = []
-    graph_file = agent_dir / "code_graph.json"
-    context_file = agent_dir / "CONTEXT.md"
-    result_file = agent_dir / "analysis_result.json"
-
-    # Check what files exist
-    files_found = []
-    if graph_file.exists():
-        params.append("graph=/data/code_graph.json")
-        files_found.append("code_graph.json")
-    if context_file.exists():
-        params.append("narrative=/data/CONTEXT.md")
-        files_found.append("CONTEXT.md")
-    if result_file.exists():
-        params.append("result=/data/analysis_result.json")
-        files_found.append("analysis_result.json")
-
-    if not files_found:
-        console.print(f"[yellow]Warning:[/yellow] No analysis files found in {agent_dir}")
-        console.print("The visualizer will open but you'll need to load data manually.")
-
-    query = "&".join(params)
-    url = f"http://localhost:{port}/{'?' + query if query else ''}"
-
-    # Custom handler that serves viz files and proxies /data/ to agent_dir
-    class VizHandler(http.server.SimpleHTTPRequestHandler):
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, directory=str(viz_dir), **kwargs)
-
-        def do_GET(self):
-            """Handle GET requests with API endpoints and file serving."""
-            if self.path == "/api/graph" or self.path.startswith("/api/graph?"):
-                self._serve_json_file("code_graph.json")
-                return
-            if self.path == "/api/stats" or self.path.startswith("/api/stats?"):
-                self._serve_graph_stats()
-                return
-            if self.path in {"/data/bundles/", "/data/bundles"}:
-                self._serve_bundle_listing()
-                return
-            super().do_GET()
-
-        def translate_path(self, path):
-            """Route /data/ requests to the agent output directory."""
-            if path.startswith("/data/"):
-                relative = path[6:]  # strip /data/
-                resolved = (agent_dir / relative).resolve()
-                # Prevent path traversal outside agent_dir
-                if not str(resolved).startswith(str(agent_dir)):
-                    return str(agent_dir / "404")
-                return str(resolved)
-            return super().translate_path(path)
-
-        def _serve_json_file(self, filename: str) -> None:
-            """Serve a JSON file from agent_dir."""
-            filepath = agent_dir / filename
-            if not filepath.exists():
-                self.send_error(404, f"{filename} not found")
-                return
-            data = filepath.read_text(encoding="utf-8")
-            encoded = data.encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(encoded)))
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.end_headers()
-            self.wfile.write(encoded)
-
-        def _serve_graph_stats(self) -> None:
-            """Load graph and serve describe() as JSON."""
-            import json
-
-            filepath = agent_dir / "code_graph.json"
-            if not filepath.exists():
-                self.send_error(404, "code_graph.json not found")
-                return
-            try:
-                raw = json.loads(filepath.read_text(encoding="utf-8"))
-                from code_context_agent.tools.graph.model import CodeGraph
-
-                graph = CodeGraph.from_node_link_data(raw)
-                stats = graph.describe()
-                body = json.dumps(stats, indent=2).encode("utf-8")
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Content-Length", str(len(body)))
-                self.send_header("Access-Control-Allow-Origin", "*")
-                self.end_headers()
-                self.wfile.write(body)
-            except (KeyError, ValueError, OSError) as exc:
-                self.send_error(500, str(exc))
-
-        def _serve_bundle_listing(self) -> None:
-            """List bundle files in the bundles/ subdirectory as JSON array."""
-            import json
-
-            bundles_dir = agent_dir / "bundles"
-            if not bundles_dir.is_dir():
-                body = json.dumps([]).encode("utf-8")
-            else:
-                filenames = sorted(f.name for f in bundles_dir.iterdir() if f.is_file() and f.suffix == ".md")
-                body = json.dumps(filenames).encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.end_headers()
-            self.wfile.write(body)
-
-        def log_message(self, format, *args):
-            pass  # Suppress request logs
-
-    console.print()
-    console.print("[bold]Code Context Visualizer[/bold]")
-    console.print(f"  Data: [cyan]{agent_dir}[/cyan]")
-    console.print(f"  Files: {', '.join(files_found) or 'none'}")
-    console.print(f"  URL: [link={url}]{url}[/link]")
-    console.print()
-    console.print("[dim]Press Ctrl+C to stop[/dim]")
-
-    if not no_open:
-        threading.Timer(0.5, lambda: webbrowser.open(url)).start()
-
-    with socketserver.TCPServer(("127.0.0.1", port), VizHandler) as httpd:
-        httpd.allow_reuse_address = True
-        try:
-            httpd.serve_forever()
-        except KeyboardInterrupt:
-            console.print("\n[dim]Server stopped[/dim]")
-
-
-@app.command
 def index(
     path: Annotated[
         Path,
@@ -405,10 +223,10 @@ def index(
         Parameter(help="Suppress all output except errors."),
     ] = False,
 ) -> None:
-    """Build a code graph deterministically without LLM calls.
+    """Build a deterministic index without LLM calls.
 
-    Faster and cheaper than full analysis. Uses LSP, AST-grep, and git
-    to build a structural code graph that can be queried via MCP tools.
+    Faster and cheaper than full analysis. Runs GitNexus indexing, git
+    analysis, and static scanners to produce artifacts for agent analysis.
 
     Example:
         $ code-context-agent index /path/to/repo
@@ -550,14 +368,13 @@ def _preflight_check() -> dict[str, dict[str, bool | str]]:
     tools = {
         # Core (required for indexing)
         "ripgrep": {"cmd": "rg", "package": "ripgrep", "group": "core"},
-        "ast-grep": {"cmd": "ast-grep", "package": "ast-grep (npm)", "group": "core"},
+        "gitnexus": {"cmd": "gitnexus", "package": "gitnexus (npm)", "group": "core"},
         "repomix": {"cmd": "repomix", "package": "repomix (npm)", "group": "core"},
         "npx": {"cmd": "npx", "package": "Node.js", "group": "core"},
         # Static analysis (optional, enrich indexer output)
         "semgrep": {"cmd": "semgrep", "package": "semgrep (pip or brew)", "group": "analysis"},
         "ruff": {"cmd": "ruff", "package": "ruff (pip or brew)", "group": "analysis"},
         "ty": {"cmd": "ty", "package": "ty (pip)", "group": "analysis"},
-        "pyright": {"cmd": "pyright-langserver", "package": "pyright (npm)", "group": "analysis"},
         "radon": {"cmd": "radon", "package": "radon (pip)", "group": "analysis"},
         "vulture": {"cmd": "vulture", "package": "vulture (pip)", "group": "analysis"},
         "pipdeptree": {"cmd": "pipdeptree", "package": "pipdeptree (pip)", "group": "analysis"},

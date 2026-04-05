@@ -106,11 +106,10 @@ class TestFailFastHook:
 
     def test_exempt_tools_contains_expected(self):
         hook = FailFastHook()
-        assert "lsp_shutdown" in hook.EXEMPT_TOOLS
         assert "rg_search" in hook.EXEMPT_TOOLS
-        assert "code_graph_load" in hook.EXEMPT_TOOLS
         assert "context7_resolve-library-id" in hook.EXEMPT_TOOLS
         assert "context7_query-docs" in hook.EXEMPT_TOOLS
+        assert "shell" in hook.EXEMPT_TOOLS
 
     def test_raises_on_error_status(self):
         hook = FailFastHook()
@@ -145,17 +144,6 @@ class TestReasoningCheckpointHook:
     def test_has_register_hooks(self):
         hook = ReasoningCheckpointHook()
         assert hasattr(hook, "register_hooks")
-
-    def test_injects_prompt_for_graph_analyze(self):
-        hook = ReasoningCheckpointHook()
-        event = _make_after_event(
-            "code_graph_analyze",
-            {"status": "success", "content": [{"text": json.dumps({"hotspots": [{"name": "foo"}]})}]},
-        )
-        hook._inject_reasoning_prompt(event)
-        # Should have appended a reasoning checkpoint text block
-        assert len(event.result["content"]) == 2
-        assert "REASONING CHECKPOINT" in event.result["content"][1]["text"]
 
     def test_injects_prompt_for_git_hotspots(self):
         hook = ReasoningCheckpointHook()

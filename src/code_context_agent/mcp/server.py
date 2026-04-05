@@ -1,19 +1,20 @@
 """FastMCP server exposing code-context-agent's core differentiators.
 
-This server exposes capabilities that coding agents (Claude Code, Cursor, etc.)
-cannot get from commodity MCP tools:
+This server complements GitNexus (structural code intelligence) with:
 
-1. Full 10-phase analysis pipeline (start_analysis / check_analysis)
-2. Code graph algorithms (query_code_graph)
-3. Progressive graph exploration (explore_code_graph)
+1. Full analysis pipeline (start_analysis / check_analysis) — multi-agent
+   narrative generation producing CONTEXT.md and BUNDLE.{area}.md files
+2. Git evolution analysis (hotspots, coupling, contributors) — GitNexus
+   doesn't track commit-level churn and co-change patterns
+3. Static analysis findings (semgrep, typecheck, lint, complexity, dead code)
 4. Analysis artifact access (resources)
 
-Tools that already exist in the MCP marketplace (ripgrep search, LSP symbols,
-git history, AST-grep) are intentionally NOT exposed here.
+Tools that GitNexus already provides (structural search, symbol context,
+blast radius, execution flows, community detection, Cypher queries) are
+intentionally NOT duplicated here.
 
 The analysis pipeline is exposed as a kickoff/poll pair to avoid MCP client
-timeouts. Graph query and exploration tools operate on persisted artifacts
-and return in sub-second time.
+timeouts.
 """
 
 from __future__ import annotations
@@ -22,51 +23,48 @@ import asyncio
 import json
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import Annotated, Any
 
 from fastmcp import FastMCP
 from loguru import logger
 from pydantic import Field
 
 from ..config import DEFAULT_OUTPUT_DIR
-from ..tools.graph.analysis import CodeAnalyzer
-from ..tools.graph.disclosure import ProgressiveExplorer
-from ..tools.graph.model import CodeGraph
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
 
 mcp = FastMCP(
     name="code-context-agent",
     instructions="""\
-Automated codebase analysis and structural understanding server.
+Automated codebase analysis and narrative documentation server.
 
 USE THIS SERVER WHEN YOU NEED TO:
-- Understand an unfamiliar codebase's architecture and structure
-- Find the most critical, high-traffic, or bottleneck code in a repository
-- Discover how code is organized into logical modules and layers
-- Identify tightly-coupled components and architectural risks
-- Find entry points, foundational infrastructure, and business logic
-- Get a narrated architecture overview for onboarding or code review
-- Analyze code dependencies, coupling, and change impact
+- Run a full multi-agent analysis to produce narrated architecture documentation
+- Access git evolution data (hotspot rankings, co-change coupling, contributors)
+- Read static analysis findings (semgrep, typecheck, lint, complexity, dead code)
+- Get a compact heuristic summary of a codebase's key metrics
 
-WHAT THIS SERVER PROVIDES (that other tools don't):
-- Code graph analysis: PageRank, betweenness centrality, Louvain community
-  detection, TrustRank, coupling measurement, dependency chain analysis
-- Business logic discovery: ranked by graph importance scores
-- Narrated CONTEXT.md: <=300-line architecture overview written by AI
+WHAT THIS SERVER PROVIDES (that GitNexus doesn't):
+- Multi-agent narrative analysis: CONTEXT.md + BUNDLE.{area}.md files
+- Git evolution: hotspot rankings, co-change coupling, bus factor risks
+- Static scanner results: semgrep, OWASP, type errors, lint, complexity, dead code
 - Compressed Tree-sitter signatures, curated source bundles
 
+WHAT TO USE GitNexus FOR INSTEAD:
+- Structural code search → gitnexus query
+- Symbol context (callers/callees) → gitnexus context
+- Blast radius / impact analysis → gitnexus impact
+- Execution flow tracing → gitnexus processes
+- Community/cluster detection → gitnexus clusters
+- Custom graph queries → gitnexus cypher
+
 HOW TO USE:
-1. If .code-context/ directory exists in the repo, skip to step 3 (already analyzed)
+1. If .code-context/ directory exists, skip to step 3 (already analyzed)
 2. Run start_analysis(repo_path) then poll check_analysis(job_id) until done
-3. Use query_code_graph to run algorithms (hotspots, modules, PageRank, etc.)
-4. Use explore_code_graph for progressive drill-down starting with "overview"
+3. Use git_evolution for churn/coupling data GitNexus doesn't track
+4. Use static_scan_findings for security/quality scan results
 5. Read artifacts via resources: analysis://<repo_path>/context, etc.
 
-IMPORTANT: The analysis step (1-2) is a one-time batch job (5-20 min). The
-graph query and exploration tools (3-4) are sub-second and are the primary
-interactive surface. Check for .code-context/code_graph.json before running analysis.
+IMPORTANT: The analysis step (1-2) is a batch job (5-20 min). Other tools
+are sub-second lookups against persisted index artifacts.
 """,
 )
 
@@ -81,108 +79,9 @@ def _add_hints(result: dict[str, Any], hints: list[str]) -> dict[str, Any]:
     return {**result, "next_steps": hints}
 
 
-# Hint mappings for algorithm-specific and action-specific guidance
-QUERY_ALGORITHM_HINTS: dict[str, list[str]] = {
-    "hotspots": [
-        "Expand the top hotspot with explore_code_graph(action='expand_node', node_id='...')",
-        "Check coupling between top hotspots with query_code_graph(algorithm='coupling')",
-    ],
-    "foundations": [
-        "Run query_code_graph(algorithm='trust') for noise-resistant ranking",
-        "Expand top foundation with explore_code_graph(action='expand_node')",
-    ],
-    "trust": [
-        "Foundations and trust results together reveal the most critical code",
-        "Expand trusted nodes to see their callers and callees",
-    ],
-    "modules": [
-        "Expand a module with explore_code_graph(action='expand_module', module_id=0)",
-        "Modules with low cohesion may be refactoring candidates",
-    ],
-    "entry_points": [
-        "Trace execution flows from entry points with query_code_graph(algorithm='flows')",
-        "Entry points are good starting nodes for blast_radius analysis",
-    ],
-    "coupling": [
-        "High coupling (>2.0) suggests the nodes should be refactored together",
-        "Check if coupled nodes are in the same module",
-    ],
-    "similar": [
-        "Similar nodes may be candidates for extraction into a shared utility",
-    ],
-    "dependencies": [
-        "Follow the dependency chain to understand the full call path",
-    ],
-    "triangles": [
-        "Triangles reveal tightly-coupled triads that change together",
-    ],
-    "category": [
-        "Explore specific nodes in this category with expand_node",
-    ],
-    "flows": [
-        "Expand entry points of top flows with explore_code_graph(action='expand_node')",
-        "Check coupling between flow endpoints with query_code_graph(algorithm='coupling')",
-    ],
-    "blast_radius": [
-        "High-impact affected nodes should be tested before deploying changes",
-        "Check coupling between the source and top affected nodes",
-    ],
-    "unused_symbols": [
-        "Verify unused symbols are truly dead code before removing",
-    ],
-    "refactoring": [
-        "Prioritize refactoring candidates with the highest score",
-    ],
-    "diff_impact": [
-        "Review suggested_tests to ensure adequate test coverage for the change",
-        "High aggregate_risk (>5.0) suggests the change has wide blast radius",
-    ],
-}
-
-EXPLORE_ACTION_HINTS: dict[str, list[str]] = {
-    "overview": [
-        "Expand the top hotspot node with explore_code_graph(action='expand_node', node_id='...')",
-        "Explore the largest module with explore_code_graph(action='expand_module', module_id=0)",
-        "Check a specific category with explore_code_graph(action='category', category='...')",
-    ],
-    "expand_node": [
-        "Follow suggested_next nodes to continue exploring",
-        "Use explore_code_graph(action='path', ...) to trace connections between nodes",
-    ],
-    "expand_module": [
-        "Expand individual nodes within the module for deeper analysis",
-        "Check external connections to understand module boundaries",
-    ],
-    "path": [
-        "Nodes along the path may be change-coupled — check with query_code_graph(algorithm='coupling')",
-    ],
-    "category": [
-        "Expand individual nodes in this category for details",
-    ],
-    "status": [
-        "Focus on unexplored areas with low coverage",
-    ],
-}
-
-GRAPH_STATS_HINTS: list[str] = [
-    "Run explore_code_graph(action='overview') for structural overview",
-    "Run query_code_graph(algorithm='hotspots') to find critical code",
-]
-
-
 def _agent_dir(repo_path: str) -> Path:
     """Resolve the output directory for a repository."""
     return Path(repo_path).resolve() / DEFAULT_OUTPUT_DIR
-
-
-def _load_graph(repo_path: str) -> CodeGraph:
-    """Load a persisted code graph from .code-context/code_graph.json."""
-    graph_path = _agent_dir(repo_path) / "code_graph.json"
-    if not graph_path.exists():
-        msg = f"No code graph at {graph_path}. Run start_analysis first."
-        raise FileNotFoundError(msg)
-    data = json.loads(graph_path.read_text())
-    return CodeGraph.from_node_link_data(data)
 
 
 def _read_artifact(repo_path: str, filename: str) -> str:
@@ -192,6 +91,16 @@ def _read_artifact(repo_path: str, filename: str) -> str:
         msg = f"Artifact not found: {path}. Run start_analysis first."
         raise FileNotFoundError(msg)
     return path.read_text()
+
+
+def _load_json_artifact(path: Path) -> Any | None:
+    """Load a JSON artifact, returning None on missing or parse error."""
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -250,21 +159,22 @@ async def start_analysis(
 ) -> dict:
     """Kick off full codebase analysis. Returns immediately with a job_id for polling.
 
-    USE THIS WHEN: You need to analyze a codebase that hasn't been analyzed yet
-    (no .code-context/ directory exists). This is a one-time batch operation.
+    USE THIS WHEN: You need to produce narrated architecture documentation
+    (CONTEXT.md, BUNDLE.{area}.md) for a codebase. This dispatches multiple
+    AI agent teams to investigate the code and synthesize findings.
 
-    DO NOT USE IF: .code-context/code_graph.json already exists — go straight to
-    query_code_graph or explore_code_graph instead.
+    DO NOT USE IF: You just need structural code intelligence (search, symbol
+    context, blast radius) — use GitNexus tools directly instead.
 
     The analysis runs in the background (5-20 min) and produces:
     - .code-context/CONTEXT.md — narrated architecture overview
-    - .code-context/code_graph.json — structural graph for algorithm queries
+    - .code-context/bundles/BUNDLE.{area}.md — deep-dive area narratives
     - .code-context/CONTEXT.signatures.md — compressed Tree-sitter signatures
-    - .code-context/CONTEXT.bundle.md — curated source code bundle
     - .code-context/analysis_result.json — structured analysis metadata
+    - .code-context/heuristic_summary.json — compact index metrics
 
     NEXT STEP: Poll check_analysis(job_id) every 30 seconds until status
-    is "completed", then use query_code_graph or explore_code_graph.
+    is "completed", then read the artifacts.
 
     Returns:
         {
@@ -321,7 +231,7 @@ async def start_analysis(
         },
         [
             f"Poll with check_analysis(job_id='{job_id}') every 30 seconds until completed",
-            "If the repo was already analyzed, use query_code_graph or explore_code_graph for instant results",
+            "While waiting, use GitNexus tools for immediate structural queries",
         ],
     )
 
@@ -338,12 +248,9 @@ def check_analysis(
     POLLING PATTERN:
     1. Call check_analysis(job_id)
     2. If status is "starting" or "running", wait 30 seconds, repeat
-    3. If status is "completed", artifacts are ready — use query_code_graph
+    3. If status is "completed", artifacts are ready
     4. If status is "error", check the error field
     5. If status is "stopped", partial artifacts may exist (hit time/turn limit)
-
-    Returns (while running):
-        {"job_id": "a1b2c3d4e5f6", "status": "running", "repo_path": "...", "output_dir": "..."}
 
     Returns (when complete):
         {
@@ -353,8 +260,8 @@ def check_analysis(
             "output_dir": "/Users/me/projects/myapp/.code-context",
             "result": {"status": "completed", "turn_count": 87, "duration_seconds": 542.3, ...},
             "artifacts": {
-                "context": true, "graph": true, "manifest": true,
-                "signatures": true, "bundle": true, "result": true
+                "context": true, "manifest": true,
+                "signatures": true, "result": true
             }
         }
     """
@@ -377,11 +284,10 @@ def check_analysis(
             name: (agent_dir / filename).exists()
             for name, filename in [
                 ("context", "CONTEXT.md"),
-                ("graph", "code_graph.json"),
                 ("manifest", "files.all.txt"),
                 ("signatures", "CONTEXT.signatures.md"),
-                ("bundle", "CONTEXT.bundle.md"),
                 ("result", "analysis_result.json"),
+                ("heuristic_summary", "heuristic_summary.json"),
             ]
         }
     elif job["status"] == "error":
@@ -393,9 +299,9 @@ def check_analysis(
         hints = [f"Continue polling check_analysis(job_id='{job_id}') — analysis is still in progress"]
     elif status == "completed":
         hints = [
-            "Run query_code_graph(repo_path, algorithm='hotspots') to find critical code",
-            "Run explore_code_graph(repo_path, action='overview') for structural overview",
             f"Read analysis://{job['repo_path']}/context for the narrative architecture document",
+            "Use git_evolution(repo_path, analysis='hotspots') for churn data",
+            "Use static_scan_findings(repo_path) for security/quality findings",
         ]
     elif status == "error":
         hints = [
@@ -403,7 +309,7 @@ def check_analysis(
             "Retry with start_analysis if the error is transient",
         ]
     elif status == "stopped":
-        hints = ["Analysis was interrupted — review partial results with query_code_graph if a graph exists"]
+        hints = ["Analysis was interrupted — review partial results if artifacts exist"]
     else:
         hints = [f"Continue polling check_analysis(job_id='{job_id}')"]
 
@@ -427,495 +333,227 @@ def list_repos() -> dict:
     return _add_hints(
         {"repos": repos, "count": len(repos)},
         [
-            "Use query_code_graph(repo_path=<path>) to analyze a specific repo",
             "Run start_analysis(repo_path=<path>) to analyze a new repo",
+            "Use GitNexus tools for structural queries on indexed repos",
         ],
     )
 
 
-# ---------------------------------------------------------------------------
-# Graph algorithm dispatch helpers
-# ---------------------------------------------------------------------------
+@mcp.tool
+def git_evolution(  # noqa: C901, PLR0911
+    repo_path: Annotated[
+        str,
+        Field(description="Absolute path to repo (must have .code-context/ from prior index or analysis)"),
+    ],
+    analysis: Annotated[
+        str,
+        Field(
+            description=(
+                "Type of git evolution analysis. One of: "
+                "'hotspots' (files ranked by commit frequency), "
+                "'coupling' (files that change together), "
+                "'contributors' (contributor breakdown per directory), "
+                "'summary' (all git metrics from heuristic summary)"
+            ),
+        ),
+    ] = "summary",
+) -> dict:
+    """Query git evolution data that GitNexus doesn't track.
+
+    USE THIS WHEN: You need commit-level churn patterns, co-change coupling,
+    bus factor risks, or contributor breakdown. These signals complement
+    GitNexus's structural analysis with temporal/social dimensions.
+
+    DO NOT USE IF: You need structural relationships (calls, imports,
+    inheritance) — use GitNexus context/impact/query tools instead.
+
+    PREREQUISITE: .code-context/ must exist from a prior index or analysis run.
+
+    Returns vary by analysis type:
+    - hotspots: {"hotspots": [{"path": "...", "commits": 42, "percentage": 21.0}]}
+    - coupling: {"coupled_pairs": [{"a": "...", "b": "...", "coupling": 0.85}]}
+    - contributors: {"contributors": N, "bus_factor_risks": [...]}
+    - summary: {"total_commits": N, "contributors": N, "coupled_pairs": [...], ...}
+    """
+    agent_dir = _agent_dir(repo_path)
+
+    if analysis == "summary":
+        heuristic = _load_json_artifact(agent_dir / "heuristic_summary.json")
+        if heuristic and "git" in heuristic:
+            return _add_hints(
+                {"analysis": "summary", **heuristic["git"]},
+                [
+                    "Use git_evolution(analysis='hotspots') for detailed file churn ranking",
+                    "Use git_evolution(analysis='coupling') for co-change pairs",
+                ],
+            )
+        return {"error": "No git data in heuristic summary. Run start_analysis or index first."}
+
+    if analysis == "hotspots":
+        data = _load_json_artifact(agent_dir / "git_hotspots.json")
+        if data:
+            return _add_hints(
+                {"analysis": "hotspots", **data},
+                ["Cross-reference top hotspots with GitNexus impact analysis for blast radius"],
+            )
+        # Fallback to heuristic summary
+        heuristic = _load_json_artifact(agent_dir / "heuristic_summary.json")
+        if heuristic and "git" in heuristic:
+            return _add_hints(
+                {"analysis": "hotspots", "source": "heuristic_summary", **heuristic.get("git", {})},
+                ["Full hotspot data not available; showing summary from heuristic_summary.json"],
+            )
+        return {"error": "No hotspot data found. Run start_analysis or index first."}
+
+    if analysis == "coupling":
+        data = _load_json_artifact(agent_dir / "git_cochanges.json")
+        if data:
+            return _add_hints(
+                {"analysis": "coupling", **data},
+                ["High coupling (>70%) suggests files should be refactored together"],
+            )
+        heuristic = _load_json_artifact(agent_dir / "heuristic_summary.json")
+        if heuristic and "git" in heuristic:
+            return _add_hints(
+                {
+                    "analysis": "coupling",
+                    "source": "heuristic_summary",
+                    "most_coupled_pairs": heuristic.get("git", {}).get("most_coupled_pairs", []),
+                },
+                ["Full coupling data not available; showing top pairs from heuristic_summary.json"],
+            )
+        return {"error": "No coupling data found. Run start_analysis or index first."}
+
+    if analysis == "contributors":
+        heuristic = _load_json_artifact(agent_dir / "heuristic_summary.json")
+        if heuristic:
+            git_data = heuristic.get("git", {})
+            complexity_data = heuristic.get("complexity", {})
+            return _add_hints(
+                {
+                    "analysis": "contributors",
+                    "active_contributors": git_data.get("active_contributors", 0),
+                    "total_commits": git_data.get("total_commits_analyzed", 0),
+                    "bus_factor_risks": complexity_data.get("bus_factor_risks", []),
+                },
+                ["Bus factor risks indicate directories with a single contributor"],
+            )
+        return {"error": "No contributor data found. Run start_analysis or index first."}
+
+    return {"error": f"Unknown analysis type: {analysis}. Valid: hotspots, coupling, contributors, summary"}
 
 
-def _build_algorithm_dispatch(
-    analyzer: CodeAnalyzer,
-    top_k: int,
-    node_a: str,
-    node_b: str,
-    resolution: float,
-    category: str,
-) -> dict[str, Callable[[], dict[str, Any]]]:
-    """Build dispatch table for graph algorithms."""
-    return {
-        "hotspots": lambda: {"algorithm": "hotspots", "results": analyzer.find_hotspots(top_k)},
-        "foundations": lambda: {"algorithm": "foundations", "results": analyzer.find_foundations(top_k)},
-        "trust": lambda: {"algorithm": "trust", "results": analyzer.find_trusted_foundations(top_k=top_k)},
-        "modules": lambda: _run_modules(analyzer, resolution),
-        "entry_points": lambda: {"algorithm": "entry_points", "results": analyzer.find_entry_points()},
-        "coupling": lambda: _run_coupling(analyzer, node_a, node_b),
-        "similar": lambda: _run_with_node(analyzer.get_similar_nodes, "similar", node_a, top_k),
-        "dependencies": lambda: _run_dependencies(analyzer, node_a),
-        "category": lambda: _run_category(analyzer, category),
-        "triangles": lambda: {"algorithm": "triangles", "results": analyzer.find_triangles(top_k=top_k)},
-        "flows": lambda: {"algorithm": "flows", "results": analyzer.trace_execution_flows(max_flows=top_k)},
-        "blast_radius": lambda: _run_blast_radius(analyzer, node_a, top_k),
+@mcp.tool
+def static_scan_findings(
+    repo_path: Annotated[
+        str,
+        Field(description="Absolute path to repo (must have .code-context/ from prior index or analysis)"),
+    ],
+    scanner: Annotated[
+        str,
+        Field(
+            description=(
+                "Which scanner results to read. One of: "
+                "'all' (summary of all scanners), "
+                "'semgrep' (security findings by severity), "
+                "'typecheck' (type errors from ty/pyright), "
+                "'lint' (ruff violations), "
+                "'complexity' (cyclomatic complexity from radon), "
+                "'dead_code' (unused code from vulture/knip)"
+            ),
+        ),
+    ] = "all",
+) -> dict:
+    """Read static analysis findings from the deterministic index.
+
+    USE THIS WHEN: You need security findings, type errors, lint violations,
+    complexity metrics, or dead code reports. These come from tools like
+    semgrep, ty/pyright, ruff, radon, and vulture — run during indexing.
+
+    DO NOT USE IF: You need structural code relationships — use GitNexus.
+
+    PREREQUISITE: .code-context/ must exist from a prior index or analysis run.
+
+    Returns vary by scanner:
+    - all: {"health": {"semgrep_findings": {...}, "type_errors": N, "lint_violations": N, ...}}
+    - semgrep: {"findings": [...], "severity_counts": {"critical": N, "high": N, ...}}
+    - typecheck: {"errors": [...], "count": N}
+    - lint: {"violations": [...], "count": N}
+    - complexity: {"functions": [...], "avg_complexity": N}
+    - dead_code: {"symbols": [...], "count": N}
+    """
+    agent_dir = _agent_dir(repo_path)
+
+    if scanner == "all":
+        heuristic = _load_json_artifact(agent_dir / "heuristic_summary.json")
+        if heuristic and "health" in heuristic:
+            return _add_hints(
+                {"scanner": "all", **heuristic["health"]},
+                [
+                    "Use static_scan_findings(scanner='semgrep') for detailed security findings",
+                    "Use static_scan_findings(scanner='complexity') for function-level complexity",
+                ],
+            )
+        return {"error": "No health data in heuristic summary. Run start_analysis or index first."}
+
+    # Direct artifact reads for specific scanners
+    artifact_map = {
+        "semgrep": "semgrep_auto.json",
+        "typecheck": "typecheck.json",
+        "lint": "lint.json",
+        "complexity": "complexity.json",
+        "dead_code": "dead_code_py.json",
     }
 
+    filename = artifact_map.get(scanner)
+    if filename is None:
+        return {"error": f"Unknown scanner: {scanner}. Valid: all, semgrep, typecheck, lint, complexity, dead_code"}
 
-def _run_modules(analyzer: CodeAnalyzer, resolution: float) -> dict[str, Any]:
-    results = analyzer.detect_modules(resolution)
-    return {"algorithm": "modules", "module_count": len(results), "results": results}
+    data = _load_json_artifact(agent_dir / filename)
+    if data is None:
+        return {"error": f"No {scanner} data at {agent_dir / filename}. Was the scanner available during indexing?"}
 
-
-def _run_coupling(analyzer: CodeAnalyzer, node_a: str, node_b: str) -> dict[str, Any]:
-    if not node_a or not node_b:
-        return {"error": "node_a and node_b required for coupling analysis"}
-    return {"algorithm": "coupling", "results": analyzer.calculate_coupling(node_a, node_b)}
-
-
-def _run_with_node(
-    method: Callable,
-    name: str,
-    node_a: str,
-    top_k: int,
-) -> dict[str, Any]:
-    if not node_a:
-        return {"error": f"node_a required for {name} analysis"}
-    return {"algorithm": name, "results": method(node_a, top_k)}
-
-
-def _run_dependencies(analyzer: CodeAnalyzer, node_a: str) -> dict[str, Any]:
-    if not node_a:
-        return {"error": "node_a required for dependencies analysis"}
-    return {"algorithm": "dependencies", "results": analyzer.get_dependency_chain(node_a, "outgoing")}
-
-
-def _run_blast_radius(analyzer: CodeAnalyzer, node_a: str, top_k: int) -> dict[str, Any]:
-    if not node_a:
-        return {"error": "node_a required for blast_radius analysis"}
-    return {"algorithm": "blast_radius", **analyzer.blast_radius(node_a, top_k=top_k)}
-
-
-def _run_category(analyzer: CodeAnalyzer, category: str) -> dict[str, Any]:
-    if not category:
-        return {"error": "category required for category analysis"}
-    return {"algorithm": "category", "category": category, "results": analyzer.find_clusters_by_category(category)}
-
-
-@mcp.tool
-def query_code_graph(
-    repo_path: Annotated[
-        str,
-        Field(
-            description="Absolute path to repo (must have .code-context/code_graph.json from prior analysis)",
-        ),
-    ],
-    algorithm: Annotated[
-        str,
-        Field(
-            description=(
-                "Algorithm to run. One of: hotspots, foundations, trust, modules, "
-                "entry_points, coupling, similar, dependencies, category, triangles, flows, blast_radius"
-            ),
-        ),
-    ],
-    top_k: Annotated[
-        int,
-        Field(description="Max results for ranked analyses (default 10, use 20-30 for thorough review)"),
-    ] = 10,
-    node_a: Annotated[
-        str,
-        Field(
-            description=(
-                "Primary node ID for relationship queries. "
-                "Format: 'filepath:symbol_name' (e.g. 'src/auth/service.py:AuthService')"
-            ),
-        ),
-    ] = "",
-    node_b: Annotated[
-        str,
-        Field(description="Second node ID for coupling analysis. Same format as node_a."),
-    ] = "",
-    resolution: Annotated[
-        float,
-        Field(
-            description=(
-                "Cluster granularity for 'modules' algorithm. "
-                "<1.0 = fewer larger clusters, >1.0 = more smaller clusters"
-            ),
-        ),
-    ] = 1.0,
-    category: Annotated[
-        str,
-        Field(
-            description=(
-                "Business logic category for 'category' algorithm. "
-                "Values: db, auth, http, validation, workflows, integrations"
-            ),
-        ),
-    ] = "",
-) -> dict:
-    """Run graph algorithms on a pre-built code graph to find structural insights.
-
-    USE THIS WHEN: You need to understand which code is most important,
-    how code is organized, or how components relate to each other.
-
-    PREREQUISITE: .code-context/code_graph.json must exist (from start_analysis or
-    'code-context-agent analyze' CLI). Check for the file first.
-
-    ALGORITHMS AND WHEN TO USE EACH:
-
-    Finding important code:
-    - "hotspots" — Betweenness centrality. Finds bottleneck/integration code that
-      many paths go through. Use for: risk assessment, refactoring targets.
-    - "foundations" — PageRank. Finds core infrastructure that important code
-      depends on. Use for: understanding what's foundational, documentation priority.
-    - "trust" — TrustRank (PageRank seeded from entry points). More noise-resistant
-      than foundations. Use for: identifying truly important production code.
-    - "entry_points" — Nodes with no incoming edges. Use for: finding where
-      execution starts, understanding app structure.
-
-    Finding structure:
-    - "modules" — Louvain community detection. Groups densely connected code
-      into logical clusters. Use for: architecture diagrams, understanding layers.
-
-    Analyzing relationships (require node_a and/or node_b):
-    - "coupling" — How tightly two nodes are connected. Use for: change impact,
-      refactoring decisions. Requires node_a AND node_b.
-    - "similar" — Personalized PageRank from a node. Finds related code.
-      Use for: understanding a component's neighborhood. Requires node_a.
-    - "dependencies" — BFS traversal from a node. Shows transitive dependencies.
-      Use for: understanding what a component needs. Requires node_a.
-    - "triangles" — Tightly-coupled triads. Use for: finding clusters of
-      interdependent code that should be refactored together.
-
-    Filtering:
-    - "category" — All nodes in a business logic category (from AST-grep analysis).
-      Use for: finding all database operations, auth logic, etc. Requires category.
-
-    NODE ID FORMAT: Node IDs come from explore_code_graph or previous query results.
-    Format is "filepath:symbol_name", e.g. "src/services/auth.py:AuthService" or
-    "src/api/routes.ts:handleRequest".
-
-    Returns example (for hotspots):
-        {
-            "algorithm": "hotspots",
-            "results": [
-                {"id": "src/core/engine.py:process", "name": "process",
-                 "score": 0.85, "node_type": "function", "file_path": "src/core/engine.py"},
-                ...
-            ]
-        }
-
-    Returns example (for modules):
-        {
-            "algorithm": "modules",
-            "module_count": 5,
-            "results": [
-                {"module_id": 0, "size": 15, "key_nodes": [...], "cohesion": 0.8},
-                ...
-            ]
-        }
-    """
-    graph = _load_graph(repo_path)
-    analyzer = CodeAnalyzer(graph)
-    dispatch = _build_algorithm_dispatch(analyzer, top_k, node_a, node_b, resolution, category)
-    handler = dispatch.get(algorithm)
-    if handler is None:
-        return {
-            "error": (
-                f"Unknown algorithm: {algorithm}. Valid: hotspots, foundations, trust, "
-                "modules, entry_points, coupling, similar, dependencies, category, triangles, flows, blast_radius"
-            ),
-        }
-    result = handler()
-    default_hints = ["Try explore_code_graph(action='overview') for a structural overview"]
-    hints = QUERY_ALGORITHM_HINTS.get(algorithm, default_hints)
-    return _add_hints(result, hints)
-
-
-# ---------------------------------------------------------------------------
-# Graph exploration dispatch helpers
-# ---------------------------------------------------------------------------
-
-
-def _build_explore_dispatch(
-    explorer: ProgressiveExplorer,
-    node_id: str,
-    module_id: int,
-    target_node: str,
-    depth: int,
-    category: str,
-) -> dict[str, Callable[[], dict[str, Any]]]:
-    """Build dispatch table for exploration actions."""
-    return {
-        "overview": lambda: {"action": "overview", **explorer.get_overview()},
-        "expand_node": lambda: _explore_node(explorer, node_id, depth),
-        "expand_module": lambda: _explore_module(explorer, module_id),
-        "path": lambda: _explore_path(explorer, node_id, target_node),
-        "category": lambda: _explore_category(explorer, category),
-        "status": lambda: {"action": "status", **explorer.get_exploration_status()},
-    }
-
-
-def _explore_node(explorer: ProgressiveExplorer, node_id: str, depth: int) -> dict[str, Any]:
-    if not node_id:
-        return {"error": "node_id required for expand_node"}
-    return {"action": "expand_node", **explorer.expand_node(node_id, depth)}
-
-
-def _explore_module(explorer: ProgressiveExplorer, module_id: int) -> dict[str, Any]:
-    if module_id < 0:
-        return {"error": "module_id required for expand_module (integer from overview results)"}
-    return {"action": "expand_module", **explorer.expand_module(module_id)}
-
-
-def _explore_path(explorer: ProgressiveExplorer, node_id: str, target_node: str) -> dict[str, Any]:
-    if not node_id or not target_node:
-        return {"error": "node_id and target_node required for path"}
-    return {"action": "path", **explorer.get_path_between(node_id, target_node)}
-
-
-def _explore_category(explorer: ProgressiveExplorer, category: str) -> dict[str, Any]:
-    if not category:
-        return {"error": "category required for category exploration (e.g. 'db', 'auth', 'http')"}
-    return {"action": "category", **explorer.explore_category(category)}
-
-
-@mcp.tool
-def explore_code_graph(
-    repo_path: Annotated[
-        str,
-        Field(
-            description="Absolute path to repo (must have .code-context/code_graph.json from prior analysis)",
-        ),
-    ],
-    action: Annotated[
-        str,
-        Field(description="Exploration action. One of: overview, expand_node, expand_module, path, category, status"),
-    ],
-    node_id: Annotated[
-        str,
-        Field(
-            description="Node ID for expand_node or path source. Format: 'filepath:symbol' (e.g. 'src/auth.py:login')",
-        ),
-    ] = "",
-    module_id: Annotated[
-        int,
-        Field(description="Module ID (integer) for expand_module. Get from overview results modules[].module_id"),
-    ] = -1,
-    target_node: Annotated[
-        str,
-        Field(description="Target node ID for path finding. Same format as node_id."),
-    ] = "",
-    depth: Annotated[
-        int,
-        Field(
-            description=(
-                "BFS depth for expand_node. 1=direct neighbors (fast), 2=neighbors of neighbors, 3+=rarely needed"
-            ),
-        ),
-    ] = 1,
-    category: Annotated[
-        str,
-        Field(
-            description=(
-                "Business logic category for category exploration. Values: db, auth, http, validation, workflows"
-            ),
-        ),
-    ] = "",
-) -> dict:
-    """Progressively explore a code graph, starting broad and drilling down.
-
-    USE THIS WHEN: You want to understand a codebase step by step, starting
-    with a high-level overview and drilling into specific areas of interest.
-
-    PREREQUISITE: .code-context/code_graph.json must exist (from start_analysis or
-    'code-context-agent analyze' CLI). Check for the file first.
-
-    RECOMMENDED EXPLORATION FLOW:
-    1. Start with action="overview" — returns entry points, hotspots, modules,
-       and foundation code. This gives you node IDs and module IDs for drill-down.
-    2. Pick interesting nodes from the overview results.
-    3. Use action="expand_node" with a node_id to see its neighbors and relationships.
-    4. Use action="expand_module" with a module_id to see a cluster's internals.
-    5. Use action="path" with node_id + target_node to trace how two components connect.
-    6. Use action="category" to see all code in a business logic category (db, auth, etc.).
-
-    GETTING NODE IDs: Node IDs appear in results from overview (entry_points,
-    hotspots, foundations), expand_node, and query_code_graph. They look like
-    "src/services/auth.py:AuthService" or "src/api/handler.ts:processRequest".
-
-    Returns example (for overview):
-        {
-            "action": "overview",
-            "total_nodes": 342,
-            "total_edges": 891,
-            "entry_points": [{"id": "src/main.py:main", "name": "main", ...}],
-            "hotspots": [{"id": "src/core/engine.py:process", "score": 0.85, ...}],
-            "modules": [{"module_id": 0, "size": 45, "key_nodes": [...]}],
-            "foundations": [{"id": "src/db/connection.py:get_pool", "score": 0.72, ...}],
-            "explored_count": 25
-        }
-
-    Returns example (for expand_node):
-        {
-            "action": "expand_node",
-            "center": "src/core/engine.py:process",
-            "discovered_nodes": [{"id": "...", "name": "...", "edge_type": "calls"}],
-            "edges": [...],
-            "suggested_next": ["src/core/pipeline.py:Pipeline"],
-            "explored_count": 40
-        }
-    """
-    graph = _load_graph(repo_path)
-    explorer = ProgressiveExplorer(graph)
-    dispatch = _build_explore_dispatch(explorer, node_id, module_id, target_node, depth, category)
-    handler = dispatch.get(action)
-    if handler is None:
-        return {
-            "error": f"Unknown action: {action}. Valid: overview, expand_node, expand_module, path, category, status",
-        }
-    result = handler()
-    hints = EXPLORE_ACTION_HINTS.get(action, ["Run explore_code_graph(action='overview') to start"])
-    return _add_hints(result, hints)
-
-
-@mcp.tool
-def get_graph_stats(
-    repo_path: Annotated[
-        str,
-        Field(
-            description="Absolute path to repo (must have .code-context/code_graph.json from prior analysis)",
-        ),
-    ],
-) -> dict:
-    """Get summary statistics about a repository's code graph.
-
-    USE THIS WHEN: You want a quick check of whether analysis was successful
-    and what the graph contains before running algorithms.
-
-    Returns node and edge counts broken down by type. A healthy graph from
-    a medium codebase typically has 100-500 nodes and 200-2000 edges.
-
-    Returns:
-        {
-            "node_count": 342,
-            "edge_count": 891,
-            "node_types": {"function": 180, "class": 45, "method": 90, "pattern_match": 27},
-            "edge_types": {"calls": 400, "references": 250, "imports": 150, "tests": 91},
-            "density": 0.0076
-        }
-    """
-    graph = _load_graph(repo_path)
-    return _add_hints(graph.describe(), GRAPH_STATS_HINTS)
-
-
-@mcp.tool
-def diff_impact(
-    repo_path: Annotated[
-        str,
-        Field(
-            description="Absolute path to repo (must have .code-context/code_graph.json from prior analysis)",
-        ),
-    ],
-    changed_files: Annotated[
-        str,
-        Field(
-            description=(
-                'JSON array of changed files. Each element: {"file_path": "src/foo.py", "lines": [10, 11, 12]}. '
-                "Lines are 1-indexed line numbers that were modified."
-            ),
-        ),
-    ],
-    max_depth: Annotated[
-        int,
-        Field(description="Max BFS depth for blast radius per changed symbol (default 3)"),
-    ] = 3,
-    top_k: Annotated[
-        int,
-        Field(description="Max affected nodes to return (default 20)"),
-    ] = 20,
-) -> dict:
-    """Map a git diff to impacted code graph nodes and suggest tests to run.
-
-    USE THIS WHEN: You have a set of changed files/lines (from git diff, PR, or
-    local edits) and want to understand the downstream impact on the codebase.
-
-    PREREQUISITE: .code-context/code_graph.json must exist (from start_analysis).
-
-    HOW IT WORKS:
-    1. Maps changed lines to graph nodes (functions/classes) by line overlap
-    2. Runs blast_radius on each matched node
-    3. Merges and deduplicates affected nodes
-    4. Suggests test files via TESTS edges in the graph
-
-    Returns:
-        {
-            "directly_changed": [{"id": "...", "name": "...", ...}],
-            "total_affected": 15,
-            "aggregate_risk": 3.25,
-            "affected_nodes": [{"id": "...", "impact": 0.5, "distance": 1, ...}],
-            "suggested_tests": ["tests/test_auth.py", ...]
-        }
-    """
-    graph = _load_graph(repo_path)
-    analyzer = CodeAnalyzer(graph)
-
-    try:
-        parsed = json.loads(changed_files)
-    except json.JSONDecodeError as e:
-        return {"error": f"Invalid changed_files JSON: {e}"}
-
-    result = analyzer.diff_impact(parsed, max_depth=max_depth, top_k=top_k)
     return _add_hints(
-        {"algorithm": "diff_impact", **result},
-        QUERY_ALGORITHM_HINTS.get("diff_impact", []),
+        {"scanner": scanner, "data": data},
+        [f"Cross-reference {scanner} findings with GitNexus impact analysis for affected code paths"],
     )
 
 
 @mcp.tool
-def execute_cypher(
+def heuristic_summary(
     repo_path: Annotated[
         str,
-        Field(description="Absolute path to repo with KuzuDB graph"),
-    ],
-    query: Annotated[
-        str,
-        Field(description="Read-only Cypher query to execute against the code graph"),
+        Field(description="Absolute path to repo (must have .code-context/ from prior index or analysis)"),
     ],
 ) -> dict:
-    """Execute a read-only Cypher query against a KuzuDB code graph.
+    """Read the compact heuristic summary produced by the deterministic indexer.
 
-    USE THIS WHEN: You need custom graph queries beyond the built-in algorithms.
-    Only available when the graph backend is KuzuDB.
+    USE THIS WHEN: You want a quick overview of a codebase's key metrics
+    before deciding whether to run a full analysis or which areas to focus on.
 
-    PREREQUISITE: Graph must have been built with KuzuDB backend
-    (CODE_CONTEXT_GRAPH_BACKEND=kuzu).
-
-    Examples:
-        - "MATCH (n:CodeNode) WHERE n.node_type = 'function' RETURN n.id, n.name LIMIT 10"
-        - "MATCH (a)-[e:CodeEdge]->(b) WHERE e.edge_type = 'calls' RETURN a.id, b.id LIMIT 20"
-        - "MATCH (n:CodeNode) RETURN n.node_type, count(n)"
+    The heuristic summary is the bridge between cheap deterministic indexing
+    and expensive multi-agent analysis. It tells you:
+    - Volume: file count, lines, tokens, languages
+    - Health: semgrep findings, type errors, lint violations, complexity, dead code
+    - Git: commit count, contributor count, most coupled file pairs
+    - GitNexus: whether the repo has been indexed by GitNexus
 
     Returns:
-        {"results": [[...], ...], "count": 10}
+        The full heuristic_summary.json content.
     """
-    from code_context_agent.tools.graph.storage import KuzuStorage
+    agent_dir = _agent_dir(repo_path)
+    data = _load_json_artifact(agent_dir / "heuristic_summary.json")
+    if data is None:
+        return {"error": "No heuristic summary found. Run start_analysis or index first."}
 
-    db_path = Path(repo_path) / DEFAULT_OUTPUT_DIR / "graph.kuzu"
-    if not db_path.exists():
-        return {"error": "No KuzuDB graph found. Build with graph_backend=kuzu."}
-    storage = KuzuStorage(db_path)
-    try:
-        rows = storage.execute_cypher(query)
-        return _add_hints(
-            {"results": rows, "count": len(rows)},
-            ["Refine your Cypher query for more specific results"],
-        )
-    except ValueError as e:
-        return {"error": str(e)}
+    return _add_hints(
+        data,
+        [
+            "Use start_analysis for full multi-agent narrative documentation",
+            "Use git_evolution for detailed churn/coupling analysis",
+            "Use static_scan_findings for detailed scanner results",
+        ],
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -927,22 +565,11 @@ def execute_cypher(
 def read_context(repo_path: str) -> str:
     """Read the CONTEXT.md narrated architecture overview for a repository.
 
-    This is the primary human-readable output of the analysis — a <=300 line
-    markdown document covering architecture, business logic, key components,
+    This is the primary human-readable output of the analysis — a markdown
+    document covering architecture, business logic, key components,
     and risks. Best artifact to read first for codebase understanding.
     """
     return _read_artifact(f"/{repo_path}", "CONTEXT.md")
-
-
-@mcp.resource("analysis://{repo_path*}/graph")
-def read_graph(repo_path: str) -> str:
-    """Read the raw code_graph.json (NetworkX node-link format).
-
-    Contains all nodes (functions, classes, methods, pattern matches) and
-    edges (calls, references, imports, inherits, tests, cochanges). This is
-    the data that query_code_graph and explore_code_graph operate on.
-    """
-    return _read_artifact(f"/{repo_path}", "code_graph.json")
 
 
 @mcp.resource("analysis://{repo_path*}/manifest")
@@ -981,6 +608,6 @@ def read_result(repo_path: str) -> str:
 
     Machine-readable analysis output containing: status, summary, ranked
     business_logic_items (with scores), architectural risks (with severity),
-    generated file list, and graph statistics.
+    generated file list, and bundle metadata.
     """
     return _read_artifact(f"/{repo_path}", "analysis_result.json")
