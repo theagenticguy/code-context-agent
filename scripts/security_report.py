@@ -4,7 +4,7 @@
 Usage:
     uv run python scripts/security_report.py [--output report.json]
 
-Runs bandit, osv-scanner, semgrep, gitleaks, and pip-licenses,
+Runs bandit, osv-scanner, semgrep, betterleaks, and pip-licenses,
 then merges all findings into a single JSON report with summary statistics.
 """
 
@@ -35,22 +35,20 @@ def run_bandit(src: str = "src/") -> list[dict]:
     finally:
         Path(tmp).unlink(missing_ok=True)
 
-    findings = []
-    for r in data.get("results", []):
-        findings.append(
-            {
-                "tool": "bandit",
-                "rule": r.get("test_id", ""),
-                "name": r.get("test_name", ""),
-                "severity": r.get("issue_severity", "UNDEFINED"),
-                "confidence": r.get("issue_confidence", "UNDEFINED"),
-                "message": r.get("issue_text", ""),
-                "file": r.get("filename", ""),
-                "line": r.get("line_number", 0),
-                "more_info": r.get("more_info", ""),
-            },
-        )
-    return findings
+    return [
+        {
+            "tool": "bandit",
+            "rule": r.get("test_id", ""),
+            "name": r.get("test_name", ""),
+            "severity": r.get("issue_severity", "UNDEFINED"),
+            "confidence": r.get("issue_confidence", "UNDEFINED"),
+            "message": r.get("issue_text", ""),
+            "file": r.get("filename", ""),
+            "line": r.get("line_number", 0),
+            "more_info": r.get("more_info", ""),
+        }
+        for r in data.get("results", [])
+    ]
 
 
 _CVSS_THRESHOLDS = [(9.0, "CRITICAL"), (7.0, "HIGH"), (4.0, "MEDIUM")]
@@ -133,11 +131,11 @@ def run_semgrep(src: str = "src/") -> list[dict]:
     return findings
 
 
-def run_gitleaks() -> list[dict]:
-    """Run gitleaks and return findings."""
+def run_betterleaks() -> list[dict]:
+    """Run betterleaks and return findings."""
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
         tmp = f.name
-    _run(["gitleaks", "detect", "--source", ".", "--no-banner", "--report-format", "json", "--report-path", tmp])
+    _run(["betterleaks", "git", "--no-banner", "-f", "json", "-r", tmp, "."])
     try:
         data = json.loads(Path(tmp).read_text())
     except (json.JSONDecodeError, FileNotFoundError):
@@ -148,21 +146,19 @@ def run_gitleaks() -> list[dict]:
     if not isinstance(data, list):
         return []
 
-    findings = []
-    for r in data:
-        findings.append(
-            {
-                "tool": "gitleaks",
-                "rule": r.get("RuleID", ""),
-                "name": r.get("Description", ""),
-                "severity": "HIGH",
-                "confidence": "HIGH",
-                "message": f"Secret detected: {r.get('Description', '')}",
-                "file": r.get("File", ""),
-                "line": r.get("StartLine", 0),
-            },
-        )
-    return findings
+    return [
+        {
+            "tool": "betterleaks",
+            "rule": r.get("RuleID", ""),
+            "name": r.get("Description", ""),
+            "severity": "HIGH",
+            "confidence": "HIGH",
+            "message": f"Secret detected: {r.get('Description', '')}",
+            "file": r.get("File", ""),
+            "line": r.get("StartLine", 0),
+        }
+        for r in data
+    ]
 
 
 def run_license_check() -> list[dict]:
@@ -234,16 +230,16 @@ def main() -> None:
     semgrep = run_semgrep()
     print(f"         {len(semgrep)} findings")
 
-    print("  [4/5] gitleaks (secrets)...")
-    gitleaks = run_gitleaks()
-    print(f"         {len(gitleaks)} findings")
+    print("  [4/5] betterleaks (secrets)...")
+    betterleaks = run_betterleaks()
+    print(f"         {len(betterleaks)} findings")
 
     print("  [5/5] pip-licenses (license compliance)...")
     licenses = run_license_check()
     print(f"         {len(licenses)} findings")
 
     # Build unified report
-    all_findings = bandit + osv + semgrep + gitleaks + licenses
+    all_findings = bandit + osv + semgrep + betterleaks + licenses
     severity_counts: dict[str, int] = {}
     for f in all_findings:
         sev = f.get("severity", "UNKNOWN")
@@ -253,7 +249,7 @@ def main() -> None:
         "bandit": len(bandit),
         "osv-scanner": len(osv),
         "semgrep": len(semgrep),
-        "gitleaks": len(gitleaks),
+        "betterleaks": len(betterleaks),
         "pip-licenses": len(licenses),
     }
 

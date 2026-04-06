@@ -95,12 +95,12 @@ context: |
   - pydantic + pydantic-settings (models + config)
   - jinja2 (prompts), rich (TUI), loguru (logging)
   - External CLIs: rg, ast-grep, repomix, npx, jscpd
-  - Lefthook hooks: ruff, ty, gitleaks, semgrep, commitizen
+  - Lefthook hooks: ruff, ty, betterleaks, semgrep, commitizen
 
   ## Development
   - All commits: conventional commits via commitizen
-  - Pre-commit: ruff check+fix, ruff format, ty check, gitleaks
-  - Pre-push: lint, format-check, typecheck, test (93 tests), gitleaks, semgrep OWASP
+  - Pre-commit: ruff check+fix, ruff format, ty check, betterleaks
+  - Pre-push: lint, format-check, typecheck, test (93 tests), betterleaks, semgrep OWASP
   - Line length: 120, Google-style docstrings
   - Python 3.13+ typing: list[str] not List[str], X | None not Optional[X]
   - pathlib.Path over os.path, from __future__ import annotations in all modules

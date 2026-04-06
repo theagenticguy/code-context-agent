@@ -554,7 +554,7 @@ def _preflight_check() -> dict[str, dict[str, bool | str]]:
         "vulture": {"cmd": "vulture", "package": "vulture (pip)", "group": "analysis"},
         "pipdeptree": {"cmd": "pipdeptree", "package": "pipdeptree (pip)", "group": "analysis"},
         # Security scanners
-        "gitleaks": {"cmd": "gitleaks", "package": "gitleaks (brew or mise)", "group": "security"},
+        "betterleaks": {"cmd": "betterleaks", "package": "betterleaks (brew or mise)", "group": "security"},
         "bandit": {"cmd": "bandit", "package": "bandit (pip)", "group": "security"},
         "osv-scanner": {"cmd": "osv-scanner", "package": "osv-scanner (mise)", "group": "security"},
     }

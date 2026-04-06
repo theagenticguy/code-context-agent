@@ -450,9 +450,10 @@ def _parse_blame_line(
         try:
             ts = int(line[12:].strip())
             date_str = datetime.datetime.fromtimestamp(ts, tz=datetime.UTC).strftime("%Y-%m-%d")
-            return current_author, date_str
         except (ValueError, OSError):
             return current_author, "unknown"
+        else:
+            return current_author, date_str
     return current_author, current_date
 
 

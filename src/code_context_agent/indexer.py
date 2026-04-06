@@ -221,19 +221,19 @@ def _run_gitnexus_analyze(repo: Path, quiet: bool) -> bool:
             text=True,
             timeout=300,
         )
-        if result.returncode == 0:
-            if not quiet:
-                logger.info(f"GitNexus analyze: completed for {repo}")
-            return True
-        else:
-            logger.warning(f"GitNexus analyze failed (exit {result.returncode}): {result.stderr[:300]}")
-            return False
     except subprocess.TimeoutExpired:
         logger.warning("GitNexus analyze timed out (300s)")
         return False
     except (subprocess.SubprocessError, OSError) as e:
         logger.warning(f"GitNexus analyze failed: {e}")
         return False
+
+    if result.returncode != 0:
+        logger.warning(f"GitNexus analyze failed (exit {result.returncode}): {result.stderr[:300]}")
+        return False
+    if not quiet:
+        logger.info(f"GitNexus analyze: completed for {repo}")
+    return True
 
 
 # --------------------------------------------------------------------------- #
@@ -658,41 +658,51 @@ def _run_dead_code_ts(repo: Path, out: Path, lang_files: dict[str, list[str]], q
         logger.warning(f"Knip dead code detection failed: {e}")
 
 
+def _try_dep_tool(cmd: list[str], repo: Path, out: Path, label: str, quiet: bool) -> bool:
+    """Try running a dependency tool and write output to deps.json.
+
+    Returns True if the tool ran successfully (even with empty output), False on error.
+    """
+    try:
+        result = subprocess.run(cmd, cwd=str(repo), capture_output=True, text=True, timeout=60)
+    except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError) as e:
+        logger.warning(f"{label} failed: {e}")
+        return False
+
+    if result.stdout:
+        (out / "deps.json").write_text(result.stdout)
+        if not quiet:
+            logger.info(f"Dependencies ({label}): wrote {out / 'deps.json'}")
+    return True
+
+
 def _run_deps(repo: Path, out: Path, lang_files: dict[str, list[str]], quiet: bool) -> None:
     """Generate dependency graph."""
-    if "py" in lang_files and shutil.which("pipdeptree"):
-        try:
-            result = subprocess.run(
-                ["pipdeptree", "--json"],
-                cwd=str(repo),
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
-            if result.stdout:
-                (out / "deps.json").write_text(result.stdout)
-                if not quiet:
-                    logger.info(f"Dependencies (pipdeptree): wrote {out / 'deps.json'}")
-            return
-        except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError) as e:
-            logger.warning(f"pipdeptree failed: {e}")
+    if (
+        "py" in lang_files
+        and shutil.which("pipdeptree")
+        and _try_dep_tool(
+            ["pipdeptree", "--json"],
+            repo,
+            out,
+            "pipdeptree",
+            quiet,
+        )
+    ):
+        return
 
-    if "ts" in lang_files and shutil.which("npm"):
-        try:
-            result = subprocess.run(
-                ["npm", "ls", "--json", "--depth=1"],
-                cwd=str(repo),
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
-            if result.stdout:
-                (out / "deps.json").write_text(result.stdout)
-                if not quiet:
-                    logger.info(f"Dependencies (npm): wrote {out / 'deps.json'}")
-            return
-        except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError) as e:
-            logger.warning(f"npm ls failed: {e}")
+    if (
+        "ts" in lang_files
+        and shutil.which("npm")
+        and _try_dep_tool(
+            ["npm", "ls", "--json", "--depth=1"],
+            repo,
+            out,
+            "npm",
+            quiet,
+        )
+    ):
+        return
 
     logger.debug("No dependency tool available -- skipping dependency graph")
 
@@ -819,9 +829,7 @@ def _avg_complexity(data: Any) -> float:
     for funcs in data.values():
         if not isinstance(funcs, list):
             continue
-        for func in funcs:
-            if isinstance(func, dict) and "complexity" in func:
-                all_cc.append(float(func["complexity"]))
+        all_cc.extend(float(func["complexity"]) for func in funcs if isinstance(func, dict) and "complexity" in func)
     if not all_cc:
         return 0.0
     return round(statistics.mean(all_cc), 2)
@@ -1045,7 +1053,7 @@ def _get_gitnexus_stats(repo: Path, repo_name: str) -> dict[str, Any]:  # noqa: 
                 seen_names: set[str] = set()
                 for raw_line in markdown.split("\n"):
                     line = raw_line.strip()
-                    if not line or line.startswith("| ---") or line.startswith("| c."):
+                    if not line or line.startswith(("| ---", "| c.")):
                         continue
                     parts = [p.strip() for p in line.split("|") if p.strip()]
                     if len(parts) >= 3:  # noqa: PLR2004

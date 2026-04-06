@@ -527,7 +527,7 @@ class NarrativeQualityHook(HookProvider):
         lines = content.split("\n")
         line_count = len(lines)
         file_refs = len(re.findall(r"\w+\.\w+:\d+", content))
-        headings = sum(1 for line in lines if line.startswith("## ") or line.startswith("### "))
+        headings = sum(1 for line in lines if line.startswith(("## ", "### ")))
         mermaid = content.count("```mermaid")
 
         # Simple scoring

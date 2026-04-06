@@ -1,6 +1,6 @@
 # Closing the loop: automated code review for AI-generated code
 
-I shipped an entire DevSecOps pipeline in an afternoon last week. Bandit, semgrep, osv-scanner, gitleaks, license compliance, SBOM generation, container scanning — wired into GitLab CI with SARIF conversion and unified reporting. The code worked. The tests passed. I committed it.
+I shipped an entire DevSecOps pipeline in an afternoon last week. Bandit, semgrep, osv-scanner, betterleaks, license compliance, SBOM generation, container scanning — wired into GitLab CI with SARIF conversion and unified reporting. The code worked. The tests passed. I committed it.
 
 Then I looked at what I'd actually written.
 
@@ -34,7 +34,7 @@ Here's what that looks like in practice for a Python project:
 |-------|------|----------------|
 | Pre-commit | ruff check + format | Syntax, style, import order |
 | Pre-commit | ty check | Type errors |
-| Pre-commit | gitleaks | Secrets in staged files |
+| Pre-commit | betterleaks | Secrets in staged files |
 | Commit-msg | commitizen | Conventional commit format |
 | Pre-push | pytest | Functional regressions |
 | Pre-push | semgrep OWASP | Security vulnerability patterns |
@@ -105,7 +105,7 @@ Claude tries: git commit -m "feat: ..."
         │  Delete marker, let the commit through
         │
         ▼
-Lefthook runs (ruff, ty, gitleaks, commitizen)
+Lefthook runs (ruff, ty, betterleaks, commitizen)
 Commit succeeds
 ```
 

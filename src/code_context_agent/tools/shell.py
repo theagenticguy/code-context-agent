@@ -55,12 +55,12 @@ class ToolResult(FrozenModel):
     @classmethod
     def success(cls, **data: Any) -> ToolResult:
         """Create a success result with data."""
-        return cls(status="success", data=data if data else None)
+        return cls(status="success", data=data or None)
 
     @classmethod
     def error(cls, message: str, **extra: Any) -> ToolResult:
         """Create an error result."""
-        return cls(status="error", error_message=message, data=extra if extra else None)
+        return cls(status="error", error_message=message, data=extra or None)
 
 
 def run_command(

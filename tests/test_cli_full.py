@@ -17,7 +17,7 @@ class TestPreflightCheck:
 
     def test_each_entry_has_available_flag(self):
         result = _preflight_check()
-        for _tool, info in result.items():
+        for info in result.values():
             assert "available" in info
             assert isinstance(info["available"], bool)
 

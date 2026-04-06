@@ -349,7 +349,7 @@ def _map_files_to_symbols(
             communities: set[str] = set()
             for raw_line in markdown.split("\n"):
                 line = raw_line.strip()
-                if not line or line.startswith("| ---") or line.startswith("| s."):
+                if not line or line.startswith(("| ---", "| s.")):
                     continue
                 parts = [p.strip() for p in line.split("|") if p.strip()]
                 if len(parts) >= 1:
@@ -911,14 +911,12 @@ def _render_signals_section(lines: list[str], verdict: ChangeVerdict) -> None:
     if verdict.escalation_reasons:
         lines.append("### Why this verdict")
         lines.append("")
-        for reason in verdict.escalation_reasons:
-            lines.append(f"- {reason}")
+        lines.extend(f"- {reason}" for reason in verdict.escalation_reasons)
         lines.append("")
     if verdict.recommended_reviewers:
         lines.append("### Recommended reviewers")
         lines.append("")
-        for reviewer in verdict.recommended_reviewers:
-            lines.append(f"- {reviewer.identity} ({reviewer.reason})")
+        lines.extend(f"- {reviewer.identity} ({reviewer.reason})" for reviewer in verdict.recommended_reviewers)
         lines.append("")
 
 
@@ -935,8 +933,7 @@ def _render_boundary_section(lines: list[str], verdict: ChangeVerdict) -> None:
     if boundary.de_escalation_triggers:
         lines.append("")
         lines.append("To de-escalate:")
-        for trigger in boundary.de_escalation_triggers:
-            lines.append(f"- {trigger}")
+        lines.extend(f"- {trigger}" for trigger in boundary.de_escalation_triggers)
     lines.append("")
 
 

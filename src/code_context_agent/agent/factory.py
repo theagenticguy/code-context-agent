@@ -119,10 +119,11 @@ def _create_gitnexus_provider() -> Any | None:
             prefix="gitnexus",
         )
         logger.info("GitNexus MCP server configured (tools will be prefixed with 'gitnexus_')")
-        return gitnexus
     except (ImportError, Exception) as e:  # noqa: BLE001
         logger.warning(f"Failed to configure GitNexus MCP server: {e}")
         return None
+    else:
+        return gitnexus
 
 
 def _create_context7_provider() -> Any | None:
@@ -156,7 +157,8 @@ def _create_context7_provider() -> Any | None:
             prefix="context7",
         )
         logger.info("context7 MCP server configured (tools will be prefixed with 'context7_')")
-        return context7
     except (ImportError, Exception) as e:  # noqa: BLE001
         logger.warning(f"Failed to configure context7 MCP server: {e}")
         return None
+    else:
+        return context7

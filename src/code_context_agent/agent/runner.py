@@ -254,7 +254,7 @@ async def _execute_analysis(
 
         tb = traceback.format_exc()
         logger.error(f"Analysis error: {e}\n{tb}")
-        error_message = str(e) if str(e) else f"{type(e).__name__}: {tb}"
+        error_message = str(e) or f"{type(e).__name__}: {tb}"
         status = "error"
 
     final_duration = time.monotonic() - start_time
