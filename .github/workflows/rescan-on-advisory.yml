@@ -51,7 +51,7 @@ jobs:
         if: always()
         with:
           sarif_file: grype-results.sarif
-          category: grype-rescan
+          category: grype
 
       # OSV-Scanner: check lockfiles against OSV database
       - name: OSV-Scanner lockfile scan
@@ -105,7 +105,7 @@ jobs:
         if: always()
         with:
           sarif_file: trivy-rescan.sarif
-          category: trivy-rescan
+          category: trivy
 
       - name: Check for findings
         id: check-findings
