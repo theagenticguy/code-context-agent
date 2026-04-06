@@ -251,7 +251,7 @@ All env vars use the `CODE_CONTEXT_` prefix:
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **code-context-agent** (1827 symbols, 3610 relationships, 91 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **code-context-agent** (2060 symbols, 4158 relationships, 113 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 

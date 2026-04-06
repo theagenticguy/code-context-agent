@@ -9,6 +9,7 @@ semgrep = "latest"
 syft = "latest"
 trivy = "latest"
 uv = "latest"
+"npm:gitnexus" = "latest"
 
 [env]
 _.python.venv = { path = ".venv", create = true }
