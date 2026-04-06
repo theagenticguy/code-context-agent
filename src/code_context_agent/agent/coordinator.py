@@ -145,17 +145,6 @@ def create_coordinator_agent(
 
     analysis_tools = get_analysis_tools()
 
-    # Configure coordinator tools with output dir, repo path, and tool registry
-    from ..tools.coordinator_tools import configure as configure_coordinator_tools
-
-    configure_coordinator_tools(
-        output_dir=output_dir,
-        repo_path=repo_path,
-        tools=analysis_tools,
-        execution_timeout=team_execution_timeout,
-        node_timeout=team_node_timeout,
-    )
-
     # Load heuristic summary (preferred) or fall back to index metadata
     heuristic: dict[str, Any] = {}
     heuristic_path = output_dir / "heuristic_summary.json"
@@ -205,7 +194,8 @@ def create_coordinator_agent(
     model = _create_model()
     tools = _get_coordinator_tools(analysis_tools)
 
-    # Create the coordinator Agent
+    # Create the coordinator Agent FIRST so that process_tools() expands
+    # MCPClient ToolProviders into individual MCPAgentTool objects.
     from strands.agent.conversation_manager import SummarizingConversationManager
 
     conversation_manager = SummarizingConversationManager(
@@ -221,6 +211,21 @@ def create_coordinator_agent(
         structured_output_model=AnalysisResult,
         callback_handler=None,
         conversation_manager=conversation_manager,
+    )
+
+    # Configure coordinator tools AFTER Agent creation. The Agent's process_tools()
+    # has now expanded MCPClient providers (GitNexus, context7) into individual
+    # MCPAgentTool objects in agent.tool_registry.registry. Passing the expanded
+    # registry ensures dispatch_team can resolve MCP tool names like "gitnexus_query"
+    # to actual tool objects instead of passing raw strings to the swarm.
+    from ..tools.coordinator_tools import configure as configure_coordinator_tools
+
+    configure_coordinator_tools(
+        output_dir=output_dir,
+        repo_path=repo_path,
+        tools=list(agent.tool_registry.registry.values()),
+        execution_timeout=team_execution_timeout,
+        node_timeout=team_node_timeout,
     )
 
     # Apply hooks
