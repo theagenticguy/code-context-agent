@@ -38,10 +38,12 @@ theme:
     - content.code.copy
     - content.code.select
     - content.tabs.link
+    - content.footnote.tooltips
     - content.tooltips
     - header.autohide
     - navigation.instant
     - navigation.instant.prefetch
+    - navigation.instant.preview
     - navigation.tabs
     - navigation.sections
     - navigation.top
@@ -64,6 +66,20 @@ extra:
 plugins:
   - search:
       separator: '[\s\-]+'
+  - social:
+      enabled: !ENV [CI, false]
+  - privacy:
+      enabled: !ENV [CI, false]
+  - redirects:
+      redirect_maps:
+        'getting-started/viz.md': 'getting-started/quickstart.md'
+        'architecture/swarm.md': 'architecture/coordinator.md'
+        'tools/lsp.md': 'tools/overview.md'
+        'tools/ast.md': 'tools/overview.md'
+        'tools/graph.md': 'tools/overview.md'
+        'tools/clones.md': 'tools/overview.md'
+        'tools/storage.md': 'tools/overview.md'
+        'design/progressive-disclosure.md': 'architecture/progressive-disclosure.md'
   - mkdocstrings:
       handlers:
         python:
@@ -106,10 +122,14 @@ plugins:
           - getting-started/quickstart.md
           - getting-started/check-command.md
           - getting-started/full-mode.md
-          - getting-started/viz.md
+        User Guide:
+          - guide/output.md
+          - guide/verdict.md
+          - guide/ci-init.md
         Architecture:
           - architecture/overview.md
-          - architecture/swarm.md
+          - architecture/coordinator.md
+          - architecture/progressive-disclosure.md
           - architecture/tenets.md
           - architecture/hooks.md
           - architecture/tui-phases.md
@@ -117,16 +137,11 @@ plugins:
           - tools/overview.md
           - tools/discovery.md
           - tools/search.md
-          - tools/lsp.md
-          - tools/ast.md
-          - tools/graph.md
           - tools/git.md
           - tools/shell.md
-          - tools/clones.md
           - tools/mcp.md
           - tools/indexer.md
           - tools/registry.md
-          - tools/storage.md
         Security:
           - security/overview.md
         Support:
@@ -186,27 +201,26 @@ nav:
       - Quick Start: getting-started/quickstart.md
       - Check Command: getting-started/check-command.md
       - Full Mode: getting-started/full-mode.md
-      - Visualization: getting-started/viz.md
+  - User Guide:
+      - Understanding Output: guide/output.md
+      - Verdict Command: guide/verdict.md
+      - CI Integration: guide/ci-init.md
   - Architecture:
       - Overview: architecture/overview.md
-      - Swarm Pipeline: architecture/swarm.md
+      - Coordinator Pipeline: architecture/coordinator.md
       - Tenets: architecture/tenets.md
       - Hook System: architecture/hooks.md
       - TUI & Phases: architecture/tui-phases.md
+      - Progressive Disclosure: architecture/progressive-disclosure.md
   - Tools:
       - Overview: tools/overview.md
       - Discovery & Search: tools/discovery.md
       - BM25 Search: tools/search.md
-      - LSP Integration: tools/lsp.md
-      - AST Patterns: tools/ast.md
-      - Graph Analysis: tools/graph.md
       - Git History: tools/git.md
       - Shell: tools/shell.md
-      - Clone Detection: tools/clones.md
       - MCP Server: tools/mcp.md
       - Deterministic Indexer: tools/indexer.md
       - Multi-Repo Registry: tools/registry.md
-      - Graph Storage: tools/storage.md
   - Security:
       - Overview: security/overview.md
   - Troubleshooting: troubleshooting.md
@@ -224,7 +238,9 @@ nav:
       - "0009: KuzuDB Backend": adr/0009-kuzudb-persistent-graph-backend.md
       - "0010: Multi-Repo Registry": adr/0010-multi-repo-registry.md
       - "0011: Deterministic Indexer": adr/0011-deterministic-indexer.md
-      - "0012: Swarm Pipeline": adr/0012-strands-swarm-multi-agent.md
+      - "0012: Swarm Pipeline (superseded)": adr/0012-strands-swarm-multi-agent.md
+      - "0013: Coordinator Pipeline": adr/0013-coordinator-team-dispatch.md
+      - "0014: GitNexus Intelligence": adr/0014-gitnexus-code-intelligence.md
   - Code Reference: reference/
   - Development:
       - Contributing: development/guide.md

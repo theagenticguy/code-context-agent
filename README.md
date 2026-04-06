@@ -105,13 +105,13 @@ flowchart TD
 
 | Category | Tools | Purpose |
 |----------|-------|---------|
+| **Coordinator** | `dispatch_team`, `read_team_findings`, `write_bundle`, `read_heuristic_summary`, `score_narrative`, `enrich_bundle` | Team orchestration, finding consolidation, bundle generation |
 | **Discovery** | `create_file_manifest`, `repomix_orientation`, `repomix_bundle`, `repomix_compressed_signatures`, `repomix_split_bundle`, `repomix_json_export` | File inventory, bundling, token-aware orientation |
 | **Search** | `rg_search`, `read_file_bounded`, `bm25_search` | Exact pattern matching, bounded reading, and BM25 ranked relevance search |
-| **LSP** | `lsp_start`, `lsp_document_symbols`, `lsp_references`, `lsp_definition`, `lsp_hover`, `lsp_workspace_symbols`, `lsp_diagnostics` | Semantic analysis across multiple languages |
-| **AST** | `astgrep_scan`, `astgrep_scan_rule_pack`, `astgrep_inline_rule` | Structural pattern matching |
-| **Graph** | `code_graph_create`, `code_graph_analyze` (hotspots, foundations, trust, modules, triangles, coupling, blast radius, execution flows, diff impact), `code_graph_explore`, `code_graph_export` | Dependency analysis, impact propagation, execution flow tracing |
 | **Git** | `git_hotspots`, `git_files_changed_together`, `git_blame_summary`, `git_file_history`, `git_contributors`, `git_recent_commits`, `git_diff_file` | Temporal analysis and coupling detection |
 | **Shell** | `shell` | Read-only command execution (allowlisted programs only) |
+| **GitNexus MCP** | `gitnexus_query`, `gitnexus_context`, `gitnexus_impact`, `gitnexus_detect_changes`, `gitnexus_cypher`, `gitnexus_list_repos` | Structural code intelligence via Tree-sitter |
+| **context7 MCP** | `context7_resolve-library-id`, `context7_query-docs` | Live library documentation lookup |
 
 ### Security Model
 

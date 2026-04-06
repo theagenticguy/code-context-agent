@@ -135,12 +135,10 @@ This error only occurs in `--full` mode and is intentional. The `FailFastHook` m
     | Tool | Reason |
     |------|--------|
     | `rg_search` | Search misses are expected |
-    | `lsp_workspace_symbols` | Symbol index may be incomplete |
-    | `lsp_shutdown` | Cleanup errors are non-fatal |
-    | `code_graph_load` | Graph may not exist yet |
     | `context7_resolve-library-id` | External service, best-effort |
     | `context7_query-docs` | External service, best-effort |
     | `shell` | Exploratory commands may fail |
+    | `gitnexus_*` | External MCP service, best-effort |
 
 See [Full Mode](getting-started/full-mode.md) for complete details on exhaustive analysis behavior.
 
@@ -150,31 +148,17 @@ See [Full Mode](getting-started/full-mode.md) for complete details on exhaustive
 
 **Symptoms**: Out of memory errors, very slow graph operations, or the process being killed by the OS.
 
-For repositories with more than 10,000 files, the default NetworkX in-memory graph can consume significant memory.
+For repositories with more than 10,000 files, static analysis tools and GitNexus indexing can be slow.
 
 **Solutions**:
 
-1. **Use the KuzuDB backend** for persistent, disk-backed graph storage:
-
-    ```bash
-    export CODE_CONTEXT_GRAPH_BACKEND=kuzu
-    code-context-agent index .
-    ```
-
-2. **Limit LSP analysis scope** -- the `CODE_CONTEXT_LSP_MAX_FILES` setting controls how many files LSP analyzes:
-
-    ```bash
-    # Default: 5000, Range: 100--50000
-    export CODE_CONTEXT_LSP_MAX_FILES=2000
-    ```
-
-3. **Use `--focus` to scope analysis** to a specific area of the codebase:
+1. **Use `--focus` to scope analysis** to a specific area of the codebase:
 
     ```bash
     code-context-agent analyze . --focus "payments module"
     ```
 
-4. **Pre-index with `index`** so that the analysis agent starts with a graph rather than building one from scratch:
+2. **Pre-index with `index`** so that the coordinator starts with a heuristic summary rather than running the full pipeline:
 
     ```bash
     code-context-agent index .
@@ -241,9 +225,9 @@ The context7 integration requires `npx` (Node.js) to be available on the system.
         code-context-agent viz .
         ```
 
-    2. **Check that `code_graph.json` exists**:
+    2. **Check that analysis artifacts exist**:
         ```bash
-        ls .code-context/code_graph.json
+        ls .code-context/heuristic_summary.json
         ```
 
     3. **Port conflict** -- the default port is 8765. Change it if occupied:

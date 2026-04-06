@@ -2,7 +2,7 @@
 
 **Date**: YYYY-MM-DD
 
-**Status**: proposed | accepted | deprecated | superseded by [ADR-NNNN](NNNN-title.md)
+**Status**: proposed | accepted | deprecated | superseded by ADR-NNNN
 
 ## Context
 

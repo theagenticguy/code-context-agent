@@ -2,7 +2,7 @@
 
 **Date**: 2025-06-15
 
-**Status**: accepted (supersedes single-agent analysis from [ADR-0001](0001-strands-agents-framework.md))
+**Status**: superseded by [ADR-0013](0013-coordinator-team-dispatch.md)
 
 ## Context
 

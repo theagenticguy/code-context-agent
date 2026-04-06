@@ -4,22 +4,20 @@
 
 The `--full` flag runs an exhaustive analysis with no size limits. It was introduced in v7.0.0 for cases where complete coverage matters more than speed.
 
-- **Standard mode** (default): `CONTEXT.md` capped at 300 lines, selective LSP/graph/git analysis, graceful degradation on tool errors
-- **Full mode**: no line cap, all graph algorithms, all dependencies looked up via context7, fail-fast on errors
+- **Standard mode** (default): Selective analysis with graceful degradation on tool errors
+- **Full mode**: Exhaustive analysis, all dependencies looked up via context7, fail-fast on errors
 
 ```mermaid
 flowchart LR
     A[code-context-agent analyze] --> B{--full?}
     B -- No --> C[Standard Mode]
     B -- Yes --> D[Full Mode]
-    C --> C1[CONTEXT.md <=300 lines]
-    C --> C2[Selective algorithms]
+    C --> C1[Selective analysis]
+    C --> C2[Graceful degradation]
     C --> C3[Key dependencies]
-    D --> D1[CONTEXT.md unlimited]
-    D --> D2[All 12 algorithms]
-    D --> D3[ALL dependencies]
-    D --> D4[Per-module docs]
-    D --> D5[Fail-fast errors]
+    D --> D1[Exhaustive analysis]
+    D --> D2[ALL dependencies via context7]
+    D --> D3[Fail-fast errors]
 ```
 
 ## Usage
@@ -36,14 +34,13 @@ code-context-agent analyze . --full --focus "authentication"
 
 | Aspect | Standard | Full |
 |--------|----------|------|
-| CONTEXT.md | <=300 lines | No limit |
 | Duration limit | 20 min (1200s) | 60 min (3600s) |
 | Turn limit | 1000 | 3000 |
-| LSP max files | 5,000 | 50,000 |
-| Graph algorithms | Selective (hotspots, foundations, modules) | All 12 (+ trust, triangles, coupling, entry_points, similar, category, dependencies, unused_symbols, refactoring) |
+| Team execution timeout | 900s | 2400s |
+| Team node timeout | 900s | 1800s |
 | context7 | Key dependencies | ALL dependencies |
 | Error handling | Graceful degradation | Fail-fast (`FailFastHook`) |
-| Output | CONTEXT.md + bundle | + CONTEXT.modules/, FILE_INDEX.md, CONTEXT.business.*.md |
+| Output | CONTEXT.md + bundles | Same, with extended analysis depth |
 
 ## Fail-Fast Error Handling
 
@@ -58,23 +55,15 @@ The following tools are allowed to fail without triggering a halt:
 | Tool | Reason |
 |------|--------|
 | `rg_search` | Search misses are expected |
-| `lsp_workspace_symbols` | Symbol index may be incomplete |
-| `lsp_shutdown` | Cleanup errors are non-fatal |
-| `code_graph_load` | Graph may not exist yet |
-| `context7_*` | External service, best-effort |
+| `context7_*` | External MCP service, best-effort |
+| `gitnexus_*` | External MCP service, best-effort |
 | `shell` | Exploratory commands may fail |
 
 All other tool errors are treated as fatal in full mode.
 
-## Additional Output Files
+## Additional Output
 
-Full mode produces extra artifacts beyond the standard output set:
-
-| File | Description |
-|------|-------------|
-| `CONTEXT.modules/<module>.md` | Per-module context -- one file per detected graph community/module |
-| `FILE_INDEX.md` | Comprehensive file index with graph metrics (centrality, PageRank, churn) for every file |
-| `CONTEXT.business.<category>.md` | Category-specific business logic documents (e.g., `CONTEXT.business.auth.md`, `CONTEXT.business.db.md`, `CONTEXT.business.validation.md`) |
+Full mode uses the same output structure as standard mode (`CONTEXT.md`, `bundles/BUNDLE.{area}.md`, etc.) but with extended analysis depth, more teams dispatched, and all dependencies looked up via context7. The increased turn and duration limits allow the coordinator to dispatch more investigation teams and produce richer bundle content.
 
 All files are written to `.code-context/` (or your custom `--output-dir`).
 
@@ -109,9 +98,9 @@ The `--since` flag produces a delta analysis (changes since a ref), which is fun
 
 !!! tip "Use full mode when..."
     - You need complete coverage of a large or complex codebase
-    - You want per-module documentation (`CONTEXT.modules/`)
-    - You need all 12 graph algorithms for thorough architectural analysis
     - You want context7 to look up documentation for ALL detected dependencies
+    - You want more investigation teams dispatched with longer timeouts
+    - You need fail-fast error handling (no silent degradation)
 
 !!! warning "Cost and time"
     Full mode uses significantly more tokens and time than standard mode. A typical full analysis runs 30--60 minutes and consumes 500K--2M tokens. Use standard mode for iterative work and reserve full mode for comprehensive one-time analysis.

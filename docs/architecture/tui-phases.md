@@ -1,6 +1,6 @@
 # Phase-Aware TUI
 
-The Rich TUI dashboard tracks analysis progress through 10 ordered phases.
+The Rich TUI dashboard tracks analysis progress through 5 ordered phases.
 Phase transitions are detected automatically based on tool calls -- each tool
 maps to a specific phase via `TOOL_PHASE_MAP`. A live discovery feed surfaces
 notable findings as they happen.
@@ -11,30 +11,23 @@ notable findings as they happen.
 
 When the agent invokes a tool, the TUI resolves the tool name to a phase using
 `resolve_phase()`. Phases only advance forward -- the TUI never regresses to a
-lower phase. If the agent uses tools from an earlier phase (e.g., running
-`rg_search` during graph analysis), the phase display stays on the current phase.
+lower phase. If the agent uses tools from an earlier phase, the phase display
+stays on the current phase.
 
-### The 10 Analysis Phases
+### The 5 Analysis Phases
 
 | # | Phase | Key Tools | Description |
 |---|-------|-----------|-------------|
-| 1 | **Foundation** | `create_file_manifest`, `repomix_orientation`, `repomix_compressed_signatures` | File manifest, orientation, signatures |
-| 2 | **Identity** | `read_file_bounded` | Project identity and entrypoints |
-| 3 | **Semantic Discovery** | `lsp_start`, `lsp_document_symbols`, `lsp_references`, `lsp_definition`, `lsp_hover`, `lsp_workspace_symbols`, `lsp_diagnostics`, `lsp_shutdown` | LSP symbols, references, definitions |
-| 4 | **Pattern Discovery** | `astgrep_scan`, `astgrep_scan_rule_pack`, `astgrep_inline_rule` | AST-grep rule packs and patterns |
-| 5 | **Git History** | `git_hotspots`, `git_files_changed_together`, `git_blame_summary`, `git_file_history`, `git_contributors`, `git_recent_commits`, `git_diff_file` | Hotspots, coupling, blame, history |
-| 6 | **Graph Analysis** | `code_graph_create`, `code_graph_ingest_*`, `code_graph_analyze`, `code_graph_explore`, `code_graph_export`, `code_graph_save`, `code_graph_load`, `code_graph_stats` | Code graph construction and algorithms |
-| 7 | **Business Logic** | `write_file_list` | Ranking and categorization |
-| 8 | **Tests & Health** | `detect_clones` | Test coverage and code health |
-| 9 | **Bundle** | `repomix_bundle`, `repomix_bundle_with_context`, `repomix_split_bundle`, `repomix_json_export` | Source code bundling |
-| 10 | **Write Context** | `write_file` | CONTEXT.md generation |
+| 1 | **Indexing** | (deterministic pipeline, no agent tools) | Deterministic code indexing (no LLM) |
+| 2 | **Team Planning** | `read_heuristic_summary` | Reading heuristic summary, planning teams |
+| 3 | **Team Execution** | `dispatch_team`, `rg_search`, `bm25_search`, `read_file_bounded`, `git_hotspots`, `git_files_changed_together`, `git_blame_summary`, `git_file_history`, `git_contributors`, `git_recent_commits`, `git_diff_file`, `gitnexus_*`, `context7_*`, `shell`, all repomix/discovery tools | Parallel specialist teams analyzing code |
+| 4 | **Consolidation** | `read_team_findings` | Reading and cross-referencing team findings |
+| 5 | **Bundle Generation** | `write_bundle` | Writing narrative bundles and CONTEXT.md |
 
 ```mermaid
 flowchart LR
-    F[Foundation] --> I[Identity] --> SD[Semantic\nDiscovery]
-    SD --> PD[Pattern\nDiscovery] --> GH[Git\nHistory]
-    GH --> GA[Graph\nAnalysis] --> BL[Business\nLogic]
-    BL --> TH[Tests &\nHealth] --> B[Bundle] --> WC[Write\nContext]
+    I[Indexing] --> TP[Team\nPlanning] --> TE[Team\nExecution]
+    TE --> C[Consolidation] --> BG[Bundle\nGeneration]
 ```
 
 ---
@@ -50,11 +43,7 @@ consumer.
 | Kind | Triggered By | Example |
 |------|--------------|---------|
 | `FILES_DISCOVERED` | `create_file_manifest` | "Found 847 files" |
-| `SYMBOLS_FOUND` | `lsp_document_symbols`, `lsp_workspace_symbols` | "Found 42 symbols" |
 | `HOTSPOTS_IDENTIFIED` | `git_hotspots` | "Identified 15 hotspots" |
-| `PATTERNS_MATCHED` | `astgrep_scan`, `astgrep_scan_rule_pack` | "Matched 23 patterns" |
-| `MODULES_DETECTED` | `code_graph_analyze` | "Detected 8 modules" |
-| `GRAPH_BUILT` | `code_graph_create` | "Code graph initialized" |
 
 The feed shows the 3 most recent discoveries. Old events are evicted from a
 capped list (max 50 events).
@@ -66,7 +55,7 @@ capped list (max 50 events).
 The dashboard panel displays the following sections from top to bottom:
 
 1. **Timer + progress bar** -- elapsed time and turn count vs configured limits
-2. **Phase indicator** -- `[N/10] Phase Name (description)`
+2. **Phase indicator** -- `[N/5] Phase Name (description)`
 3. **Tool summary** -- total/success/error counts with category breakdown and mini bars
 4. **Discovery feed** -- last 3 notable findings with diamond bullet markers
 5. **Active tool spinner** -- currently executing tool with elapsed time

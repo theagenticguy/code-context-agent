@@ -29,10 +29,19 @@ Default model: `global.anthropic.claude-opus-4-6-v1` (configurable via `CODE_CON
 | Tool | Installation | Purpose |
 |------|--------------|---------|
 | **ripgrep** | `cargo install ripgrep` | File search and manifest creation |
-| **ast-grep** | `cargo install ast-grep` | Structural code search |
+| **gitnexus** | `npm install -g gitnexus` | Structural code intelligence (Tree-sitter parsing, clustering, execution flows) |
 | **repomix** | `npm install -g repomix` | Code bundling with Tree-sitter compression |
-| **typescript-language-server** | `npm install -g typescript-language-server` | TypeScript/JavaScript LSP |
-| **ty** | `uv tool install ty` | Python type checker/LSP server |
+| **npx** | Included with Node.js | Required for context7 library docs and knip dead code detection |
+
+Optional static analysis tools (enrich indexer output):
+
+| Tool | Installation | Purpose |
+|------|--------------|---------|
+| **semgrep** | `pip install semgrep` or `brew install semgrep` | Security findings and OWASP scanning |
+| **ty** | `uv tool install ty` | Python type checker |
+| **ruff** | `uv tool install ruff` | Python linter |
+| **radon** | `pip install radon` | Cyclomatic complexity analysis |
+| **vulture** | `pip install vulture` | Python dead code detection |
 
 ---
 
@@ -70,4 +79,4 @@ code-context-agent check
 code-context-agent --help
 ```
 
-The `check` command verifies that ripgrep, ast-grep, repomix, and npx are installed and accessible. See [Check Command](check-command.md) for details.
+The `check` command verifies that core tools (ripgrep, gitnexus, repomix, npx), static analysis tools (semgrep, ruff, ty, radon, vulture, pipdeptree), security scanners (betterleaks, bandit, osv-scanner), and AWS credentials are available. See [Check Command](check-command.md) for details.
