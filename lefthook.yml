@@ -19,8 +19,8 @@ pre-commit:
     - name: ty-check
       run: uv run ty check src/
 
-    - name: gitleaks
-      run: gitleaks protect --staged --no-banner
+    - name: betterleaks
+      run: betterleaks git --pre-commit --staged --no-banner
 
 pre-push:
   parallel: true
@@ -37,14 +37,20 @@ pre-push:
     - name: test
       run: uv run pytest
 
-    - name: gitleaks
-      run: gitleaks detect --source . --no-banner
+    - name: betterleaks
+      run: betterleaks git --no-banner .
 
     - name: semgrep
-      run: semgrep scan --config auto --config p/owasp-top-ten --exclude-rule python.flask.security.xss.audit.direct-use-of-jinja2.direct-use-of-jinja2 --error --quiet src/
+      run: semgrep scan --config auto --config p/python --config p/owasp-top-ten --config p/security-audit --exclude-rule python.flask.security.xss.audit.direct-use-of-jinja2.direct-use-of-jinja2 --error --quiet src/
+
+    - name: bandit
+      run: uv run bandit -c pyproject.toml -r src/ --severity-level=high --confidence-level=high
 
     - name: osv-scanner
       run: osv-scanner scan --lockfile uv.lock || echo "⚠ OSV-Scanner found vulnerabilities (informational)"
+
+    - name: uv-audit
+      run: uv audit || echo "uv audit found vulnerabilities (informational)"
 
     - name: trivy
       run: trivy fs --severity HIGH,CRITICAL . || echo "⚠ Trivy found vulnerabilities (informational)"

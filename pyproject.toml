@@ -82,6 +82,19 @@ select = [
     "RUF",    # Ruff-specific
     "D",      # pydocstyle (docstrings)
     "S",      # flake8-bandit (security)
+    "N",      # pep8-naming
+    "A",      # flake8-builtins
+    "DTZ",    # flake8-datetimez (timezone-aware datetime)
+    "T10",    # flake8-debugger (no debugger statements)
+    "LOG",    # flake8-logging
+    "G",      # flake8-logging-format
+    "PIE",    # flake8-pie
+    "PT",     # flake8-pytest-style
+    "RET",    # flake8-return
+    "TRY",    # tryceratops
+    "FLY",    # flynt
+    "PERF",   # perflint
+    "FURB",   # refurb
 ]
 ignore = [
     "D100",    # Allow missing module docstrings
@@ -101,6 +114,12 @@ ignore = [
     "EM101",   # Allow string literals in exceptions
     "EM102",   # Allow f-strings in exceptions
     "TRY003",  # Allow long exception messages
+    "TRY301",  # Allow raise in try blocks (common pattern in tool functions)
+    "PERF203", # Allow try-except in loops (needed for error handling in tools)
+    "RET504",  # Allow unnecessary assignment before return (sometimes clearer)
+    "N818",    # Allow exception names without "Error" suffix (existing convention)
+    "A005",    # Allow modules shadowing builtins (e.g., logging module name)
+    "COM812",  # Conflicts with ruff formatter (trailing comma)
 ]
 fixable = ["ALL"]
 

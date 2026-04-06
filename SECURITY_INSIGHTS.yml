@@ -1,0 +1,55 @@
+# OpenSSF Security Insights Specification v1.0.0
+# https://github.com/ossf/security-insights-spec
+
+header:
+  schema-version: "1.0.0"
+  expiry: "2027-04-06T00:00:00Z"
+  last-updated: "2026-04-06"
+  last-reviewed: "2026-04-06"
+  commit-hash: ""
+  project-url: "https://github.com/theagenticguy/code-context-agent"
+  changelog: "https://github.com/theagenticguy/code-context-agent/blob/main/CHANGELOG.md"
+  license: "https://github.com/theagenticguy/code-context-agent/blob/main/LICENSE"
+
+project-lifecycle:
+  status: "active"
+  roadmap: "https://github.com/theagenticguy/code-context-agent/issues"
+  bug-fixes-only: false
+  core-maintainers:
+    - github: "theagenticguy"
+
+contribution-policy:
+  accepts-pull-requests: true
+  accepts-automated-pull-requests: true
+  automated-tools-list:
+    - automated-tool: "dependabot"
+      action: "allowed"
+      path:
+        - ".github/dependabot.yml"
+  contributing-policy: "https://github.com/theagenticguy/code-context-agent/blob/main/CONTRIBUTING.md"
+
+documentation:
+  - "https://github.com/theagenticguy/code-context-agent/blob/main/README.md"
+
+distribution-points:
+  - "https://github.com/theagenticguy/code-context-agent"
+
+security-contacts:
+  - type: "email"
+    value: "security@theagenticguy.com"
+
+vulnerability-reporting:
+  accepts-vulnerability-reports: true
+  security-policy: "https://github.com/theagenticguy/code-context-agent/blob/main/SECURITY.md"
+  bug-bounty-available: false
+  comment: "Please report vulnerabilities via GitHub Security Advisories."
+
+dependencies:
+  third-party-packages: true
+  dependencies-lists:
+    - "https://github.com/theagenticguy/code-context-agent/blob/main/uv.lock"
+  sbom:
+    - sbom-created: true
+      sbom-url: "https://github.com/theagenticguy/code-context-agent/actions/workflows/security.yml"
+  env-dependencies-policy:
+    policy-url: "https://github.com/theagenticguy/code-context-agent/blob/main/.github/dependabot.yml"

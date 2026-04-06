@@ -182,9 +182,9 @@ Both are in `models/base.py`. Use `FrozenModel` for new data models.
 
 Hooks are enforced automatically. Do not skip them.
 
-- **pre-commit**: ruff check+fix, ruff format, ty check, gitleaks
+- **pre-commit**: ruff check+fix, ruff format, ty check, betterleaks
 - **commit-msg**: conventional commit validation via commitizen
-- **pre-push**: lint, format-check, typecheck, test, gitleaks, semgrep OWASP
+- **pre-push**: lint, format-check, typecheck, test, betterleaks, semgrep OWASP
 
 ### Conventional commits
 

@@ -1,6 +1,6 @@
 [tools]
 gh = "latest"
-gitleaks = "latest"
+betterleaks = "latest"
 grype = "latest"
 node = "22"
 osv-scanner = "latest"
@@ -71,11 +71,11 @@ depends = ["lint", "format:check", "typecheck", "test"]
 
 [tasks.security]
 description = "Run all security scans"
-depends = ["security:secrets", "security:sast", "security:bandit", "security:deps", "security:trivy", "security:pip-audit", "security:grype", "security:licenses", "security:sbom"]
+depends = ["security:secrets", "security:sast", "security:bandit", "security:deps", "security:trivy", "security:pip-audit", "security:uv-audit", "security:grype", "security:licenses", "security:sbom"]
 
 [tasks."security:secrets"]
-description = "Scan for secrets with gitleaks"
-run = "gitleaks detect --source . --no-banner"
+description = "Scan for secrets with betterleaks"
+run = "betterleaks git --no-banner ."
 
 [tasks."security:sast"]
 description = "SAST scan with semgrep (auto + OWASP top 10)"
@@ -105,6 +105,10 @@ trap 'rm -f "$tmpfile"' EXIT
 uv export --no-dev --no-hashes > "$tmpfile"
 uvx pip-audit -r "$tmpfile" --strict --desc
 """
+
+[tasks."security:uv-audit"]
+description = "Audit dependencies with uv audit (OSV database)"
+run = "uv audit"
 
 [tasks."security:grype"]
 description = "Scan SBOM with Grype for vulnerabilities"

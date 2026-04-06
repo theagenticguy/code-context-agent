@@ -194,24 +194,24 @@ deps:audit:
       dependency_scanning: gl-dependency-scanning-report.json
     expire_in: 1 week
 
-secrets:gitleaks:
+secrets:betterleaks:
   extends: .security-base
   image:
-    name: zricethezav/gitleaks:latest
+    name: ghcr.io/betterleaks/betterleaks:latest
     entrypoint: [""]
   variables:
     GIT_DEPTH: 0
   script:
-    - gitleaks detect
-        --source .
+    - betterleaks git
         --no-banner
-        --report-format sarif
-        --report-path gitleaks.sarif
+        -f sarif
+        -r betterleaks.sarif
         --exit-code 0
+        .
   artifacts:
     when: always
     paths:
-      - gitleaks.sarif
+      - betterleaks.sarif
     expire_in: 1 week
 
 license:check:
@@ -292,7 +292,7 @@ bump:
     - apt-get update && apt-get install -y --no-install-recommends git curl ca-certificates bash
     - curl https://mise.run | sh
     - export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"
-    - mise settings set disable_tools "gitleaks,semgrep,trivy,osv-scanner,syft"
+    - mise settings set disable_tools "betterleaks,semgrep,trivy,osv-scanner,syft"
     - mise install
     - uv sync --locked --group dev
   script:

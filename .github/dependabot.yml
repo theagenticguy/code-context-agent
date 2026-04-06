@@ -1,28 +1,65 @@
+# ──────────────────────────────────────────────────────────────
+# Dependabot — Automated dependency updates
+# ──────────────────────────────────────────────────────────────
 version: 2
+
 updates:
-  - package-ecosystem: "github-actions"
-    directory: "/"
+  # ── Python (pip / pyproject.toml) ──────────────────────────
+  - package-ecosystem: pip
+    directory: /
     schedule:
-      interval: "weekly"
+      interval: weekly
+      day: monday
+      time: "08:00"
+      timezone: America/New_York
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "deps(python):"
+    labels:
+      - dependencies
+      - python
     groups:
-      actions:
-        patterns:
-          - "*"
+      python-minor-patch:
+        update-types:
+          - minor
+          - patch
 
-  - package-ecosystem: "pip"
-    directory: "/"
+  # ── GitHub Actions (.github/workflows/) ────────────────────
+  - package-ecosystem: github-actions
+    directory: /
     schedule:
-      interval: "weekly"
+      interval: weekly
+      day: monday
+      time: "08:00"
+      timezone: America/New_York
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "deps(actions):"
+    labels:
+      - dependencies
+      - github-actions
     groups:
-      python-deps:
-        patterns:
-          - "*"
+      actions-minor-patch:
+        update-types:
+          - minor
+          - patch
 
-  - package-ecosystem: "npm"
-    directory: "/ui"
+  # ── npm (ui/) ──────────────────────────────────────────────
+  - package-ecosystem: npm
+    directory: /ui
     schedule:
-      interval: "weekly"
+      interval: weekly
+      day: monday
+      time: "08:00"
+      timezone: America/New_York
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "deps(npm):"
+    labels:
+      - dependencies
+      - javascript
     groups:
-      npm-deps:
-        patterns:
-          - "*"
+      npm-minor-patch:
+        update-types:
+          - minor
+          - patch
