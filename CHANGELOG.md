@@ -1,3 +1,9 @@
+## v3.1.1 (2026-04-06)
+
+### Fix
+
+- resolve MCP tool loading in swarm agents
+
 ## v3.1.0 (2026-04-06)
 
 ### Feat
