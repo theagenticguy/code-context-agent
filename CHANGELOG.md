@@ -1,3 +1,15 @@
+## v1.0.0 (2026-04-06)
+
+### Feat
+
+- add change verdict engine, temporal risk intelligence, and CI/CD integration
+- replace custom code intelligence with GitNexus MCP
+
+### Fix
+
+- address CodeQL findings (implicit concat, unused var, empty except)
+- **ci**: remove defunct ui/pnpm setup from test job
+
 ## v0.3.2 (2026-04-04)
 
 ### Fix
