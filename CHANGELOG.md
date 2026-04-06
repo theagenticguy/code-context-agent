@@ -1,3 +1,13 @@
+## v2.0.0 (2026-04-06)
+
+### Feat
+
+- shift-left security hardening with betterleaks migration
+
+### Fix
+
+- betterleaks CI install checksum verification
+
 ## v1.0.0 (2026-04-06)
 
 ### Feat
