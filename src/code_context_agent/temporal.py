@@ -26,7 +26,6 @@ if TYPE_CHECKING:
 
 # Risk level ordinal for trend computation
 _RISK_ORDINAL = {"low": 0, "medium": 1, "high": 2, "critical": 3}
-_ORDINAL_RISK = {v: k for k, v in _RISK_ORDINAL.items()}
 
 _MAX_SNAPSHOTS = 10
 

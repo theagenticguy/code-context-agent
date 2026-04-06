@@ -769,7 +769,7 @@ def _recommend_reviewers(
                     if author:
                         contributors[author] = contributors.get(author, 0) + 1
         except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError):
-            pass
+            continue  # Skip files where git log fails
 
     # Sort by contribution count, take top 3
     sorted_contributors = sorted(contributors.items(), key=lambda x: x[1], reverse=True)
@@ -846,7 +846,7 @@ def _compute_freshness(agent_dir: Path, repo: Path, base_ref: str) -> IndexFresh
             if count_result.returncode == 0:
                 commits_since = int(count_result.stdout.strip())
         except (subprocess.TimeoutExpired, subprocess.SubprocessError, ValueError, OSError):
-            pass
+            pass  # Commit count is best-effort; default to 0
 
     return IndexFreshness(
         last_full_analysis=last_full,

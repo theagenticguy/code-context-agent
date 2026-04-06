@@ -1027,8 +1027,10 @@ def _get_gitnexus_stats(repo: Path, repo_name: str) -> dict[str, Any]:  # noqa: 
                     "cypher",
                     "--repo",
                     repo_name,
-                    "MATCH (c:Community) RETURN c.label, c.symbolCount, c.cohesion "
-                    "ORDER BY c.symbolCount DESC LIMIT 10",
+                    (
+                        "MATCH (c:Community) RETURN c.label, c.symbolCount, c.cohesion "
+                        "ORDER BY c.symbolCount DESC LIMIT 10"
+                    ),
                 ],
                 cwd=str(repo),
                 capture_output=True,
