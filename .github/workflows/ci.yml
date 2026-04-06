@@ -44,20 +44,10 @@ jobs:
       - uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57 # v8.0.0
         with:
           enable-cache: true
-      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
-        with:
-          version: latest
-      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
-        with:
-          node-version: "22"
-          cache: pnpm
-          cache-dependency-path: ui/pnpm-lock.yaml
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends git graphviz libgraphviz-dev pkg-config
       - name: Install Python dependencies
         run: uv sync --locked --all-groups
-      - name: Build frontend
-        run: pnpm --dir ui install --frozen-lockfile && pnpm --dir ui build
       - name: Run tests
         run: |
           uv run pytest \
