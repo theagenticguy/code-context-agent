@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from code_context_agent.indexer import _detect_languages, _get_file_manifest, build_index
+from code_context_agent.indexer import _detect_languages, _get_file_manifest, _get_gitnexus_stats, build_index
 
 
 @pytest.fixture
@@ -161,6 +161,71 @@ async def test_build_index_gitnexus_section(tmp_path, monkeypatch):
     data = json.loads((out / "heuristic_summary.json").read_text())
     assert data["gitnexus"]["indexed"] is False
     assert data["gitnexus"]["repo_name"] == "repo"
+    # New structural fields should be present with defaults when not indexed
+    assert data["gitnexus"]["community_count"] == 0
+    assert data["gitnexus"]["process_count"] == 0
+    assert data["gitnexus"]["symbol_count"] == 0
+    assert data["gitnexus"]["edge_count"] == 0
+    assert data["gitnexus"]["top_communities"] == []
+
+
+def test_get_gitnexus_stats_reads_meta_json(tmp_path):
+    """_get_gitnexus_stats should read stats from .gitnexus/meta.json."""
+    repo = tmp_path / "myrepo"
+    repo.mkdir()
+    gitnexus_dir = repo / ".gitnexus"
+    gitnexus_dir.mkdir()
+    meta = {
+        "repoPath": str(repo),
+        "lastCommit": "abc123",
+        "indexedAt": "2026-01-01T00:00:00Z",
+        "stats": {
+            "files": 50,
+            "nodes": 300,
+            "edges": 900,
+            "communities": 12,
+            "processes": 45,
+            "embeddings": 0,
+        },
+    }
+    (gitnexus_dir / "meta.json").write_text(json.dumps(meta))
+
+    result = _get_gitnexus_stats(repo, "myrepo")
+
+    assert result["community_count"] == 12
+    assert result["process_count"] == 45
+    assert result["symbol_count"] == 300
+    assert result["edge_count"] == 900
+    # top_communities requires gitnexus CLI, so defaults to empty
+    assert isinstance(result["top_communities"], list)
+
+
+def test_get_gitnexus_stats_graceful_without_meta(tmp_path):
+    """_get_gitnexus_stats should return defaults when .gitnexus/meta.json is missing."""
+    repo = tmp_path / "norepo"
+    repo.mkdir()
+
+    result = _get_gitnexus_stats(repo, "norepo")
+
+    assert result["community_count"] == 0
+    assert result["process_count"] == 0
+    assert result["symbol_count"] == 0
+    assert result["edge_count"] == 0
+    assert result["top_communities"] == []
+
+
+def test_get_gitnexus_stats_handles_corrupt_meta(tmp_path):
+    """_get_gitnexus_stats should return defaults when meta.json is corrupt."""
+    repo = tmp_path / "badrepo"
+    repo.mkdir()
+    gitnexus_dir = repo / ".gitnexus"
+    gitnexus_dir.mkdir()
+    (gitnexus_dir / "meta.json").write_text("not valid json{{{")
+
+    result = _get_gitnexus_stats(repo, "badrepo")
+
+    assert result["community_count"] == 0
+    assert result["process_count"] == 0
 
 
 def test_file_manifest_uses_ripgrep(monkeypatch):

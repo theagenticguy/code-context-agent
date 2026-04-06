@@ -668,3 +668,4 @@ src/code_context_agent/ui/
 # TanStack Router generated route tree
 ui/src/routeTree.gen.ts
 
+.gitnexus

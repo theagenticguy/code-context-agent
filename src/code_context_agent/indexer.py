@@ -982,6 +982,89 @@ def _build_git_section(repo: Path, out: Path) -> dict[str, Any]:
     }
 
 
+def _get_gitnexus_stats(repo: Path, repo_name: str) -> dict[str, Any]:  # noqa: C901
+    """Extract GitNexus structural metadata from the local index.
+
+    Reads .gitnexus/meta.json for stats (community count, process count,
+    symbol count, edge count). Optionally queries community names via
+    ``gitnexus cypher`` for top-community data.
+
+    Args:
+        repo: Repository root path.
+        repo_name: The repo identifier (used for --repo flag in cypher queries).
+
+    Returns:
+        Dict with community_count, process_count, symbol_count, edge_count,
+        and top_communities list. Defaults to 0/empty on any failure.
+    """
+    result: dict[str, Any] = {
+        "community_count": 0,
+        "process_count": 0,
+        "symbol_count": 0,
+        "edge_count": 0,
+        "top_communities": [],
+    }
+
+    # --- Read stats from .gitnexus/meta.json ---
+    meta_path = repo / ".gitnexus" / "meta.json"
+    if meta_path.exists():
+        try:
+            meta = json.loads(meta_path.read_text())
+            stats = meta.get("stats", {})
+            result["community_count"] = stats.get("communities", 0)
+            result["process_count"] = stats.get("processes", 0)
+            result["symbol_count"] = stats.get("nodes", 0)
+            result["edge_count"] = stats.get("edges", 0)
+        except (json.JSONDecodeError, OSError) as e:
+            logger.debug(f"Failed to read .gitnexus/meta.json: {e}")
+
+    # --- Query top communities via gitnexus cypher (graceful failure) ---
+    if shutil.which("gitnexus") is not None:
+        try:
+            cypher_result = subprocess.run(
+                [
+                    "gitnexus",
+                    "cypher",
+                    "--repo",
+                    repo_name,
+                    "MATCH (c:Community) RETURN c.label, c.symbolCount, c.cohesion "
+                    "ORDER BY c.symbolCount DESC LIMIT 10",
+                ],
+                cwd=str(repo),
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if cypher_result.returncode == 0:
+                cypher_data = json.loads(cypher_result.stdout)
+                markdown = cypher_data.get("markdown", "")
+                # Parse markdown table: | label | symbolCount | cohesion |
+                communities: list[dict[str, Any]] = []
+                seen_names: set[str] = set()
+                for raw_line in markdown.split("\n"):
+                    line = raw_line.strip()
+                    if not line or line.startswith("| ---") or line.startswith("| c."):
+                        continue
+                    parts = [p.strip() for p in line.split("|") if p.strip()]
+                    if len(parts) >= 3:  # noqa: PLR2004
+                        name = parts[0]
+                        # Deduplicate community names (clusters can share labels)
+                        if name in seen_names:
+                            continue
+                        seen_names.add(name)
+                        try:
+                            symbols = int(parts[1])
+                            cohesion = round(float(parts[2]), 3)
+                        except (ValueError, IndexError):
+                            continue
+                        communities.append({"name": name, "symbols": symbols, "cohesion": cohesion})
+                result["top_communities"] = communities
+        except (subprocess.TimeoutExpired, subprocess.SubprocessError, json.JSONDecodeError, OSError) as e:
+            logger.debug(f"Failed to query GitNexus communities: {e}")
+
+    return result
+
+
 def _generate_heuristic_summary(
     files: list[str],
     lang_files: dict[str, list[str]],
@@ -1020,6 +1103,20 @@ def _generate_heuristic_summary(
         "gitnexus": {
             "indexed": gitnexus_indexed,
             "repo_name": repo_name,
+            **(
+                _get_gitnexus_stats(repo, repo_name)
+                if gitnexus_indexed
+                else {
+                    "community_count": 0,
+                    "process_count": 0,
+                    "symbol_count": 0,
+                    "edge_count": 0,
+                    "top_communities": [],
+                }
+            ),
+        },
+        "mcp": {
+            "context7_available": shutil.which("npx") is not None,
         },
     }
 

@@ -19,3 +19,10 @@
 6. Implementation complexity (state management depth, error path coverage — from reading the code)
 7. Implicit contracts (invariants other code depends on — from reading callers/callees)
 8. Domain density (ratio of domain logic to plumbing in the file)
+
+**Judgment-only signals** (require reading code, not available from GitNexus):
+- Implicit ordering constraints ("A must happen before B" without type enforcement)
+- Error handling asymmetry (some paths handle errors, similar paths don't)
+- Domain vocabulary precision (does the code use domain terms correctly?)
+- State mutation side effects (function modifies shared state not visible from its signature)
+- Undocumented business rules embedded in conditionals

@@ -101,12 +101,14 @@ def dispatch_team(
 
     TEAM SIZING HEURISTICS (based on heuristic_summary.json):
 
-      Volume         | Strategy
-      ---------------|------------------------------------------
-      <200 files     | 1 team total, 2 agents (analyst + reader)
-      200-2000       | 2-3 parallel teams by concern
-      2000+          | 3-5 teams scoped by domain/directory
-      --focus set    | 1 dedicated focus team + preemptive teams
+      Volume + Structure           | Strategy
+      -----------------------------|------------------------------------------
+      <200 files, <5 communities   | 1 team total, 2 agents (analyst + reader)
+      200-2000, 5-15 communities   | 1 team per major community (2-4 teams)
+      2000+, 15+ communities       | Top 5 communities get dedicated teams
+      gitnexus.process_count > 50  | Add cross-cutting team for shared processes
+      --focus set                  | 1 dedicated focus team scoped to focus community
+      health.semgrep critical > 0  | MANDATORY security team regardless of size
 
     AGENT SPEC FORMAT:
 
@@ -123,6 +125,18 @@ def dispatch_team(
                      read_file_bounded
           Reading:   read_file_bounded, rg_search, bm25_search, gitnexus_context,
                      gitnexus_query
+
+    MULTI-WAVE PATTERN:
+
+      Wave 1 (Scout): 2-agent teams with light tools (gitnexus_query, git_hotspots, rg_search).
+        Mandate: "Survey area X. Flag complexity, cross-cutting concerns, key symbols."
+        Timeout: 2-3 min per team. Use execution_timeout=180.
+
+      Wave 2 (Deep): 2-3 agent teams with full tools (gitnexus_context, gitnexus_impact, read_file_bounded).
+        Mandate: "Deep investigation of area X based on scout findings: [paste key findings]."
+        Timeout: 5-8 min per team. Use execution_timeout=480. Only dispatch for flagged areas.
+
+      Small repos (<200 files): collapse into a single wave with all tools.
 
     FINDING PERSISTENCE:
 
@@ -457,10 +471,18 @@ def read_heuristic_summary() -> str:
       gitnexus:
         indexed: bool              — whether GitNexus has indexed this repo
         repo_name: str             — the repo identifier in the GitNexus graph
+        community_count: int       — number of functional communities detected
+        process_count: int         — number of execution flows traced
+        symbol_count: int          — total symbols in the knowledge graph
+        edge_count: int            — total relationships
+        top_communities: list      — [{name, symbols, cohesion}, ...]
 
       git:
         total_commits_analyzed, active_contributors
         most_coupled_pairs: list of {a, b, coupling}
+
+      mcp:
+        context7_available: bool   — whether context7 library docs tool is available
 
     INTERPRETATION GUIDE:
 
@@ -470,6 +492,8 @@ def read_heuristic_summary() -> str:
       gitnexus.indexed is True             | Use gitnexus_impact for blast radius
       health.avg_cyclomatic_complexity > 10| Complexity team for deep code reading
       volume.total_files > 2000            | Domain-scoped teams, not one mega-team
+      gitnexus.community_count > 15        | Top 5 communities get dedicated teams
+      gitnexus.process_count > 50          | Add cross-cutting team for shared processes
       git.most_coupled_pairs coupling > 0.7| Implicit coupling — needs investigation
 
     Returns:

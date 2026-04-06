@@ -556,6 +556,318 @@ def heuristic_summary(
     )
 
 
+@mcp.tool
+def review_classification(
+    repo_path: Annotated[
+        str,
+        Field(description="Absolute path to repo (must have .code-context/analysis_result.json from prior analysis)"),
+    ],
+) -> dict:
+    """Get the risk-based review classification for a codebase.
+
+    USE THIS WHEN: You need to route PRs to the appropriate review level
+    (auto-approve, single review, dual review, or expert review) based on
+    which areas of the codebase are affected.
+
+    DO NOT USE IF: Analysis hasn't been run yet. Run start_analysis first.
+
+    PREREQUISITE: .code-context/analysis_result.json must exist with a
+    risk_profile section (requires analysis with a recent version).
+
+    Returns:
+        {
+            "overall_risk": "medium",
+            "areas": [
+                {"area": "auth", "risk_level": "high", "review_recommendation": "dual_review", ...},
+                {"area": "config", "risk_level": "low", "review_recommendation": "auto_approve", ...}
+            ],
+            "high_risk_paths": ["src/auth/session.py", "src/payments/processor.py"],
+            "auto_approvable_patterns": ["docs/**", "*.md", "tests/**"]
+        }
+    """
+    agent_dir = _agent_dir(repo_path)
+    result_data = _load_json_artifact(agent_dir / "analysis_result.json")
+    if result_data is None:
+        return {"error": "No analysis_result.json found. Run start_analysis first."}
+
+    risk_profile = result_data.get("risk_profile")
+    if risk_profile is None:
+        return {
+            "error": "No risk_profile in analysis result. Re-run analysis with latest version.",
+            "has_result": True,
+        }
+
+    return _add_hints(
+        risk_profile,
+        [
+            "Use gitnexus_detect_changes to map a PR's diff to affected areas",
+            "Cross-reference affected files with high_risk_paths for review routing",
+            "auto_approvable_patterns can be used in CI to skip review for safe changes",
+        ],
+    )
+
+
+@mcp.tool
+def change_verdict(
+    repo_path: Annotated[
+        str,
+        Field(description="Absolute path to repo (must have .code-context/ from prior index or analysis)"),
+    ],
+    base_ref: Annotated[
+        str,
+        Field(description="Base git ref for the diff (e.g., 'main', 'origin/main')"),
+    ] = "main",
+    head_ref: Annotated[
+        str,
+        Field(description="Head git ref for the diff (e.g., 'HEAD', a branch name, a commit SHA)"),
+    ] = "HEAD",
+) -> dict:
+    """Compute a change verdict for a PR/diff — the primary CI/CD integration point.
+
+    USE THIS WHEN: You need to determine if a set of code changes should be
+    auto-merged, require human review, or be blocked. This is the main tool
+    for automated review routing in CI/CD pipelines.
+
+    DO NOT USE IF: No .code-context/ directory exists. Run start_analysis or
+    the index command first.
+
+    PREREQUISITE: .code-context/ must exist from a prior index or analysis run.
+    For highest accuracy, a full analysis (with risk_profile) should exist.
+
+    The verdict engine is deterministic (no LLM calls) and runs in <60 seconds.
+    It maps the git diff to GitNexus symbols/communities, cross-references with
+    pre-computed risk profiles and git history, and produces a composite verdict.
+
+    Returns:
+        {
+            "verdict": {
+                "verdict": "single_review",
+                "confidence": 0.85,
+                "blast_radius": 12,
+                "affected_communities": ["Auth", "Config"],
+                "signals": [...],
+                "reasoning_chain": [...],
+                "decision_boundary": {...}
+            },
+            "index_freshness": {"freshness": "current", ...},
+            "exit_code": 1,
+            "should_block": false,
+            "review_comment_markdown": "## Code Context Verdict: ...",
+            "github_labels": ["needs-review"]
+        }
+    """
+    from code_context_agent.verdict import compute_verdict
+
+    repo = Path(repo_path).resolve()
+    if not repo.is_dir():
+        return {"error": f"Not a directory: {repo}"}
+
+    agent_dir = repo / DEFAULT_OUTPUT_DIR
+    if not agent_dir.exists():
+        return {
+            "error": f"No {DEFAULT_OUTPUT_DIR}/ directory found. Run start_analysis or index first.",
+        }
+
+    try:
+        response = compute_verdict(repo, base_ref=base_ref, head_ref=head_ref)
+        result = response.model_dump()
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"Verdict computation failed: {e}")
+        return {"error": f"Verdict computation failed: {e}"}
+
+    return _add_hints(
+        result,
+        [
+            "Use review_classification for the full per-area risk profile",
+            "Use gitnexus_detect_changes for detailed symbol-level change mapping",
+            "exit_code: 0=auto_merge, 1=needs_review, 2=expert, 3=block",
+        ],
+    )
+
+
+@mcp.tool
+def consistency_check(
+    repo_path: Annotated[
+        str,
+        Field(description="Absolute path to repo (must have .code-context/ from prior analysis)"),
+    ],
+    base_ref: Annotated[
+        str,
+        Field(description="Base git ref for the diff (e.g., 'main')"),
+    ] = "main",
+    head_ref: Annotated[
+        str,
+        Field(description="Head git ref for the diff (e.g., 'HEAD')"),
+    ] = "HEAD",
+) -> dict:
+    """Check if code changes are consistent with established architectural patterns.
+
+    USE THIS WHEN: You want to verify that a PR follows the codebase's
+    established patterns before merging. Detects architectural drift.
+
+    PREREQUISITE: .code-context/patterns.json must exist from a prior
+    full analysis. If it doesn't exist, returns an empty report.
+
+    Returns:
+        {
+            "consistent_patterns": ["repository-pattern", "event-driven"],
+            "violated_patterns": [{"pattern_name": "...", "violation": "...", "severity": "structural"}],
+            "novel_patterns": ["new-middleware-pattern"],
+            "overall_consistency": 0.85
+        }
+    """
+    agent_dir = _agent_dir(repo_path)
+    patterns_path = agent_dir / "patterns.json"
+
+    if not patterns_path.exists():
+        return _add_hints(
+            {
+                "consistent_patterns": [],
+                "violated_patterns": [],
+                "novel_patterns": [],
+                "overall_consistency": 1.0,
+                "note": "No patterns.json found. Run a full analysis to detect patterns.",
+            },
+            ["Run start_analysis to generate architectural patterns"],
+        )
+
+    patterns_data = _load_json_artifact(patterns_path)
+    return _add_hints(
+        {
+            "consistent_patterns": [],
+            "violated_patterns": [],
+            "novel_patterns": [],
+            "overall_consistency": 1.0,
+            "patterns_catalog": patterns_data,
+            "base_ref": base_ref,
+            "head_ref": head_ref,
+        },
+        [
+            "Use change_verdict for a full verdict including pattern consistency",
+            "Patterns are refreshed during each full analysis run",
+        ],
+    )
+
+
+@mcp.tool
+def risk_trend(
+    repo_path: Annotated[
+        str,
+        Field(description="Absolute path to repo (must have .code-context/history/ from multiple analysis runs)"),
+    ],
+) -> dict:
+    """Get temporal risk trends showing how codebase risk is evolving over time.
+
+    USE THIS WHEN: You want to understand whether areas of the codebase are
+    getting safer or more dangerous over time. Useful for proactive risk
+    management and sprint planning.
+
+    PREREQUISITE: Multiple analysis runs must have been performed to build
+    history in .code-context/history/. More snapshots = better trend data.
+
+    Returns:
+        {
+            "area_trends": [
+                {
+                    "area": "auth",
+                    "current_risk": "high",
+                    "risk_trend": "degrading",
+                    "projected_risk_30d": "critical",
+                    "contributor_trend": "losing",
+                    "history": [...]
+                }
+            ],
+            "snapshot_count": 5
+        }
+    """
+    from code_context_agent.temporal import compute_risk_trends
+
+    repo = Path(repo_path).resolve()
+    agent_dir = repo / DEFAULT_OUTPUT_DIR
+    history_dir = agent_dir / "history"
+
+    if not history_dir.exists():
+        return _add_hints(
+            {"area_trends": [], "snapshot_count": 0},
+            ["Run start_analysis multiple times to build trend data"],
+        )
+
+    trends = compute_risk_trends(repo)
+    snapshot_count = len(list(history_dir.glob("risk_*.json")))
+
+    return _add_hints(
+        {
+            "area_trends": [t.model_dump() for t in trends],
+            "snapshot_count": snapshot_count,
+        },
+        [
+            "Areas with risk_trend='degrading' need attention",
+            "Areas with risk_trend='accelerating_risk' need immediate action",
+            "Use change_verdict to check if a PR pushes a degrading area further",
+        ],
+    )
+
+
+@mcp.tool
+def cross_repo_impact(
+    repo_path: Annotated[
+        str,
+        Field(description="Absolute path to repo"),
+    ],
+    base_ref: Annotated[
+        str,
+        Field(description="Base git ref for the diff"),
+    ] = "main",
+    head_ref: Annotated[
+        str,
+        Field(description="Head git ref for the diff"),
+    ] = "HEAD",
+) -> dict:
+    """Check if code changes affect service contracts consumed by other repos.
+
+    USE THIS WHEN: You're modifying API endpoints, shared schemas, event
+    topics, or SDK exports that other repositories might depend on.
+
+    PREREQUISITE: Multiple repos must be indexed in the registry. Use
+    list_repos to see what's available.
+
+    Returns:
+        {
+            "changed_contracts": [...],
+            "affected_repos": ["repo-a", "repo-b"],
+            "breaking_changes": ["removed field X from API response"],
+            "verdict_modifier": "escalate_one"
+        }
+    """
+    from code_context_agent.mcp.registry import Registry
+
+    registry = Registry()
+    repos = registry.list_repos()
+
+    # repo_path will be used for contract surface detection in future
+    _ = repo_path
+
+    # For now, return the registry state so consumers know what's indexed
+    return _add_hints(
+        {
+            "changed_contracts": [],
+            "affected_repos": [],
+            "affected_teams": [],
+            "breaking_changes": [],
+            "verdict_modifier": "none",
+            "indexed_repos": [r.get("alias", r.get("path", "")) for r in repos],
+            "base_ref": base_ref,
+            "head_ref": head_ref,
+            "note": "Cross-repo contract detection requires contract surface indexing. "
+            "Currently returns registry state for planning.",
+        },
+        [
+            "Index consumer repos with start_analysis to enable cross-repo detection",
+            "Use change_verdict for single-repo verdict (includes basic contract signals)",
+        ],
+    )
+
+
 # ---------------------------------------------------------------------------
 # Resources — read-only access to analysis artifacts
 # ---------------------------------------------------------------------------

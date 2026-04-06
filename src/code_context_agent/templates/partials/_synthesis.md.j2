@@ -13,12 +13,15 @@ Before moving to pattern discovery, synthesize:
 - What architectural style is evident from the symbols and dependency chains?
 - What hypotheses do you have about where the most important logic lives?
 
-**Checkpoint 2: After GitNexus + Git Analysis**
-Before reading code, synthesize the structural signals:
-- Which files appear in MULTIPLE rankings? (high churn AND high incoming relationships AND domain vocabulary — these are the most important files)
-- What does the module clustering reveal about the team's mental model of the system?
-- Where do git coupling patterns DISAGREE with GitNexus relationship data? (implicit dependencies the structural analysis misses)
-- What architectural risks are already visible from structure alone? (god files, circular dependencies, orphan modules, symbols with wide process participation)
+**Checkpoint 2: Structure vs. Judgment Gap**
+GitNexus has given you relationships and processes. Before reading code, identify:
+- Where does structural importance (high incoming refs) DISAGREE with git churn?
+  (Important but stable = well-designed. Important and churning = fragile.)
+- Which GitNexus processes cross community boundaries? (Cross-cutting concerns that no single team owns)
+- Which areas have high structural complexity but no test coverage? (Hidden risk)
+- What can you NOT determine from structure alone? (Business rules, invariants, domain intent)
+
+These are where YOUR judgment adds the most value. Prioritize deep reading there.
 
 **Checkpoint 3: After Deep Read**
 Before ranking business logic, synthesize code-level insights with structural data:
@@ -27,6 +30,15 @@ Before ranking business logic, synthesize code-level insights with structural da
 - What error handling patterns are consistent vs. inconsistent across modules?
 - What state management patterns exist? (global state, request-scoped, database-backed, event-sourced)
 - Which files have the widest gap between "what GitNexus says they do" and "what they actually do"?
+
+**Checkpoint 4: Confidence & Disagreement Audit**
+Before writing bundles, review your team findings for:
+- Areas where teams disagreed — these need explicit `agreement_level: "split"` annotations
+- Claims made without supporting evidence — mark as `information_gap`
+- Judgments that would change with one additional data point — add `counterfactual`
+- Risk levels assigned with < 3 supporting signals — flag as low confidence
+
+This metadata flows into the risk_profile and is consumed by the verdict engine for CI/CD decisions. Uncalibrated confidence leads to bad automated merge/block decisions.
 
 ### Reasoning Over Code + Metrics
 

@@ -35,3 +35,28 @@ To find business logic in a specific category:
 1. `gitnexus_query` with domain terms (e.g., "payment processing", "auth middleware")
 2. `gitnexus_context` on top symbols — check process participation
 3. Symbols appearing in multiple execution flows are likely core business logic
+
+## Your Unique Value (What GitNexus Can't Do)
+
+GitNexus knows the structure. Your job is to find what it can't:
+
+1. **Business intent** — WHY does this code exist? What business problem does it solve?
+   GitNexus sees `processPayment` calls `validateCard`. You explain why the validation
+   order matters and what breaks if it changes.
+
+2. **Implicit contracts** — What invariants does other code depend on that aren't
+   enforced by types? GitNexus sees relationships. You read the code and discover
+   "this function must be called before that one" or "this return value is always
+   non-null even though the type allows null."
+
+3. **Risk judgment** — GitNexus gives you blast radius (N dependents). You assess
+   whether those dependents actually care about the specific behavior that might change.
+   A function with 50 callers might be safe to modify if all callers only use one
+   return field.
+
+4. **Cross-cutting patterns** — Error handling consistency across modules. Logging
+   conventions. Auth enforcement gaps. These span the structural graph but require
+   reading code to assess.
+
+5. **Documentation gaps** — Where does the code do something surprising that no
+   comment or docstring explains? Where would a new developer get confused?

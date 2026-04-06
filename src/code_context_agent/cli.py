@@ -10,7 +10,7 @@ Example:
 """
 
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import TYPE_CHECKING, Annotated, Literal
 
 from cyclopts import App, Parameter
 from rich.console import Console
@@ -18,6 +18,9 @@ from rich.console import Console
 from code_context_agent import __version__
 from code_context_agent.config import DEFAULT_OUTPUT_DIR, Settings, get_settings
 from code_context_agent.display import display_welcome
+
+if TYPE_CHECKING:
+    from code_context_agent.models.output import VerdictResponse
 
 console = Console()
 
@@ -91,6 +94,10 @@ def analyze(  # noqa: C901, PLR0912, PLR0915
         bool,
         Parameter(help="Suppress all output except errors on stderr. No TUI, no JSON."),
     ] = False,
+    quick: Annotated[
+        bool,
+        Parameter(help="Lightweight analysis: single scout wave, risk profile refresh only. For nightly CI/CD."),
+    ] = False,
     bundles_only: Annotated[
         bool,
         Parameter(help="Skip indexing and team dispatch; regenerate bundles from existing team findings."),
@@ -147,10 +154,10 @@ def analyze(  # noqa: C901, PLR0912, PLR0915
         raise SystemExit(1)
 
     # Validate flag combinations
-    _validate_flags(full=full, since=since, bundles_only=bundles_only)
+    _validate_flags(full=full, since=since, bundles_only=bundles_only, quick=quick)
 
     # Derive analysis mode
-    mode = _derive_mode(full=full, focus=focus, since=since)
+    mode = _derive_mode(full=full, focus=focus, since=since, quick=quick)
 
     # Auto-preflight in full mode
     if full and not quiet:
@@ -249,6 +256,174 @@ def index(
         raise SystemExit(1)
 
     asyncio.run(build_index(repo_path, output_dir, quiet))
+
+
+@app.command
+def verdict(
+    path: Annotated[
+        Path,
+        Parameter(help="Path to the repository (must have .code-context/ from prior analysis)."),
+    ] = Path(),
+    *,
+    base: Annotated[
+        str,
+        Parameter(help="Base git ref for the diff (e.g., 'main', 'origin/main')."),
+    ] = "main",
+    head: Annotated[
+        str,
+        Parameter(help="Head git ref for the diff (e.g., 'HEAD', branch name)."),
+    ] = "HEAD",
+    output_format: Annotated[
+        Literal["json", "human"],
+        Parameter(help="Output format: json (machine-readable) or human (rich)."),
+    ] = "human",
+    exit_code: Annotated[
+        bool,
+        Parameter(help="Use exit codes for CI/CD: 0=auto_merge, 1=needs_review, 2=expert, 3=block, 4=error."),
+    ] = False,
+) -> None:
+    """Compute a change verdict for a PR/diff against pre-computed analysis.
+
+    Analyzes the diff between --base and --head against the pre-computed
+    codebase context (risk profiles, GitNexus structural data, git history)
+    and produces a structured verdict with signals, confidence, and
+    review routing recommendations.
+
+    Designed for CI/CD integration with <60s latency -- no LLM calls.
+
+    PREREQUISITE: Run `code-context-agent index` or `analyze` first to
+    build the .code-context/ directory.
+
+    Example:
+        $ code-context-agent verdict --base main --format json --exit-code
+        $ code-context-agent verdict . --base origin/main
+    """
+    import sys
+
+    repo_path = path.resolve()
+    if not repo_path.is_dir():
+        print(f"Error: Not a directory: {repo_path}", file=sys.stderr)
+        raise SystemExit(4)
+
+    from code_context_agent.verdict import compute_verdict
+
+    try:
+        response = compute_verdict(repo_path, base_ref=base, head_ref=head)
+    except Exception as e:  # noqa: BLE001
+        print(f"Error: Verdict computation failed: {e}", file=sys.stderr)
+        raise SystemExit(4) from None
+
+    if output_format == "json":
+        sys.stdout.write(response.model_dump_json(indent=2))
+        sys.stdout.write("\n")
+    else:
+        _display_verdict(response)
+
+    if exit_code:
+        raise SystemExit(response.exit_code)
+
+
+def _display_verdict(response: "VerdictResponse") -> None:
+    """Display verdict in human-readable format."""
+    v = response.verdict
+    tier_colors = {
+        "auto_merge": "green",
+        "single_review": "yellow",
+        "dual_review": "yellow",
+        "expert_review": "red",
+        "block": "bold red",
+    }
+    color = tier_colors.get(v.verdict, "white")
+
+    console.print()
+    console.print(f"[bold]Change Verdict:[/bold] [{color}]{v.verdict}[/{color}]")
+    console.print(f"  Confidence: {v.confidence:.0%} | Freshness: {response.index_freshness.freshness}")
+    console.print(f"  Files: {len(v.files_changed)} | Blast radius: {v.blast_radius}")
+
+    if v.affected_communities:
+        console.print(f"  Communities: {', '.join(v.affected_communities)}")
+
+    if v.signals:
+        console.print()
+        console.print("[bold]Signals:[/bold]")
+        for sig in v.signals:
+            severity_style = {
+                "info": "dim",
+                "warning": "yellow",
+                "escalation": "bold yellow",
+                "block": "bold red",
+            }.get(sig.severity, "white")
+            console.print(f"  [{severity_style}]{sig.severity}[/{severity_style}] {sig.description}")
+
+    if v.escalation_reasons:
+        console.print()
+        console.print("[bold]Escalation reasons:[/bold]")
+        for reason in v.escalation_reasons:
+            console.print(f"  - {reason}")
+
+    if v.recommended_reviewers:
+        console.print()
+        console.print("[bold]Recommended reviewers:[/bold]")
+        for reviewer in v.recommended_reviewers:
+            console.print(f"  - {reviewer.identity} ({reviewer.reason})")
+
+    if v.reasoning_chain:
+        console.print()
+        console.print("[dim]Reasoning chain:[/dim]")
+        for step in v.reasoning_chain:
+            console.print(f"  [dim]{step}[/dim]")
+
+    console.print()
+
+
+@app.command(name="ci-init")
+def ci_init(
+    path: Annotated[
+        Path,
+        Parameter(help="Path to the repository where CI/CD workflows will be generated."),
+    ] = Path(),
+    *,
+    provider: Annotated[
+        Literal["github", "gitlab", "both"],
+        Parameter(help="CI/CD provider: github (Actions), gitlab (CI), or both."),
+    ] = "both",
+) -> None:
+    """Generate CI/CD workflow files for automated change verdicts.
+
+    Creates workflow templates with three cadences:
+    - Nightly full analysis (risk profiles, patterns, temporal snapshots)
+    - On-merge incremental index (keeps structural graph current)
+    - PR verdict (fast change analysis against cached context)
+
+    Example:
+        $ code-context-agent ci-init .
+        $ code-context-agent ci-init . --provider github
+    """
+    repo_path = path.resolve()
+
+    from code_context_agent.ci import render_github_actions, render_gitlab_ci
+
+    generated: list[str] = []
+
+    if provider in ("github", "both"):
+        workflows_dir = repo_path / ".github" / "workflows"
+        workflows_dir.mkdir(parents=True, exist_ok=True)
+        output_path = workflows_dir / "code-context-analysis.yml"
+        output_path.write_text(render_github_actions())
+        generated.append(str(output_path))
+        console.print(f"  [green]Created[/green] {output_path}")
+
+    if provider in ("gitlab", "both"):
+        output_path = repo_path / ".code-context-ci.yml"
+        output_path.write_text(render_gitlab_ci())
+        generated.append(str(output_path))
+        console.print(f"  [green]Created[/green] {output_path}")
+
+    if generated:
+        console.print()
+        console.print(f"[green]Generated {len(generated)} CI/CD workflow file(s).[/green]")
+    else:
+        console.print("[yellow]No files generated.[/yellow]")
 
 
 @app.command
@@ -408,7 +583,13 @@ def _check_aws_credentials() -> bool:
         return False
 
 
-def _validate_flags(*, full: bool = False, since: str = "", bundles_only: bool = False) -> None:
+def _validate_flags(
+    *,
+    full: bool = False,
+    since: str = "",
+    bundles_only: bool = False,
+    quick: bool = False,
+) -> None:
     """Validate mutually exclusive flag combinations.
 
     Raises:
@@ -427,14 +608,23 @@ def _validate_flags(*, full: bool = False, since: str = "", bundles_only: bool =
         console.print("[red]Error:[/red] --bundles-only and --since cannot be combined.")
         console.print("  --bundles-only regenerates bundles from existing team findings.")
         raise SystemExit(1)
+    if quick and full:
+        console.print("[red]Error:[/red] --quick and --full cannot be combined.")
+        console.print("  --quick runs lightweight analysis; --full runs exhaustive analysis.")
+        raise SystemExit(1)
+    if quick and bundles_only:
+        console.print("[red]Error:[/red] --quick and --bundles-only cannot be combined.")
+        raise SystemExit(1)
 
 
-def _derive_mode(*, full: bool = False, focus: str = "", since: str = "") -> str:
+def _derive_mode(*, full: bool = False, focus: str = "", since: str = "", quick: bool = False) -> str:
     """Derive the analysis mode string from CLI flags.
 
     Returns:
-        Mode string: "standard", "full", "focus", "incremental", or "full+focus".
+        Mode string: "standard", "full", "focus", "incremental", "quick", or "full+focus".
     """
+    if quick:
+        return "quick"
     if full and focus:
         return "full+focus"
     if full:
