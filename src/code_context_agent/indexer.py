@@ -1,8 +1,8 @@
-"""Deterministic indexing pipeline for building code graphs without LLM invocations.
+"""Deterministic indexing pipeline for code analysis without LLM invocations.
 
-Builds a CodeGraph by calling adapter functions directly using LSP, AST-grep,
-git history, and clone detection. All external tool calls are graceful -- if a
-tool is missing the step is skipped and indexing continues.
+Runs static analysis tools (ripgrep, semgrep, radon, vulture, knip, repomix),
+git history analysis, and GitNexus graph indexing. All external tool calls are
+graceful -- if a tool is missing the step is skipped and indexing continues.
 """
 
 from __future__ import annotations
@@ -12,29 +12,15 @@ import re
 import shutil
 import statistics
 import subprocess
-import tempfile
 from collections import Counter
 from pathlib import Path
 from typing import Any
 
 from loguru import logger
 
-from code_context_agent.config import DEFAULT_OUTPUT_DIR, get_settings
-from code_context_agent.tools.graph.adapters import (
-    create_category_edges,
-    create_file_bridge_nodes,
-    ingest_astgrep_rule_pack,
-    ingest_clone_results,
-    ingest_git_cochanges,
-    ingest_git_hotspots,
-    ingest_lsp_symbols,
-    ingest_static_imports,
-    ingest_test_mapping,
-)
-from code_context_agent.tools.graph.frameworks import detect_frameworks
-from code_context_agent.tools.graph.model import CodeGraph
+from code_context_agent.config import DEFAULT_OUTPUT_DIR
 
-# Extension to LSP server kind mapping (matches LspClient._detect_language + config.lsp_servers keys)
+# Extension to language mapping (used by _detect_languages and downstream scanners)
 _EXTENSION_TO_LANG: dict[str, str] = {
     ".py": "py",
     ".ts": "ts",
@@ -46,41 +32,41 @@ _EXTENSION_TO_LANG: dict[str, str] = {
     ".java": "java",
 }
 
-# Language to ast-grep rule pack mapping
-_LANG_RULE_PACKS: dict[str, list[str]] = {
-    "py": ["py_business_logic", "py_code_smells"],
-    "ts": ["ts_business_logic", "ts_code_smells"],
-}
-
 
 async def build_index(
     repo_path: Path,
     output_dir: Path | None = None,
     quiet: bool = False,
-) -> CodeGraph:
-    """Build a code graph deterministically without LLM invocations.
+) -> None:
+    """Build a deterministic index of a codebase without LLM invocations.
 
     Pipeline:
-    1. File manifest via ripgrep
-    2. Language detection from file extensions
-    3. LSP document symbols for each file -> ingest into graph
-    4. AST-grep rule packs per language -> ingest
-    5. Git hotspots + co-changes -> ingest
-    6. Clone detection -> ingest
-    7. Save graph to output_dir
+    1.  File manifest via ripgrep
+    1a. Write file manifest to disk
+    2.  Language detection from file extensions
+    3.  GitNexus analyze (graph indexing)
+    4.  Git hotspots + co-changes -> JSON files
+    5.  Repomix compressed signatures
+    6.  Repomix orientation
+    7.  BM25 index prebuild
+    8.  Semgrep auto
+    9.  Semgrep OWASP
+    10. Type checker
+    11. Linter
+    12. Complexity analysis
+    13. Dead code (Python)
+    14. Dead code (TypeScript)
+    15. Dependencies
+    16. Generate heuristic_summary.json
 
     Args:
         repo_path: Path to the repository root.
         output_dir: Where to save artifacts (default: repo_path/.code-context/).
         quiet: Suppress progress output.
-
-    Returns:
-        The built CodeGraph.
     """
     repo = repo_path.resolve()
     out = output_dir or (repo / DEFAULT_OUTPUT_DIR)
     out.mkdir(parents=True, exist_ok=True)
-    graph = CodeGraph()
 
     # Step 1: File manifest
     files = _get_file_manifest(repo)
@@ -97,86 +83,48 @@ async def build_index(
         lang_summary = {lang: len(fs) for lang, fs in lang_files.items()}
         logger.info(f"Languages detected: {lang_summary}")
 
-    # Step 3: LSP symbols (if available)
-    await _ingest_lsp_symbols(graph, repo, lang_files, quiet)
+    # Step 3: GitNexus analyze
+    gitnexus_ok = _run_gitnexus_analyze(repo, quiet)
 
-    # Step 3a: File bridge nodes (connect file-path namespace to symbol namespace)
-    _create_file_bridge(graph, quiet)
+    # Step 4: Git hotspots + co-changes (write to JSON)
+    _ingest_git(repo, out, quiet)
 
-    # Step 4: AST-grep rule packs
-    _ingest_astgrep(graph, repo, lang_files, quiet)
-
-    # Step 4a: Static import parsing (FILE→FILE IMPORTS edges)
-    _ingest_static_imports(graph, repo, files, lang_files, quiet)
-
-    # Step 4b: Category-based semantic edges (SIMILAR_TO between same-category PATTERN_MATCH nodes)
-    _ingest_category_edges(graph, quiet)
-
-    # Step 5: Git analysis
-    _ingest_git(graph, repo, quiet)
-
-    # Step 6: Clone detection
-    _ingest_clones(graph, repo, quiet)
-
-    # Step 7: Framework detection (activates dead code in frameworks.py)
-    frameworks = detect_frameworks(files)
-    if not quiet and frameworks:
-        logger.info(f"Frameworks detected: {frameworks}")
-
-    # Step 8: Test-to-production mapping
-    _ingest_tests(graph, files, quiet)
-
-    # Step 9: Repomix compressed signatures
+    # Step 5: Repomix compressed signatures
     _run_repomix_signatures(repo, out, quiet)
 
-    # Step 10: Repomix orientation
+    # Step 6: Repomix orientation
     _run_repomix_orientation(repo, out, quiet)
 
-    # Step 11: BM25 index prebuild
+    # Step 7: BM25 index prebuild
     _prebuild_bm25(files, repo, quiet)
 
-    # Step 11a: Semantic embedding enrichment (optional, adds SIMILAR_TO edges)
-    _run_semantic_enrichment(graph, repo, out, files, quiet)
-
-    # Step 12: Save graph
-    graph_path = out / "code_graph.json"
-    graph_data = graph.to_node_link_data()
-    graph_path.write_text(json.dumps(graph_data, indent=2))
-
-    graph_stats = graph.describe()
-    if not quiet:
-        logger.info(
-            f"Index complete: {graph_stats.get('node_count', 0)} nodes, "
-            f"{graph_stats.get('edge_count', 0)} edges -> {graph_path}",
-        )
-
-    # Step 13: Generate index metadata
-    _write_index_metadata(graph, graph_stats, out, files, lang_files, frameworks, quiet)
-
-    # Step 14-15: Semgrep
+    # Step 8-9: Semgrep
     _run_semgrep_auto(repo, out, quiet)
     _run_semgrep_owasp(repo, out, quiet)
 
-    # Step 16: Type checker
+    # Step 10: Type checker
     _run_typecheck(repo, out, lang_files, quiet)
 
-    # Step 17: Linter
+    # Step 11: Linter
     _run_lint(repo, out, quiet)
 
-    # Step 18: Complexity
+    # Step 12: Complexity
     _run_complexity(repo, out, lang_files, quiet)
 
-    # Step 19-20: Dead code
+    # Step 13-14: Dead code
     _run_dead_code_py(repo, out, lang_files, quiet)
     _run_dead_code_ts(repo, out, lang_files, quiet)
 
-    # Step 21: Dependencies
+    # Step 15: Dependencies
     _run_deps(repo, out, lang_files, quiet)
 
-    # Final: Heuristic summary
-    _generate_heuristic_summary(graph, graph_stats, files, lang_files, frameworks, out, repo, quiet)
+    # Step 16: Generate heuristic_summary.json
+    _generate_heuristic_summary(files, lang_files, out, repo, gitnexus_ok, quiet)
 
-    return graph
+
+# --------------------------------------------------------------------------- #
+# File manifest
+# --------------------------------------------------------------------------- #
 
 
 def _get_file_manifest(repo: Path) -> list[str]:
@@ -223,6 +171,11 @@ def _get_file_manifest_fallback(repo: Path) -> list[str]:
     return files
 
 
+# --------------------------------------------------------------------------- #
+# Language detection
+# --------------------------------------------------------------------------- #
+
+
 def _detect_languages(files: list[str]) -> dict[str, list[str]]:
     """Group files by language based on file extension.
 
@@ -241,330 +194,55 @@ def _detect_languages(files: list[str]) -> dict[str, list[str]]:
     return lang_files
 
 
-async def _ingest_lsp_symbols(  # noqa: C901
-    graph: CodeGraph,
-    repo: Path,
-    lang_files: dict[str, list[str]],
-    quiet: bool,
-) -> None:
-    """Ingest LSP document symbols into the graph.
-
-    For each language with a configured LSP server, starts a session and
-    gets document symbols for each file. Failures are handled gracefully.
-    """
-    from code_context_agent.tools.lsp.session import LspSessionManager
-
-    settings = get_settings()
-    manager = LspSessionManager()
-    workspace = str(repo)
-
-    for lang, files in lang_files.items():
-        if lang not in settings.lsp_servers:
-            continue
-
-        try:
-            client = await manager.get_or_create(lang, workspace, startup_timeout=15.0)
-        except (RuntimeError, ValueError, OSError, TimeoutError) as e:
-            logger.warning(f"LSP startup failed for {lang}: {e} -- skipping LSP symbols")
-            continue
-
-        if not quiet:
-            logger.info(f"LSP indexing {len(files)} {lang} files")
-
-        for file_rel in files:
-            file_abs = str(repo / file_rel)
-            try:
-                symbols = await client.document_symbols(file_abs)
-                if symbols:
-                    symbols_result: dict[str, Any] = {"status": "success", "symbols": symbols}
-                    nodes, edges = ingest_lsp_symbols(symbols_result, file_rel)
-                    for node in nodes:
-                        graph.add_node(node)
-                    for edge in edges:
-                        graph.add_edge(edge)
-            except (OSError, TimeoutError, RuntimeError, FileNotFoundError) as e:
-                logger.debug(f"LSP symbols failed for {file_rel}: {e}")
-                continue
-
-    try:
-        await manager.shutdown_all()
-    except (OSError, RuntimeError) as e:
-        logger.debug(f"LSP shutdown error: {e}")
+# --------------------------------------------------------------------------- #
+# GitNexus analyze
+# --------------------------------------------------------------------------- #
 
 
-def _create_file_bridge(graph: CodeGraph, quiet: bool) -> None:
-    """Create FILE bridge nodes linking file-path IDs to symbol-level IDs.
-
-    Git co-change, test mapping, and clone detection edges use raw file paths
-    as node IDs, while LSP symbols use ``file_path:symbol_name:line``.  This
-    step creates a FILE node per source file and CONTAINS edges to every child
-    symbol, bridging the two namespaces so the graph is fully connected.
-    """
-    nodes, edges = create_file_bridge_nodes(graph)
-    for node in nodes:
-        graph.add_node(node)
-    for edge in edges:
-        graph.add_edge(edge)
-
-    if not quiet:
-        logger.info(f"File bridge: {len(nodes)} FILE nodes, {len(edges)} CONTAINS edges")
-
-
-def _ingest_astgrep(  # noqa: C901
-    graph: CodeGraph,
-    repo: Path,
-    lang_files: dict[str, list[str]],
-    quiet: bool,
-) -> None:
-    """Ingest AST-grep rule pack matches into the graph."""
-    if shutil.which("ast-grep") is None:
-        logger.warning("ast-grep not found -- skipping AST analysis")
-        return
-
-    rules_dir = Path(__file__).parent / "rules"
-
-    for lang, _files in lang_files.items():
-        rule_packs = _LANG_RULE_PACKS.get(lang, [])
-        for pack_name in rule_packs:
-            rule_file = rules_dir / f"{pack_name}.yml"
-            if not rule_file.exists():
-                continue
-
-            try:
-                result = subprocess.run(
-                    ["ast-grep", "scan", "--config", str(rule_file), "--json=stream", str(repo)],
-                    cwd=str(repo),
-                    capture_output=True,
-                    text=True,
-                    timeout=120,
-                )
-            except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError) as e:
-                logger.warning(f"ast-grep rule pack {pack_name} failed: {e}")
-                continue
-
-            # Parse streaming JSON and build result dict matching adapter format
-            matches_by_rule: dict[str, list[dict[str, Any]]] = {}
-            total_count = 0
-            if result.stdout:
-                for line in result.stdout.strip().splitlines():
-                    if not line:
-                        continue
-                    try:
-                        data = json.loads(line)
-                        rule_id = data.get("ruleId", "unknown")
-                        match = {
-                            "file": data.get("file", ""),
-                            "range": data.get("range", {}),
-                            "text": data.get("text", ""),
-                            "message": data.get("message", ""),
-                        }
-                        matches_by_rule.setdefault(rule_id, []).append(match)
-                        total_count += 1
-                    except json.JSONDecodeError:
-                        continue
-
-            if matches_by_rule:
-                pack_result = {
-                    "status": "success",
-                    "rule_pack": pack_name,
-                    "matches_by_rule": matches_by_rule,
-                    "total_count": total_count,
-                }
-                nodes = ingest_astgrep_rule_pack(pack_result)
-                for node in nodes:
-                    graph.add_node(node)
-
-                if not quiet:
-                    logger.info(f"ast-grep {pack_name}: {total_count} matches in {len(matches_by_rule)} rules")
-
-
-def _ingest_category_edges(graph: CodeGraph, quiet: bool) -> None:
-    """Create SIMILAR_TO edges between PATTERN_MATCH nodes sharing the same category."""
-    edges = create_category_edges(graph)
-    for edge in edges:
-        graph.add_edge(edge)
-
-    if not quiet and edges:
-        logger.info(f"Category edges: {len(edges)} SIMILAR_TO edges")
-
-
-def _ingest_static_imports(  # noqa: C901
-    graph: CodeGraph,
-    repo: Path,
-    files: list[str],
-    lang_files: dict[str, list[str]],
-    quiet: bool,
-) -> None:
-    """Parse import statements via ripgrep and create FILE→FILE IMPORTS edges.
-
-    Uses ``rg`` to find import/require lines, then resolves each imported module
-    to a file path in the repository. Only creates edges where both the source
-    and target FILE nodes exist (or exist in the file list).
-    """
-    if shutil.which("rg") is None:
-        logger.debug("ripgrep not found -- skipping static import parsing")
-        return
-
-    all_files = set(files)
-    import_map: dict[str, list[dict[str, str]]] = {}
-
-    # --- Python imports ---
-    if "py" in lang_files:
-        py_imports = _rg_python_imports(repo)
-        for file_path, raw_imports in py_imports.items():
-            for stmt, module in raw_imports:
-                import_map.setdefault(file_path, []).append({"module": module, "statement": stmt})
-
-    # --- JS/TS imports ---
-    if "ts" in lang_files:
-        js_imports = _rg_js_imports(repo)
-        for file_path, raw_imports in js_imports.items():
-            for stmt, module in raw_imports:
-                import_map.setdefault(file_path, []).append({"module": module, "statement": stmt})
-
-    if not import_map:
-        return
-
-    edges = ingest_static_imports(import_map, all_files)
-    for edge in edges:
-        graph.add_edge(edge)
-
-    if not quiet:
-        logger.info(f"Static imports: {len(edges)} IMPORTS edges from {len(import_map)} files")
-
-
-# Python import regex patterns
-_PY_FROM_IMPORT = re.compile(r"^from\s+([\w.]+)\s+import\s+")
-_PY_IMPORT = re.compile(r"^import\s+([\w.]+)")
-_PY_FROM_RELATIVE = re.compile(r"^from\s+(\.+[\w.]*)\s+import\s+")
-
-# JS/TS import regex patterns
-_JS_IMPORT_FROM = re.compile(r"""import\s+.*?\s+from\s+['"]([^'"]+)['"]""")
-_JS_REQUIRE = re.compile(r"""require\s*\(\s*['"]([^'"]+)['"]\s*\)""")
-
-
-def _parse_python_import_line(line_text: str) -> str | None:
-    """Extract the module name from a single Python import line.
+def _run_gitnexus_analyze(repo: Path, quiet: bool) -> bool:
+    """Run GitNexus graph indexing on the repository.
 
     Args:
-        line_text: A stripped line of Python source code.
+        repo: Repository root path.
+        quiet: Suppress progress output.
 
     Returns:
-        The dotted module name, or ``None`` if no import pattern matched.
+        True if GitNexus analysis succeeded, False otherwise.
     """
-    for pattern in (_PY_FROM_RELATIVE, _PY_FROM_IMPORT, _PY_IMPORT):
-        m = pattern.match(line_text)
-        if m:
-            return m.group(1)
-    return None
+    if shutil.which("gitnexus") is None:
+        logger.warning("gitnexus not found -- skipping GitNexus analysis")
+        return False
 
-
-def _rg_python_imports(repo: Path) -> dict[str, list[tuple[str, str]]]:
-    """Use ripgrep to find Python import statements and parse them.
-
-    Returns:
-        Mapping of ``{relative_file_path: [(raw_statement, dotted_module), ...]}``.
-    """
     try:
         result = subprocess.run(
-            ["rg", "-n", r"^(?:from|import)\s+", "--type", "py", "--json"],
+            ["gitnexus", "analyze", str(repo)],
             cwd=str(repo),
             capture_output=True,
             text=True,
-            timeout=60,
+            timeout=300,
         )
-    except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError) as e:
-        logger.debug(f"rg Python imports failed: {e}")
-        return {}
-
-    imports: dict[str, list[tuple[str, str]]] = {}
-    if not result.stdout:
-        return imports
-
-    for line in result.stdout.strip().splitlines():
-        if not line:
-            continue
-        try:
-            data = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-
-        if data.get("type") != "match":
-            continue
-
-        match_data = data.get("data", {})
-        file_path = match_data.get("path", {}).get("text", "")
-        line_text = match_data.get("lines", {}).get("text", "").strip()
-
-        if not file_path or not line_text:
-            continue
-
-        module = _parse_python_import_line(line_text)
-        if module:
-            imports.setdefault(file_path, []).append((line_text, module))
-
-    return imports
+        if result.returncode == 0:
+            if not quiet:
+                logger.info(f"GitNexus analyze: completed for {repo}")
+            return True
+        else:
+            logger.warning(f"GitNexus analyze failed (exit {result.returncode}): {result.stderr[:300]}")
+            return False
+    except subprocess.TimeoutExpired:
+        logger.warning("GitNexus analyze timed out (300s)")
+        return False
+    except (subprocess.SubprocessError, OSError) as e:
+        logger.warning(f"GitNexus analyze failed: {e}")
+        return False
 
 
-def _rg_js_imports(repo: Path) -> dict[str, list[tuple[str, str]]]:
-    """Use ripgrep to find JS/TS import/require statements and parse them.
-
-    Returns:
-        Mapping of ``{relative_file_path: [(raw_statement, module_specifier), ...]}``.
-    """
-    try:
-        result = subprocess.run(
-            ["rg", "-n", r"(?:import\s+|require\s*\()", "--type", "ts", "--type", "js", "--json"],
-            cwd=str(repo),
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-    except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError) as e:
-        logger.debug(f"rg JS/TS imports failed: {e}")
-        return {}
-
-    imports: dict[str, list[tuple[str, str]]] = {}
-    if not result.stdout:
-        return imports
-
-    for line in result.stdout.strip().splitlines():
-        if not line:
-            continue
-        try:
-            data = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-
-        if data.get("type") != "match":
-            continue
-
-        match_data = data.get("data", {})
-        file_path = match_data.get("path", {}).get("text", "")
-        line_text = match_data.get("lines", {}).get("text", "").strip()
-
-        if not file_path or not line_text:
-            continue
-
-        # Try `import ... from '...'`
-        m = _JS_IMPORT_FROM.search(line_text)
-        if m:
-            module = m.group(1)
-            imports.setdefault(file_path, []).append((line_text, module))
-            continue
-
-        # Try `require('...')`
-        m = _JS_REQUIRE.search(line_text)
-        if m:
-            module = m.group(1)
-            imports.setdefault(file_path, []).append((line_text, module))
-            continue
-
-    return imports
+# --------------------------------------------------------------------------- #
+# Git analysis (hotspots + co-changes -> JSON files)
+# --------------------------------------------------------------------------- #
 
 
-def _ingest_git(graph: CodeGraph, repo: Path, quiet: bool) -> None:  # noqa: C901
-    """Ingest git hotspots and co-change data into the graph."""
+def _ingest_git(repo: Path, out: Path, quiet: bool) -> None:  # noqa: C901
+    """Compute git hotspots and co-change data, writing results to JSON files."""
     # Hotspots
     try:
         result = subprocess.run(
@@ -606,26 +284,32 @@ def _ingest_git(graph: CodeGraph, repo: Path, quiet: bool) -> None:  # noqa: C90
         for path, count in file_counter.most_common(30)
     ]
 
-    hotspots_result: dict[str, Any] = {
-        "status": "success",
+    hotspots_data: dict[str, Any] = {
         "hotspots": hotspots,
         "total_commits_analyzed": commit_count,
     }
-    nodes = ingest_git_hotspots(hotspots_result)
-    for node in nodes:
-        graph.add_node(node)
+
+    # Write hotspots to JSON
+    hotspots_path = out / "git_hotspots.json"
+    hotspots_path.write_text(json.dumps(hotspots_data, indent=2))
 
     if not quiet:
-        logger.info(f"Git hotspots: {len(hotspots)} files from {commit_count} commits")
+        logger.info(f"Git hotspots: {len(hotspots)} files from {commit_count} commits -> {hotspots_path}")
 
     # Co-changes for top hotspot files
     top_files = [str(h["path"]) for h in hotspots[:10]]
+    all_cochanges: dict[str, Any] = {}
     for file_path in top_files:
         cochange_result = _get_git_cochanges(repo, file_path)
         if cochange_result:
-            edges = ingest_git_cochanges(cochange_result)
-            for edge in edges:
-                graph.add_edge(edge)
+            all_cochanges[file_path] = cochange_result
+
+    if all_cochanges:
+        cochanges_path = out / "git_cochanges.json"
+        cochanges_path.write_text(json.dumps(all_cochanges, indent=2))
+
+        if not quiet:
+            logger.info(f"Git co-changes: {len(all_cochanges)} files analyzed -> {cochanges_path}")
 
 
 def _get_git_cochanges(repo: Path, file_path: str) -> dict[str, Any] | None:
@@ -676,110 +360,15 @@ def _get_git_cochanges(repo: Path, file_path: str) -> dict[str, Any] | None:
     ]
 
     return {
-        "status": "success",
         "file_path": file_path,
         "total_commits": total_commits,
         "cochanged_files": cochanged_files,
     }
 
 
-def _ingest_clones(graph: CodeGraph, repo: Path, quiet: bool) -> None:
-    """Ingest clone detection results into the graph."""
-    if shutil.which("npx") is None:
-        logger.warning("npx not found -- skipping clone detection")
-        return
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        try:
-            result = subprocess.run(
-                [
-                    "npx",
-                    "-y",
-                    "jscpd@4",
-                    "--reporters",
-                    "json",
-                    "--output",
-                    tmpdir,
-                    "--format",
-                    "python,typescript,javascript",
-                    "--gitignore",
-                    "--min-lines",
-                    "10",
-                    "--max-size",
-                    "50kb",
-                    "--silent",
-                    str(repo),
-                ],
-                cwd=str(repo),
-                capture_output=True,
-                text=True,
-                timeout=120,
-            )
-        except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError) as e:
-            logger.warning(f"Clone detection failed: {e}")
-            return
-
-        # jscpd writes jscpd-report.json to the output directory
-        report_path = Path(tmpdir) / "jscpd-report.json"
-        if not report_path.exists():
-            logger.debug(f"jscpd report not found (exit code {result.returncode})")
-            return
-
-        clones: list[dict[str, Any]] = []
-        try:
-            data = json.loads(report_path.read_text())
-            duplicates = data.get("duplicates", [])
-            for dup in duplicates:
-                first = dup.get("firstFile", {})
-                second = dup.get("secondFile", {})
-                clones.append(
-                    {
-                        "first_file": first.get("name", ""),
-                        "second_file": second.get("name", ""),
-                        "first_start": first.get("startLoc", {}).get("line", 0),
-                        "first_end": first.get("endLoc", {}).get("line", 0),
-                        "second_start": second.get("startLoc", {}).get("line", 0),
-                        "second_end": second.get("endLoc", {}).get("line", 0),
-                        "lines": dup.get("lines", 0),
-                        "tokens": dup.get("tokens", 0),
-                        "fragment": dup.get("fragment", "")[:200],
-                    },
-                )
-        except (json.JSONDecodeError, KeyError, TypeError):
-            logger.debug("Could not parse jscpd output")
-            return
-
-    if clones:
-        clone_result: dict[str, Any] = {"status": "success", "clones": clones}
-        edges = ingest_clone_results(clone_result)
-        for edge in edges:
-            graph.add_edge(edge)
-
-        if not quiet:
-            logger.info(f"Clone detection: {len(clones)} duplicate blocks found")
-
-
 # --------------------------------------------------------------------------- #
-# New deterministic steps (7-13)
+# Repomix
 # --------------------------------------------------------------------------- #
-
-_TEST_PATTERNS = {"test_", "_test.", ".test.", ".spec.", "__tests__"}
-
-
-def _ingest_tests(graph: CodeGraph, files: list[str], quiet: bool) -> None:
-    """Ingest test-to-production mapping using filename conventions."""
-    test_files = [f for f in files if any(p in f.lower() for p in _TEST_PATTERNS)]
-    prod_files = [f for f in files if f not in set(test_files)]
-
-    if not test_files:
-        return
-
-    edges = ingest_test_mapping(test_files, prod_files)
-    for edge in edges:
-        graph.add_edge(edge)
-
-    if not quiet:
-        logger.info(f"Test mapping: {len(edges)} test→production edges from {len(test_files)} test files")
 
 
 def _run_repomix_signatures(repo: Path, out: Path, quiet: bool) -> None:
@@ -846,6 +435,11 @@ def _run_repomix_orientation(repo: Path, out: Path, quiet: bool) -> None:
         logger.warning(f"Repomix orientation failed: {e}")
 
 
+# --------------------------------------------------------------------------- #
+# BM25
+# --------------------------------------------------------------------------- #
+
+
 def _prebuild_bm25(files: list[str], repo: Path, quiet: bool) -> None:
     """Pre-build BM25 search index so first search has zero latency."""
     try:
@@ -860,88 +454,13 @@ def _prebuild_bm25(files: list[str], repo: Path, quiet: bool) -> None:
         logger.debug(f"BM25 prebuild failed: {e}")
 
 
-def _run_semantic_enrichment(graph: CodeGraph, repo: Path, out: Path, files: list[str], quiet: bool) -> None:
-    """Step 11a: Run semantic embedding enrichment (optional).
-
-    Chunks source code at function/method level via tree-sitter, embeds via
-    Voyage Code 3 or Bedrock Cohere Embed 4, builds cosine similarity edges,
-    and runs community detection. Adds SIMILAR_TO edges to the graph.
-
-    This step is entirely optional -- if dependencies are missing, API keys
-    are not configured, or embedding_enabled is False, it is silently skipped.
-    """
-    settings = get_settings()
-    if not settings.embedding_enabled:
-        if not quiet:
-            logger.info("Semantic enrichment disabled (embedding_enabled=False)")
-        return
-
-    try:
-        from code_context_agent.tools.graph.embeddings import run_semantic_enrichment
-
-        edge_count = run_semantic_enrichment(graph, repo, out, files, settings)
-        if not quiet and edge_count:
-            logger.info(f"Semantic enrichment: {edge_count} SIMILAR_TO edges added")
-    except ImportError as e:
-        logger.warning(f"Semantic enrichment unavailable (missing dependency): {e}")
-    except Exception as e:  # noqa: BLE001
-        logger.warning(f"Semantic enrichment failed (non-fatal): {e}")
-
-
-def _write_index_metadata(
-    graph: CodeGraph,
-    graph_stats: dict[str, Any],
-    out: Path,
-    files: list[str],
-    lang_files: dict[str, list[str]],
-    frameworks: list[str],
-    quiet: bool,
-) -> None:
-    """Write index metadata JSON for coordinator consumption."""
-    from datetime import UTC, datetime
-
-    from code_context_agent.tools.graph.analysis import CodeAnalyzer
-
-    analyzer = CodeAnalyzer(graph)
-
-    try:
-        entry_points = analyzer.find_entry_points()[:10]
-    except Exception:  # noqa: BLE001
-        entry_points = []
-
-    try:
-        hotspots = analyzer.find_hotspots(10)
-    except Exception:  # noqa: BLE001
-        hotspots = []
-
-    from code_context_agent.models.index import IndexMetadata
-
-    metadata = IndexMetadata(
-        file_count=len(files),
-        languages={lang: len(fs) for lang, fs in lang_files.items()},
-        frameworks=frameworks,
-        graph_stats=graph_stats,
-        top_entry_points=entry_points,
-        top_hotspots=hotspots,
-        indexed_at=datetime.now(tz=UTC).isoformat(),
-        has_signatures=(out / "CONTEXT.signatures.md").exists(),
-        has_orientation=(out / "CONTEXT.orientation.md").exists(),
-    )
-
-    metadata_path = out / "index_metadata.json"
-    metadata_path.write_text(metadata.model_dump_json(indent=2))
-
-    if not quiet:
-        logger.info(f"Index metadata: {metadata_path}")
-
-
 # --------------------------------------------------------------------------- #
-# Steps 14-21: Extended static analysis
+# Static analysis steps
 # --------------------------------------------------------------------------- #
 
 
 def _run_semgrep_auto(repo: Path, out: Path, quiet: bool) -> None:
-    """Step 14: Run semgrep with auto config for general findings."""
+    """Run semgrep with auto config for general findings."""
     if shutil.which("semgrep") is None:
         logger.debug("semgrep not found -- skipping semgrep auto scan")
         return
@@ -963,7 +482,7 @@ def _run_semgrep_auto(repo: Path, out: Path, quiet: bool) -> None:
 
 
 def _run_semgrep_owasp(repo: Path, out: Path, quiet: bool) -> None:
-    """Step 15: Run semgrep with OWASP Top Ten config."""
+    """Run semgrep with OWASP Top Ten config."""
     if shutil.which("semgrep") is None:
         logger.debug("semgrep not found -- skipping semgrep OWASP scan")
         return
@@ -985,7 +504,7 @@ def _run_semgrep_owasp(repo: Path, out: Path, quiet: bool) -> None:
 
 
 def _run_typecheck(repo: Path, out: Path, lang_files: dict[str, list[str]], quiet: bool) -> None:
-    """Step 16: Run type checker (ty or pyright) for Python projects."""
+    """Run type checker (ty or pyright) for Python projects."""
     if "py" not in lang_files:
         return
 
@@ -1029,7 +548,7 @@ def _run_typecheck(repo: Path, out: Path, lang_files: dict[str, list[str]], quie
 
 
 def _run_lint(repo: Path, out: Path, quiet: bool) -> None:
-    """Step 17: Run ruff linter."""
+    """Run ruff linter."""
     if shutil.which("ruff") is None:
         logger.debug("ruff not found -- skipping lint")
         return
@@ -1057,7 +576,7 @@ def _run_lint(repo: Path, out: Path, quiet: bool) -> None:
 
 
 def _run_complexity(repo: Path, out: Path, lang_files: dict[str, list[str]], quiet: bool) -> None:
-    """Step 18: Run radon cyclomatic complexity analysis."""
+    """Run radon cyclomatic complexity analysis."""
     if "py" not in lang_files:
         return
 
@@ -1082,7 +601,7 @@ def _run_complexity(repo: Path, out: Path, lang_files: dict[str, list[str]], qui
 
 
 def _run_dead_code_py(repo: Path, out: Path, lang_files: dict[str, list[str]], quiet: bool) -> None:
-    """Step 19: Run vulture dead code detection for Python."""
+    """Run vulture dead code detection for Python."""
     if "py" not in lang_files:
         return
 
@@ -1115,7 +634,7 @@ def _run_dead_code_py(repo: Path, out: Path, lang_files: dict[str, list[str]], q
 
 
 def _run_dead_code_ts(repo: Path, out: Path, lang_files: dict[str, list[str]], quiet: bool) -> None:
-    """Step 20: Run knip dead code detection for TypeScript/JavaScript."""
+    """Run knip dead code detection for TypeScript/JavaScript."""
     if "ts" not in lang_files:
         return
 
@@ -1140,7 +659,7 @@ def _run_dead_code_ts(repo: Path, out: Path, lang_files: dict[str, list[str]], q
 
 
 def _run_deps(repo: Path, out: Path, lang_files: dict[str, list[str]], quiet: bool) -> None:
-    """Step 21: Generate dependency graph."""
+    """Generate dependency graph."""
     if "py" in lang_files and shutil.which("pipdeptree"):
         try:
             result = subprocess.run(
@@ -1205,7 +724,7 @@ def _extract_token_count(orientation_path: Path) -> int | None:
         if m:
             return int(m.group(1).replace(",", "").replace("_", ""))
     except (OSError, ValueError):
-        pass  # Orientation file missing or unparseable — fall through to None
+        pass  # Orientation file missing or unparseable -- fall through to None
     return None
 
 
@@ -1385,7 +904,7 @@ def _count_contributors(repo: Path) -> int:
         if result.returncode == 0 and result.stdout:
             return len([line for line in result.stdout.strip().splitlines() if line.strip()])
     except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError):
-        pass  # git shortlog unavailable or timed out — fall through to 0
+        pass  # git shortlog unavailable or timed out -- fall through to 0
     return 0
 
 
@@ -1402,7 +921,7 @@ def _get_total_commits(repo: Path) -> int:
         if result.returncode == 0 and result.stdout:
             return int(result.stdout.strip())
     except (subprocess.TimeoutExpired, subprocess.SubprocessError, OSError, ValueError):
-        pass  # git rev-list unavailable or timed out — fall through to 0
+        pass  # git rev-list unavailable or timed out -- fall through to 0
     return 0
 
 
@@ -1411,7 +930,7 @@ def _get_total_commits(repo: Path) -> int:
 # --------------------------------------------------------------------------- #
 
 
-def _build_health_section(out: Path, graph_stats: dict[str, Any]) -> dict[str, Any]:
+def _build_health_section(out: Path) -> dict[str, Any]:
     """Build the health section of the heuristic summary from index artifacts."""
     semgrep_data = _load_json_artifact(out / "semgrep_auto.json")
     semgrep_severities = _count_semgrep_by_severity(semgrep_data) if semgrep_data else {}
@@ -1434,96 +953,126 @@ def _build_health_section(out: Path, graph_stats: dict[str, Any]) -> dict[str, A
         "type_errors": type_error_count,
         "lint_violations": lint_count,
         "dead_code_symbols": _count_dead_code(out),
-        "clone_groups": graph_stats.get("edge_types", {}).get("similar_to", 0),
         "avg_cyclomatic_complexity": avg_cc,
     }
 
 
-def _build_topology_section(
-    graph: CodeGraph,
-    graph_stats: dict[str, Any],
-    repo: Path,
-    files: list[str],
-) -> dict[str, Any]:
-    """Build the topology section of the heuristic summary."""
-    import networkx as nx
-
-    from code_context_agent.tools.graph.analysis import CodeAnalyzer
-
-    view = graph.get_view()
-
-    try:
-        components = nx.number_weakly_connected_components(view)
-    except Exception:  # noqa: BLE001
-        components = 0
-
-    # Fan-in / fan-out
-    max_fi_node, max_fi_count = "", 0
-    max_fo_node, max_fo_count = "", 0
-    try:
-        if view.number_of_nodes() > 0:
-            in_degrees = dict(view.in_degree())
-            if in_degrees:
-                max_fi_node = max(in_degrees, key=lambda k: in_degrees[k])
-                max_fi_count = in_degrees[max_fi_node]
-            out_degrees = dict(view.out_degree())
-            if out_degrees:
-                max_fo_node = max(out_degrees, key=lambda k: out_degrees[k])
-                max_fo_count = out_degrees[max_fo_node]
-    except Exception:  # noqa: BLE001
-        logger.debug("Fan-in/fan-out computation failed")
-
-    # Entry points and hotspots
-    analyzer = CodeAnalyzer(graph)
-    try:
-        entry_points = analyzer.find_entry_points()[:10]
-    except Exception:  # noqa: BLE001
-        entry_points = []
-
-    try:
-        hotspots = analyzer.find_hotspots(10)
-    except Exception:  # noqa: BLE001
-        hotspots = []
-
-    return {
-        "graph_nodes": graph_stats.get("node_count", 0),
-        "graph_edges": graph_stats.get("edge_count", 0),
-        "connected_components": components,
-        "max_fan_in": {"node": max_fi_node, "count": max_fi_count},
-        "max_fan_out": {"node": max_fo_node, "count": max_fo_count},
-        "entry_points": [ep.get("id", "") for ep in entry_points],
-        "hotspots": [h.get("id", "") for h in hotspots],
-        "bus_factor_risks": _compute_bus_factor_risks(repo, files),
-    }
-
-
-def _build_git_section(graph: CodeGraph, repo: Path) -> dict[str, Any]:
+def _build_git_section(repo: Path, out: Path) -> dict[str, Any]:
     """Build the git section of the heuristic summary."""
-    from code_context_agent.tools.graph.model import EdgeType
-
+    # Extract most coupled pairs from co-changes JSON
     coupled_pairs: list[str] = []
-    try:
-        cochange_edges = graph.get_edges_by_type(EdgeType.COCHANGES)
-        sorted_edges = sorted(cochange_edges, key=lambda e: e[2].get("weight", 0), reverse=True)
-        coupled_pairs = [f"{e[0]} <-> {e[1]}" for e in sorted_edges[:10]]
-    except Exception:  # noqa: BLE001
-        logger.debug("Coupled pairs extraction failed")
+    cochanges_data = _load_json_artifact(out / "git_cochanges.json")
+    if isinstance(cochanges_data, dict):
+        # Each key is a file path, value has cochanged_files sorted by count
+        pair_scores: list[tuple[str, int]] = []
+        for source_file, info in cochanges_data.items():
+            if not isinstance(info, dict):
+                continue
+            for cochanged in info.get("cochanged_files", [])[:3]:
+                target = cochanged.get("path", "")
+                count = cochanged.get("count", 0)
+                pair_scores.append((f"{source_file} <-> {target}", count))
+        pair_scores.sort(key=lambda x: x[1], reverse=True)
+        coupled_pairs = [p[0] for p in pair_scores[:5]]
 
     return {
         "total_commits_analyzed": _get_total_commits(repo),
         "active_contributors": _count_contributors(repo),
-        "most_coupled_pairs": coupled_pairs[:5],
+        "most_coupled_pairs": coupled_pairs,
     }
 
 
+def _get_gitnexus_stats(repo: Path, repo_name: str) -> dict[str, Any]:  # noqa: C901
+    """Extract GitNexus structural metadata from the local index.
+
+    Reads .gitnexus/meta.json for stats (community count, process count,
+    symbol count, edge count). Optionally queries community names via
+    ``gitnexus cypher`` for top-community data.
+
+    Args:
+        repo: Repository root path.
+        repo_name: The repo identifier (used for --repo flag in cypher queries).
+
+    Returns:
+        Dict with community_count, process_count, symbol_count, edge_count,
+        and top_communities list. Defaults to 0/empty on any failure.
+    """
+    result: dict[str, Any] = {
+        "community_count": 0,
+        "process_count": 0,
+        "symbol_count": 0,
+        "edge_count": 0,
+        "top_communities": [],
+    }
+
+    # --- Read stats from .gitnexus/meta.json ---
+    meta_path = repo / ".gitnexus" / "meta.json"
+    if meta_path.exists():
+        try:
+            meta = json.loads(meta_path.read_text())
+            stats = meta.get("stats", {})
+            result["community_count"] = stats.get("communities", 0)
+            result["process_count"] = stats.get("processes", 0)
+            result["symbol_count"] = stats.get("nodes", 0)
+            result["edge_count"] = stats.get("edges", 0)
+        except (json.JSONDecodeError, OSError) as e:
+            logger.debug(f"Failed to read .gitnexus/meta.json: {e}")
+
+    # --- Query top communities via gitnexus cypher (graceful failure) ---
+    if shutil.which("gitnexus") is not None:
+        try:
+            cypher_result = subprocess.run(
+                [
+                    "gitnexus",
+                    "cypher",
+                    "--repo",
+                    repo_name,
+                    (
+                        "MATCH (c:Community) RETURN c.label, c.symbolCount, c.cohesion "
+                        "ORDER BY c.symbolCount DESC LIMIT 10"
+                    ),
+                ],
+                cwd=str(repo),
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if cypher_result.returncode == 0:
+                cypher_data = json.loads(cypher_result.stdout)
+                markdown = cypher_data.get("markdown", "")
+                # Parse markdown table: | label | symbolCount | cohesion |
+                communities: list[dict[str, Any]] = []
+                seen_names: set[str] = set()
+                for raw_line in markdown.split("\n"):
+                    line = raw_line.strip()
+                    if not line or line.startswith("| ---") or line.startswith("| c."):
+                        continue
+                    parts = [p.strip() for p in line.split("|") if p.strip()]
+                    if len(parts) >= 3:  # noqa: PLR2004
+                        name = parts[0]
+                        # Deduplicate community names (clusters can share labels)
+                        if name in seen_names:
+                            continue
+                        seen_names.add(name)
+                        try:
+                            symbols = int(parts[1])
+                            cohesion = round(float(parts[2]), 3)
+                        except (ValueError, IndexError):
+                            continue
+                        communities.append({"name": name, "symbols": symbols, "cohesion": cohesion})
+                result["top_communities"] = communities
+        except (subprocess.TimeoutExpired, subprocess.SubprocessError, json.JSONDecodeError, OSError) as e:
+            logger.debug(f"Failed to query GitNexus communities: {e}")
+
+    return result
+
+
 def _generate_heuristic_summary(
-    graph: CodeGraph,
-    graph_stats: dict[str, Any],
     files: list[str],
     lang_files: dict[str, list[str]],
-    frameworks: list[str],
     out: Path,
     repo: Path,
+    gitnexus_indexed: bool,
     quiet: bool,
 ) -> dict[str, Any]:
     """Aggregate all index outputs into heuristic_summary.json.
@@ -1534,9 +1083,11 @@ def _generate_heuristic_summary(
     total_lines = _count_total_lines(repo, files)
     estimated_tokens = _extract_token_count(out / "CONTEXT.orientation.md")
 
-    node_types = graph_stats.get("node_types", {})
     complexity_data = _load_json_artifact(out / "complexity.json")
     top_complex = _extract_top_complex_functions(complexity_data) if complexity_data else []
+
+    # Derive repo name from path
+    repo_name = repo.name
 
     summary: dict[str, Any] = {
         "volume": {
@@ -1544,17 +1095,31 @@ def _generate_heuristic_summary(
             "total_lines": total_lines,
             "estimated_tokens": estimated_tokens or int(total_lines * 2.5),
             "languages": {lang: len(fs) for lang, fs in lang_files.items()},
-            "frameworks": frameworks,
         },
-        "symbols": {
-            "functions": node_types.get("function", 0),
-            "classes": node_types.get("class", 0),
-            "modules": node_types.get("module", 0),
+        "health": _build_health_section(out),
+        "git": _build_git_section(repo, out),
+        "complexity": {
             "top_complex_functions": top_complex,
+            "bus_factor_risks": _compute_bus_factor_risks(repo, files),
         },
-        "health": _build_health_section(out, graph_stats),
-        "topology": _build_topology_section(graph, graph_stats, repo, files),
-        "git": _build_git_section(graph, repo),
+        "gitnexus": {
+            "indexed": gitnexus_indexed,
+            "repo_name": repo_name,
+            **(
+                _get_gitnexus_stats(repo, repo_name)
+                if gitnexus_indexed
+                else {
+                    "community_count": 0,
+                    "process_count": 0,
+                    "symbol_count": 0,
+                    "edge_count": 0,
+                    "top_communities": [],
+                }
+            ),
+        },
+        "mcp": {
+            "context7_available": shutil.which("npx") is not None,
+        },
     }
 
     summary_path = out / "heuristic_summary.json"

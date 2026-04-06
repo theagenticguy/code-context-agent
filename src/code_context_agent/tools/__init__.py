@@ -2,12 +2,10 @@
 
 This package provides all tools used by the code context agent:
 - Discovery: File manifests, repomix bundles, ripgrep search
-- LSP: Language server operations for semantic analysis
-- ast-grep: Structural code search with rule packs
+- Git: History analysis, hotspots, coupling, contributors
 - Shell: Bounded command execution
 """
 
-from .astgrep import astgrep_inline_rule, astgrep_scan, astgrep_scan_rule_pack
 from .discovery import (
     create_file_manifest,
     read_file_bounded,
@@ -29,28 +27,6 @@ from .git import (
     git_files_changed_together,
     git_hotspots,
     git_recent_commits,
-)
-from .graph import (
-    code_graph_analyze,
-    code_graph_create,
-    code_graph_explore,
-    code_graph_export,
-    code_graph_ingest_astgrep,
-    code_graph_ingest_inheritance,
-    code_graph_ingest_lsp,
-    code_graph_ingest_rg,
-    code_graph_ingest_tests,
-    code_graph_load,
-    code_graph_save,
-    code_graph_stats,
-)
-from .lsp import (
-    lsp_definition,
-    lsp_document_symbols,
-    lsp_hover,
-    lsp_references,
-    lsp_shutdown,
-    lsp_start,
 )
 from .shell import CommandResult, ToolResult, run_command
 from .validation import (
@@ -83,30 +59,6 @@ __all__ = [
     "git_blame_summary",
     "git_hotspots",
     "git_contributors",
-    # LSP tools
-    "lsp_start",
-    "lsp_shutdown",
-    "lsp_document_symbols",
-    "lsp_hover",
-    "lsp_references",
-    "lsp_definition",
-    # ast-grep tools
-    "astgrep_scan",
-    "astgrep_scan_rule_pack",
-    "astgrep_inline_rule",
-    # Graph tools
-    "code_graph_create",
-    "code_graph_ingest_lsp",
-    "code_graph_ingest_astgrep",
-    "code_graph_ingest_rg",
-    "code_graph_ingest_inheritance",
-    "code_graph_ingest_tests",
-    "code_graph_analyze",
-    "code_graph_explore",
-    "code_graph_export",
-    "code_graph_save",
-    "code_graph_load",
-    "code_graph_stats",
     # Shell utilities
     "CommandResult",
     "ToolResult",

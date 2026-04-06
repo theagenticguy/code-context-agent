@@ -44,20 +44,6 @@ TOOL_PHASE_MAP: dict[str, AnalysisPhase] = {
     "rg_search": AnalysisPhase.TEAM_EXECUTION,
     "bm25_search": AnalysisPhase.TEAM_EXECUTION,
     "shell": AnalysisPhase.TEAM_EXECUTION,
-    "detect_clones": AnalysisPhase.TEAM_EXECUTION,
-    # -- LSP tools (used by team agents) --
-    "lsp_start": AnalysisPhase.TEAM_EXECUTION,
-    "lsp_document_symbols": AnalysisPhase.TEAM_EXECUTION,
-    "lsp_references": AnalysisPhase.TEAM_EXECUTION,
-    "lsp_definition": AnalysisPhase.TEAM_EXECUTION,
-    "lsp_hover": AnalysisPhase.TEAM_EXECUTION,
-    "lsp_workspace_symbols": AnalysisPhase.TEAM_EXECUTION,
-    "lsp_diagnostics": AnalysisPhase.TEAM_EXECUTION,
-    "lsp_shutdown": AnalysisPhase.TEAM_EXECUTION,
-    # -- AST-grep tools (used by team agents) --
-    "astgrep_scan": AnalysisPhase.TEAM_EXECUTION,
-    "astgrep_scan_rule_pack": AnalysisPhase.TEAM_EXECUTION,
-    "astgrep_inline_rule": AnalysisPhase.TEAM_EXECUTION,
     # -- Git tools (used by team agents) --
     "git_hotspots": AnalysisPhase.TEAM_EXECUTION,
     "git_files_changed_together": AnalysisPhase.TEAM_EXECUTION,
@@ -66,21 +52,6 @@ TOOL_PHASE_MAP: dict[str, AnalysisPhase] = {
     "git_contributors": AnalysisPhase.TEAM_EXECUTION,
     "git_recent_commits": AnalysisPhase.TEAM_EXECUTION,
     "git_diff_file": AnalysisPhase.TEAM_EXECUTION,
-    # -- Graph tools (used by team agents) --
-    "code_graph_create": AnalysisPhase.TEAM_EXECUTION,
-    "code_graph_ingest_lsp": AnalysisPhase.TEAM_EXECUTION,
-    "code_graph_ingest_astgrep": AnalysisPhase.TEAM_EXECUTION,
-    "code_graph_ingest_rg": AnalysisPhase.TEAM_EXECUTION,
-    "code_graph_ingest_inheritance": AnalysisPhase.TEAM_EXECUTION,
-    "code_graph_ingest_tests": AnalysisPhase.TEAM_EXECUTION,
-    "code_graph_ingest_git": AnalysisPhase.TEAM_EXECUTION,
-    "code_graph_ingest_clones": AnalysisPhase.TEAM_EXECUTION,
-    "code_graph_analyze": AnalysisPhase.TEAM_EXECUTION,
-    "code_graph_explore": AnalysisPhase.TEAM_EXECUTION,
-    "code_graph_export": AnalysisPhase.TEAM_EXECUTION,
-    "code_graph_save": AnalysisPhase.TEAM_EXECUTION,
-    "code_graph_load": AnalysisPhase.TEAM_EXECUTION,
-    "code_graph_stats": AnalysisPhase.TEAM_EXECUTION,
     # Phase 4: Consolidation (coordinator reads team findings)
     "read_team_findings": AnalysisPhase.CONSOLIDATION,
     # Phase 5: Bundle Generation (coordinator writes bundles)
@@ -108,11 +79,7 @@ class DiscoveryEventKind(StrEnum):
     """Kinds of discovery events for the TUI feed."""
 
     FILES_DISCOVERED = "files_discovered"
-    SYMBOLS_FOUND = "symbols_found"
     HOTSPOTS_IDENTIFIED = "hotspots_identified"
-    MODULES_DETECTED = "modules_detected"
-    PATTERNS_MATCHED = "patterns_matched"
-    GRAPH_BUILT = "graph_built"
 
 
 class DiscoveryEvent(FrozenModel):
@@ -149,4 +116,10 @@ class PhaseState(StrictModel):
 
 def resolve_phase(tool_name: str) -> AnalysisPhase | None:
     """Resolve a tool name to its analysis phase, or None if unknown."""
-    return TOOL_PHASE_MAP.get(tool_name)
+    phase = TOOL_PHASE_MAP.get(tool_name)
+    if phase is not None:
+        return phase
+    # MCP tools (gitnexus_*, context7_*) are used during team execution
+    if tool_name.startswith(("gitnexus_", "context7_")):
+        return AnalysisPhase.TEAM_EXECUTION
+    return None

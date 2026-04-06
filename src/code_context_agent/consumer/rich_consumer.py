@@ -72,7 +72,7 @@ class RichEventConsumer(EventConsumer):
         if phase is not None:
             self.state.advance_phase(phase)
 
-    def _extract_discovery(self, tool_name: str, result: Any) -> Any:  # noqa: PLR0911
+    def _extract_discovery(self, tool_name: str, result: Any) -> Any:
         """Extract a discovery event from a tool result, or None."""
         import json as _json
         import time as _time
@@ -101,47 +101,11 @@ class RichEventConsumer(EventConsumer):
                 timestamp=now,
             )
 
-        # LSP symbols
-        if tool_name in ("lsp_document_symbols", "lsp_workspace_symbols") and "count" in data:
-            return DiscoveryEvent(
-                kind=DiscoveryEventKind.SYMBOLS_FOUND,
-                summary=f"Found {data['count']} symbols",
-                tool_name=tool_name,
-                timestamp=now,
-            )
-
         # Git hotspots
         if tool_name == "git_hotspots" and "count" in data:
             return DiscoveryEvent(
                 kind=DiscoveryEventKind.HOTSPOTS_IDENTIFIED,
                 summary=f"Identified {data['count']} hotspots",
-                tool_name=tool_name,
-                timestamp=now,
-            )
-
-        # AST-grep matches
-        if tool_name in ("astgrep_scan", "astgrep_scan_rule_pack") and "match_count" in data:
-            return DiscoveryEvent(
-                kind=DiscoveryEventKind.PATTERNS_MATCHED,
-                summary=f"Matched {data['match_count']} patterns",
-                tool_name=tool_name,
-                timestamp=now,
-            )
-
-        # Graph modules
-        if tool_name == "code_graph_analyze" and "module_count" in data:
-            return DiscoveryEvent(
-                kind=DiscoveryEventKind.MODULES_DETECTED,
-                summary=f"Detected {data['module_count']} modules",
-                tool_name=tool_name,
-                timestamp=now,
-            )
-
-        # Graph creation
-        if tool_name == "code_graph_create":
-            return DiscoveryEvent(
-                kind=DiscoveryEventKind.GRAPH_BUILT,
-                summary="Code graph initialized",
                 tool_name=tool_name,
                 timestamp=now,
             )

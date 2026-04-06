@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
-from code_context_agent.indexer import _detect_languages, _get_file_manifest, build_index
-from code_context_agent.tools.graph.model import CodeGraph
+from code_context_agent.indexer import _detect_languages, _get_file_manifest, _get_gitnexus_stats, build_index
 
 
 @pytest.fixture
@@ -30,16 +30,6 @@ def _mock_subprocess_rg(monkeypatch):
             result.stdout = ""
             result.stderr = "not a git repo"
             return result
-        if cmd[0] == "ast-grep":
-            result = MagicMock()
-            result.returncode = 0
-            result.stdout = ""
-            return result
-        if cmd[0] == "npx":
-            result = MagicMock()
-            result.returncode = 0
-            result.stdout = "{}"
-            return result
         return original_run(cmd, **kwargs)
 
     monkeypatch.setattr(subprocess, "run", fake_run)
@@ -51,8 +41,8 @@ def _mock_no_external_tools(monkeypatch):
     monkeypatch.setattr("shutil.which", lambda _cmd: None)
 
 
-async def test_build_index_creates_graph_file(tmp_path, monkeypatch):
-    """build_index should create code_graph.json in the output directory."""
+async def test_build_index_creates_heuristic_summary(tmp_path, monkeypatch):
+    """build_index should create heuristic_summary.json in the output directory."""
     import subprocess
 
     repo = tmp_path / "repo"
@@ -70,9 +60,6 @@ async def test_build_index_creates_graph_file(tmp_path, monkeypatch):
             result.returncode = 1
             result.stdout = ""
             result.stderr = "not a git repo"
-        elif cmd[0] == "ast-grep":
-            result.returncode = 0
-            result.stdout = ""
         else:
             result.returncode = 0
             result.stdout = "{}"
@@ -81,23 +68,17 @@ async def test_build_index_creates_graph_file(tmp_path, monkeypatch):
     monkeypatch.setattr(subprocess, "run", fake_run)
     monkeypatch.setattr("shutil.which", lambda cmd: "/usr/bin/rg" if cmd == "rg" else None)
 
-    # Mock LSP session manager - patch the singleton so it raises on get_or_create
-    mock_mgr = MagicMock()
-    mock_mgr.get_or_create = AsyncMock(side_effect=RuntimeError("no LSP"))
-    mock_mgr.shutdown_all = AsyncMock()
+    await build_index(repo, output_dir=out, quiet=True)
 
-    with patch("code_context_agent.indexer._ingest_lsp_symbols", new=AsyncMock()):
-        await build_index(repo, output_dir=out, quiet=True)
-
-    assert (out / "code_graph.json").exists()
-    import json
-
-    data = json.loads((out / "code_graph.json").read_text())
-    assert "nodes" in data or "links" in data or "edges" in data
+    assert (out / "heuristic_summary.json").exists()
+    data = json.loads((out / "heuristic_summary.json").read_text())
+    assert "volume" in data
+    assert "health" in data
+    assert "gitnexus" in data
 
 
-async def test_build_index_returns_graph(tmp_path, monkeypatch):
-    """build_index should return a CodeGraph instance."""
+async def test_build_index_returns_none(tmp_path, monkeypatch):
+    """build_index should return None (no longer returns a CodeGraph)."""
     import subprocess
 
     repo = tmp_path / "repo"
@@ -114,58 +95,137 @@ async def test_build_index_returns_graph(tmp_path, monkeypatch):
     monkeypatch.setattr(subprocess, "run", fake_run)
     monkeypatch.setattr("shutil.which", lambda cmd: "/usr/bin/rg" if cmd == "rg" else None)
 
-    with patch("code_context_agent.indexer._ingest_lsp_symbols", new=AsyncMock()):
-        graph = await build_index(repo, quiet=True)
+    result = await build_index(repo, quiet=True)
 
-    assert isinstance(graph, CodeGraph)
+    assert result is None
 
 
-async def test_build_index_no_lsp_graceful(tmp_path, monkeypatch):
-    """When LSP fails, build_index should still produce a graph from git/astgrep data."""
+async def test_build_index_writes_file_manifest(tmp_path, monkeypatch):
+    """build_index should write files.all.txt to the output directory."""
     import subprocess
 
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "server.ts").write_text("export function serve() {}\n")
 
-    hotspot_call_count = 0
-
     def fake_run(cmd, **kwargs):
-        nonlocal hotspot_call_count
         result = MagicMock()
         if cmd[0] == "rg":
             result.returncode = 0
             result.stdout = "server.ts\n"
         elif cmd[0] == "git" and "--name-only" in cmd:
-            # Simulate git hotspot output
             result.returncode = 0
             result.stdout = "server.ts\n\nserver.ts\n"
-            hotspot_call_count += 1
         elif cmd[0] == "git":
             result.returncode = 1
             result.stdout = ""
             result.stderr = ""
-        elif cmd[0] == "ast-grep":
-            result.returncode = 0
-            result.stdout = ""
         else:
             result.returncode = 0
             result.stdout = "{}"
         return result
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    monkeypatch.setattr("shutil.which", lambda cmd: f"/usr/bin/{cmd}" if cmd in ("rg", "ast-grep") else None)
+    monkeypatch.setattr("shutil.which", lambda cmd: f"/usr/bin/{cmd}" if cmd == "rg" else None)
 
-    # Mock _ingest_lsp_symbols to simulate LSP failure but still continue
-    async def mock_lsp_noop(graph, repo, lang_files, quiet):
-        pass  # LSP is unavailable, do nothing
+    out = tmp_path / "output"
+    await build_index(repo, output_dir=out, quiet=True)
 
-    with patch("code_context_agent.indexer._ingest_lsp_symbols", new=mock_lsp_noop):
-        graph = await build_index(repo, quiet=True)
+    assert (out / "files.all.txt").exists()
+    content = (out / "files.all.txt").read_text()
+    assert "server.ts" in content
 
-    assert isinstance(graph, CodeGraph)
-    # Graph should still have nodes from git hotspot analysis
-    assert graph.node_count > 0 or hotspot_call_count > 0
+
+async def test_build_index_gitnexus_section(tmp_path, monkeypatch):
+    """build_index should include gitnexus section in heuristic summary."""
+    import subprocess
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "app.py").write_text("x = 1\n")
+
+    def fake_run(cmd, **kwargs):
+        result = MagicMock()
+        result.returncode = 0 if cmd[0] == "rg" else 1
+        result.stdout = "app.py\n" if cmd[0] == "rg" else ""
+        result.stderr = ""
+        return result
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    # No gitnexus available
+    monkeypatch.setattr("shutil.which", lambda cmd: "/usr/bin/rg" if cmd == "rg" else None)
+
+    out = tmp_path / "output"
+    await build_index(repo, output_dir=out, quiet=True)
+
+    data = json.loads((out / "heuristic_summary.json").read_text())
+    assert data["gitnexus"]["indexed"] is False
+    assert data["gitnexus"]["repo_name"] == "repo"
+    # New structural fields should be present with defaults when not indexed
+    assert data["gitnexus"]["community_count"] == 0
+    assert data["gitnexus"]["process_count"] == 0
+    assert data["gitnexus"]["symbol_count"] == 0
+    assert data["gitnexus"]["edge_count"] == 0
+    assert data["gitnexus"]["top_communities"] == []
+
+
+def test_get_gitnexus_stats_reads_meta_json(tmp_path):
+    """_get_gitnexus_stats should read stats from .gitnexus/meta.json."""
+    repo = tmp_path / "myrepo"
+    repo.mkdir()
+    gitnexus_dir = repo / ".gitnexus"
+    gitnexus_dir.mkdir()
+    meta = {
+        "repoPath": str(repo),
+        "lastCommit": "abc123",
+        "indexedAt": "2026-01-01T00:00:00Z",
+        "stats": {
+            "files": 50,
+            "nodes": 300,
+            "edges": 900,
+            "communities": 12,
+            "processes": 45,
+            "embeddings": 0,
+        },
+    }
+    (gitnexus_dir / "meta.json").write_text(json.dumps(meta))
+
+    result = _get_gitnexus_stats(repo, "myrepo")
+
+    assert result["community_count"] == 12
+    assert result["process_count"] == 45
+    assert result["symbol_count"] == 300
+    assert result["edge_count"] == 900
+    # top_communities requires gitnexus CLI, so defaults to empty
+    assert isinstance(result["top_communities"], list)
+
+
+def test_get_gitnexus_stats_graceful_without_meta(tmp_path):
+    """_get_gitnexus_stats should return defaults when .gitnexus/meta.json is missing."""
+    repo = tmp_path / "norepo"
+    repo.mkdir()
+
+    result = _get_gitnexus_stats(repo, "norepo")
+
+    assert result["community_count"] == 0
+    assert result["process_count"] == 0
+    assert result["symbol_count"] == 0
+    assert result["edge_count"] == 0
+    assert result["top_communities"] == []
+
+
+def test_get_gitnexus_stats_handles_corrupt_meta(tmp_path):
+    """_get_gitnexus_stats should return defaults when meta.json is corrupt."""
+    repo = tmp_path / "badrepo"
+    repo.mkdir()
+    gitnexus_dir = repo / ".gitnexus"
+    gitnexus_dir.mkdir()
+    (gitnexus_dir / "meta.json").write_text("not valid json{{{")
+
+    result = _get_gitnexus_stats(repo, "badrepo")
+
+    assert result["community_count"] == 0
+    assert result["process_count"] == 0
 
 
 def test_file_manifest_uses_ripgrep(monkeypatch):

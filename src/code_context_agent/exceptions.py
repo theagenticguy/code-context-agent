@@ -20,16 +20,8 @@ class JSONParseError(CodeContextAgentError):
     """Failed to parse JSON output."""
 
 
-class LSPError(CodeContextAgentError):
-    """LSP operation failed."""
-
-
 class ValidationError(CodeContextAgentError):
     """Input validation failed."""
-
-
-class GraphError(CodeContextAgentError):
-    """Code graph operation failed."""
 
 
 class ToolExecutionError(CodeContextAgentError):

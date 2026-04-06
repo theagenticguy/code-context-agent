@@ -83,24 +83,6 @@ result = git_hotspots(repo_path, limit=30)
 # High-churn files deserve extra scrutiny
 ```
 
-### Graph Integration
-
-Git data integrates with the code graph via adapters:
-
-```python
-# Add co-change relationships to graph
-cochanges = git_files_changed_together(repo_path, "src/auth.py")
-from code_context_agent.tools.graph.adapters import ingest_git_cochanges
-edges = ingest_git_cochanges(json.loads(cochanges), min_percentage=20.0)
-# Creates COCHANGES edges with coupling weights
-
-# Add hotspot metadata to graph
-hotspots = git_hotspots(repo_path)
-from code_context_agent.tools.graph.adapters import ingest_git_hotspots
-nodes = ingest_git_hotspots(json.loads(hotspots))
-# Creates FILE nodes with churn metadata
-```
-
 ### When to Use Git Tools
 
 | Need | Tool | Notes |

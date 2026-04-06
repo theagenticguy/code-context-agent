@@ -101,12 +101,14 @@ def dispatch_team(
 
     TEAM SIZING HEURISTICS (based on heuristic_summary.json):
 
-      Volume         | Strategy
-      ---------------|------------------------------------------
-      <200 files     | 1 team total, 2 agents (analyst + reader)
-      200-2000       | 2-3 parallel teams by concern
-      2000+          | 3-5 teams scoped by domain/directory
-      --focus set    | 1 dedicated focus team + preemptive teams
+      Volume + Structure           | Strategy
+      -----------------------------|------------------------------------------
+      <200 files, <5 communities   | 1 team total, 2 agents (analyst + reader)
+      200-2000, 5-15 communities   | 1 team per major community (2-4 teams)
+      2000+, 15+ communities       | Top 5 communities get dedicated teams
+      gitnexus.process_count > 50  | Add cross-cutting team for shared processes
+      --focus set                  | 1 dedicated focus team scoped to focus community
+      health.semgrep critical > 0  | MANDATORY security team regardless of size
 
     AGENT SPEC FORMAT:
 
@@ -116,14 +118,25 @@ def dispatch_team(
         - tools (list[str]): tool names this agent can use, inherited from
           the coordinator's tool registry. Common subsets:
 
-          Structure: code_graph_stats, code_graph_analyze, code_graph_explore,
-                     lsp_start, lsp_document_symbols, lsp_references,
-                     astgrep_scan, rg_search, bm25_search, read_file_bounded
+          Structure: gitnexus_query, gitnexus_context, gitnexus_impact,
+                     gitnexus_cypher, rg_search, bm25_search, read_file_bounded
           Git:       git_hotspots, git_files_changed_together, git_blame_summary,
                      git_file_history, git_contributors, git_recent_commits,
                      read_file_bounded
-          Reading:   read_file_bounded, rg_search, bm25_search, lsp_references,
-                     lsp_definition, lsp_hover, code_graph_analyze
+          Reading:   read_file_bounded, rg_search, bm25_search, gitnexus_context,
+                     gitnexus_query
+
+    MULTI-WAVE PATTERN:
+
+      Wave 1 (Scout): 2-agent teams with light tools (gitnexus_query, git_hotspots, rg_search).
+        Mandate: "Survey area X. Flag complexity, cross-cutting concerns, key symbols."
+        Timeout: 2-3 min per team. Use execution_timeout=180.
+
+      Wave 2 (Deep): 2-3 agent teams with full tools (gitnexus_context, gitnexus_impact, read_file_bounded).
+        Mandate: "Deep investigation of area X based on scout findings: [paste key findings]."
+        Timeout: 5-8 min per team. Use execution_timeout=480. Only dispatch for flagged areas.
+
+      Small repos (<200 files): collapse into a single wave with all tools.
 
     FINDING PERSISTENCE:
 
@@ -224,7 +237,7 @@ When your analysis is complete, the LAST agent in the chain MUST:
 
 Use the write_file tool for both files. The coordinator will read these after your team completes.
 
-The pre-built code graph is loaded as "main". Use code_graph_analyze("main", ...) to query it.
+Use gitnexus_query/gitnexus_context/gitnexus_impact for structural code intelligence.
 Output directory: {output_dir}
 Repository: {_repo_path}""",
     )
@@ -380,7 +393,7 @@ def write_bundle(area: str, content: str, is_context: bool = False) -> str:
     BUNDLE STRUCTURE (7 sections):
       1. One-paragraph summary — what this area does in business terms
       2. Key files — ranked list with role descriptions and file:line ranges
-      3. Call flow — how data/control flows through this area (use mermaid)
+      3. Call flow — how data/control flows through this area (use mermaid, informed by gitnexus_context/gitnexus_query)
       4. Blast radius — what breaks if you change this area
       5. Risk assessment — security, complexity, coupling, test coverage
       6. Change guidance — where to start, what to watch out for
@@ -446,10 +459,6 @@ def read_heuristic_summary() -> str:
       volume:
         total_files, total_lines, estimated_tokens, languages (dict), frameworks (list)
 
-      symbols:
-        functions, classes, modules, top_complex_functions
-        (list of {name, file, lines, complexity})
-
       health:
         semgrep_findings: {critical, high, medium, low, info}
         owasp_findings: {category: count}
@@ -459,27 +468,32 @@ def read_heuristic_summary() -> str:
         clone_groups: int
         avg_cyclomatic_complexity: float
 
-      topology:
-        graph_nodes, graph_edges, connected_components
-        max_fan_in: {node, count}  — most depended-upon symbol
-        max_fan_out: {node, count} — symbol with most outgoing deps
-        entry_points: list         — likely entry points with scores
-        hotspots: list             — high-churn structurally central files
-        bus_factor_risks: list     — directories with single contributor
+      gitnexus:
+        indexed: bool              — whether GitNexus has indexed this repo
+        repo_name: str             — the repo identifier in the GitNexus graph
+        community_count: int       — number of functional communities detected
+        process_count: int         — number of execution flows traced
+        symbol_count: int          — total symbols in the knowledge graph
+        edge_count: int            — total relationships
+        top_communities: list      — [{name, symbols, cohesion}, ...]
 
       git:
         total_commits_analyzed, active_contributors
         most_coupled_pairs: list of {a, b, coupling}
+
+      mcp:
+        context7_available: bool   — whether context7 library docs tool is available
 
     INTERPRETATION GUIDE:
 
       Signal                               | Action
       -------------------------------------|---------------------------------------
       health.semgrep_findings.critical > 0 | MANDATORY security team
-      topology.max_fan_in.count > 50       | High blast radius — dedicated team
-      topology.bus_factor_risks non-empty  | Ownership analysis in git team mandate
+      gitnexus.indexed is True             | Use gitnexus_impact for blast radius
       health.avg_cyclomatic_complexity > 10| Complexity team for deep code reading
       volume.total_files > 2000            | Domain-scoped teams, not one mega-team
+      gitnexus.community_count > 15        | Top 5 communities get dedicated teams
+      gitnexus.process_count > 50          | Add cross-cutting team for shared processes
       git.most_coupled_pairs coupling > 0.7| Implicit coupling — needs investigation
 
     Returns:

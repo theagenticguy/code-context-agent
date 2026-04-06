@@ -195,23 +195,6 @@ def create_coordinator_agent(
         except (OSError, ValueError) as e:
             logger.warning(f"Failed to load index metadata: {e}")
 
-    # Pre-load graph into shared state
-    graph_path = output_dir / "code_graph.json"
-    if graph_path.exists():
-        try:
-            from ..tools.graph.model import CodeGraph
-            from ..tools.graph.tools import _graphs
-
-            data = graph_path.read_text()
-            graph_data = _json.loads(data)
-            code_graph = CodeGraph.from_node_link_data(graph_data)
-            _graphs["main"] = code_graph
-            logger.info(
-                f"Preloaded graph: {code_graph.node_count} nodes, {code_graph.edge_count} edges",
-            )
-        except (OSError, ValueError, TypeError, KeyError) as e:
-            logger.warning(f"Failed to preload graph: {e}")
-
     # Render lean system prompt
     system_prompt = _render_coordinator_prompt(
         repo_path=repo_path,

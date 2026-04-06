@@ -4,7 +4,6 @@ gitleaks = "latest"
 grype = "latest"
 node = "22"
 osv-scanner = "latest"
-pnpm = "latest"
 python = "3.13"
 semgrep = "latest"
 syft = "latest"
@@ -53,58 +52,19 @@ run = "uv run pytest -v"
 description = "Run Python tests with coverage"
 run = "uv run pytest --cov=src/code_context_agent --cov-report=term-missing:skip-covered --cov-report=xml:coverage.xml --cov-branch"
 
-# --- UI tasks (React + Vite + Biome) ---
-
-[tasks."ui:install"]
-description = "Install frontend dependencies"
-run = "pnpm install"
-dir = "ui"
-
-[tasks."ui:dev"]
-description = "Start Vite dev server"
-run = "pnpm dev"
-dir = "ui"
-
-[tasks."ui:build"]
-description = "Build frontend (tsc + vite build)"
-run = "pnpm build"
-dir = "ui"
-depends = ["ui:install"]
-
-[tasks."ui:lint"]
-description = "Lint frontend with Biome"
-run = "pnpm lint"
-dir = "ui"
-
-[tasks."ui:lint:fix"]
-description = "Lint frontend and auto-fix"
-run = "pnpm lint:fix"
-dir = "ui"
-
-[tasks."ui:format"]
-description = "Format frontend with Biome"
-run = "pnpm format"
-dir = "ui"
-
-[tasks."ui:typecheck"]
-description = "Type check frontend with tsc"
-run = "pnpm typecheck"
-dir = "ui"
-
 # --- Shared meta-tasks ---
 
 [tasks."install:all"]
-description = "Install all dependencies (Python + frontend)"
-depends = ["install", "ui:install"]
+description = "Install all dependencies"
+depends = ["install"]
 
 [tasks.build]
-description = "Build frontend and Python package"
+description = "Build Python package"
 run = "uv build"
-depends = ["ui:build"]
 
 [tasks.check]
-description = "Run all checks (Python + frontend)"
-depends = ["lint", "format:check", "typecheck", "test", "ui:lint", "ui:typecheck"]
+description = "Run all checks"
+depends = ["lint", "format:check", "typecheck", "test"]
 
 # --- Security ---
 
@@ -126,7 +86,7 @@ file = "scripts/security-bandit.sh"
 
 [tasks."security:deps"]
 description = "Audit dependencies for known vulnerabilities"
-run = "osv-scanner scan --lockfile uv.lock --lockfile ui/pnpm-lock.yaml"
+run = "osv-scanner scan --lockfile uv.lock"
 
 [tasks."security:licenses"]
 description = "Check 3P dependency licenses against allowlist"

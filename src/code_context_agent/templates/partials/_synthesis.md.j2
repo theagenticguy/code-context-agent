@@ -13,12 +13,15 @@ Before moving to pattern discovery, synthesize:
 - What architectural style is evident from the symbols and dependency chains?
 - What hypotheses do you have about where the most important logic lives?
 
-**Checkpoint 2: After Graph + Git Analysis**
-Before reading code, synthesize the structural signals:
-- Which files appear in MULTIPLE rankings? (high churn AND high centrality AND domain vocabulary — these are the most important files)
-- What does the module clustering reveal about the team's mental model of the system?
-- Where do git coupling patterns DISAGREE with static dependency edges? (implicit dependencies the graph misses)
-- What architectural risks are already visible from structure alone? (god files, circular dependencies, orphan modules)
+**Checkpoint 2: Structure vs. Judgment Gap**
+GitNexus has given you relationships and processes. Before reading code, identify:
+- Where does structural importance (high incoming refs) DISAGREE with git churn?
+  (Important but stable = well-designed. Important and churning = fragile.)
+- Which GitNexus processes cross community boundaries? (Cross-cutting concerns that no single team owns)
+- Which areas have high structural complexity but no test coverage? (Hidden risk)
+- What can you NOT determine from structure alone? (Business rules, invariants, domain intent)
+
+These are where YOUR judgment adds the most value. Prioritize deep reading there.
 
 **Checkpoint 3: After Deep Read**
 Before ranking business logic, synthesize code-level insights with structural data:
@@ -26,24 +29,33 @@ Before ranking business logic, synthesize code-level insights with structural da
 - What domain invariants did you discover that are NOT enforced by types or validation? (implicit contracts)
 - What error handling patterns are consistent vs. inconsistent across modules?
 - What state management patterns exist? (global state, request-scoped, database-backed, event-sourced)
-- Which files have the widest gap between "what the graph says they do" and "what they actually do"?
+- Which files have the widest gap between "what GitNexus says they do" and "what they actually do"?
+
+**Checkpoint 4: Confidence & Disagreement Audit**
+Before writing bundles, review your team findings for:
+- Areas where teams disagreed — these need explicit `agreement_level: "split"` annotations
+- Claims made without supporting evidence — mark as `information_gap`
+- Judgments that would change with one additional data point — add `counterfactual`
+- Risk levels assigned with < 3 supporting signals — flag as low confidence
+
+This metadata flows into the risk_profile and is consumed by the verdict engine for CI/CD decisions. Uncalibrated confidence leads to bad automated merge/block decisions.
 
 ### Reasoning Over Code + Metrics
 
 When reading a file, you have structural context from prior analysis. USE IT:
 
-1. **Before reading**: Check what the graph says about this file (centrality, module, fan-in/fan-out, coupling partners). Form a hypothesis about what the file does and why it matters.
+1. **Before reading**: Check what GitNexus says about this file (incoming/outgoing relationships, process participation, coupling partners). Form a hypothesis about what the file does and why it matters.
 2. **While reading**: Validate or refute your hypothesis. Note surprises — code that does more or less than its structural position suggests.
 3. **After reading**: Update your mental model. Does this file change your understanding of the architecture? Does it reveal risks not visible from structure alone?
 
 Cross-reference each file against:
-- **Graph metrics**: Does high betweenness match actual coordination logic? Does high PageRank match actual reuse?
+- **GitNexus data**: Do high incoming relationships match actual coordination logic? Does wide process participation match actual reuse?
 - **Git history**: Does high churn match actual complexity, or is it config/boilerplate thrash?
-- **AST patterns**: Do detected patterns (error handling, validation, state mutation) match what you see in the code?
+- **Domain term matches**: Do GitNexus query results for domain concepts match what you see in the code?
 - **Coupling data**: Do files that change together actually have logical dependencies, or is it coincidental proximity?
 
 ### One Tool, Then Think
 
-For analysis phases, prefer calling ONE analytical tool at a time and reasoning about the result before calling the next. Parallel tool calls are efficient for data collection (e.g., multiple `lsp_document_symbols`), but analysis requires sequential reasoning where each result informs what you investigate next.
+For analysis phases, prefer calling ONE analytical tool at a time and reasoning about the result before calling the next. Parallel tool calls are efficient for data collection (e.g., multiple `gitnexus_query` calls), but analysis requires sequential reasoning where each result informs what you investigate next.
 
 Exception: Independent data-gathering calls (e.g., `git_blame_summary` on different files) can still be parallelized.

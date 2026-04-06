@@ -12,7 +12,7 @@ class TestPreflightCheck:
         result = _preflight_check()
         assert isinstance(result, dict)
         assert "ripgrep" in result
-        assert "ast-grep" in result
+        assert "gitnexus" in result
         assert "repomix" in result
 
     def test_each_entry_has_available_flag(self):

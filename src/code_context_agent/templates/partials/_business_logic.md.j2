@@ -11,10 +11,18 @@
 - Logging/metrics boilerplate, config parsing, utilities
 
 **Ranking signals** (prioritize by):
-1. High fan-in (many LSP references)
+1. High incoming relationship count (from gitnexus_context)
 2. Write paths > read paths
 3. Branching density (if/switch/guards)
 4. Domain vocabulary in names
-5. Implementation complexity (state management depth, error path coverage — from reading the code)
-6. Implicit contracts (invariants other code depends on — from reading callers/callees)
-7. Domain density (ratio of domain logic to plumbing in the file)
+5. Process participation — symbols appearing in multiple execution flows
+6. Implementation complexity (state management depth, error path coverage — from reading the code)
+7. Implicit contracts (invariants other code depends on — from reading callers/callees)
+8. Domain density (ratio of domain logic to plumbing in the file)
+
+**Judgment-only signals** (require reading code, not available from GitNexus):
+- Implicit ordering constraints ("A must happen before B" without type enforcement)
+- Error handling asymmetry (some paths handle errors, similar paths don't)
+- Domain vocabulary precision (does the code use domain terms correctly?)
+- State mutation side effects (function modifies shared state not visible from its signature)
+- Undocumented business rules embedded in conditionals

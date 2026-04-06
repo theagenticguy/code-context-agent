@@ -3,7 +3,7 @@
 import json
 import time
 
-from code_context_agent.consumer.phases import AnalysisPhase, DiscoveryEventKind
+from code_context_agent.consumer.phases import AnalysisPhase
 from code_context_agent.consumer.rich_consumer import RichEventConsumer
 
 
@@ -20,13 +20,6 @@ class TestPhaseDetectionInConsumer:
         consumer.state.start_time = time.monotonic()
         consumer._detect_phase("read_heuristic_summary")
         assert consumer.state.phases[-1].phase == AnalysisPhase.TEAM_PLANNING
-
-    def test_lsp_tool_maps_to_team_execution(self):
-        consumer = RichEventConsumer()
-        consumer.state.start_time = time.monotonic()
-        consumer._detect_phase("read_heuristic_summary")
-        consumer._detect_phase("lsp_start")
-        assert consumer.state.phases[-1].phase == AnalysisPhase.TEAM_EXECUTION
 
     def test_unknown_tool_no_phase_change(self):
         consumer = RichEventConsumer()
@@ -52,14 +45,6 @@ class TestDiscoveryExtraction:
         event = consumer._extract_discovery("create_file_manifest", result)
         assert event is None
 
-    def test_lsp_symbols_discovery(self):
-        consumer = RichEventConsumer()
-        consumer.state.start_time = time.monotonic()
-        result = json.dumps({"status": "success", "count": 42})
-        event = consumer._extract_discovery("lsp_document_symbols", result)
-        assert event is not None
-        assert "42" in event.summary
-
     def test_git_hotspots_discovery(self):
         consumer = RichEventConsumer()
         consumer.state.start_time = time.monotonic()
@@ -73,32 +58,6 @@ class TestDiscoveryExtraction:
         consumer.state.start_time = time.monotonic()
         event = consumer._extract_discovery("rg_search", "not json")
         assert event is None
-
-    def test_astgrep_scan_discovery(self):
-        consumer = RichEventConsumer()
-        consumer.state.start_time = time.monotonic()
-        result = json.dumps({"status": "success", "match_count": 23})
-        event = consumer._extract_discovery("astgrep_scan", result)
-        assert event is not None
-        assert "23" in event.summary
-        assert event.kind == DiscoveryEventKind.PATTERNS_MATCHED
-
-    def test_code_graph_analyze_discovery(self):
-        consumer = RichEventConsumer()
-        consumer.state.start_time = time.monotonic()
-        result = json.dumps({"status": "success", "module_count": 8})
-        event = consumer._extract_discovery("code_graph_analyze", result)
-        assert event is not None
-        assert "8" in event.summary
-        assert event.kind == DiscoveryEventKind.MODULES_DETECTED
-
-    def test_code_graph_create_discovery(self):
-        consumer = RichEventConsumer()
-        consumer.state.start_time = time.monotonic()
-        result = json.dumps({"status": "success"})
-        event = consumer._extract_discovery("code_graph_create", result)
-        assert event is not None
-        assert event.kind == DiscoveryEventKind.GRAPH_BUILT
 
     def test_non_string_result_no_discovery(self):
         consumer = RichEventConsumer()

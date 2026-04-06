@@ -11,7 +11,7 @@ When you encounter code patterns that seem non-obvious, apply 5 Whys reasoning t
 - Multiple authors: files with 3+ significant contributors (ownership fragmentation)
 
 **Method**:
-1. State the observation: "This file has the highest betweenness centrality"
+1. State the observation: "This file has the most incoming relationships"
 2. Ask why: "Why is it on so many paths?" → "Because it handles both X and Y"
 3. Ask why again: "Why are X and Y in the same file?" → "Because they share state Z"
 4. Continue until you reach a root cause or design decision
@@ -21,8 +21,8 @@ When you encounter code patterns that seem non-obvious, apply 5 Whys reasoning t
 - `git_file_history` — commit messages explain intent and evolution
 - `git_files_changed_together` — co-change patterns reveal implicit dependencies
 - `git_blame_summary` — ownership fragmentation indicates organic growth
-- `code_graph_analyze("hotspots")` — structural bottlenecks
-- `code_graph_analyze("modules")` — low cohesion scores
+- `gitnexus_impact` on high-churn symbols — structural bottlenecks
+- `gitnexus_context` on module entry points — low cohesion indicators
 
 **Always-on triggers** (apply to EVERY business logic file you read):
 - What domain concept does this file encode?
@@ -42,5 +42,5 @@ Example:
 ```
 | # | Name | Role | Location | Score | Why |
 |---|------|------|----------|-------|-----|
-| 1 | event_loop.py | Agent orchestration | agent/event_loop.py:45 | 0.92 | Highest centrality because all tool calls and model calls route through it. Evolved as the single coordination point when the agent moved from sync to async. |
+| 1 | event_loop.py | Agent orchestration | agent/event_loop.py:45 | 0.92 | Most incoming relationships because all tool calls and model calls route through it. Evolved as the single coordination point when the agent moved from sync to async. |
 ```
