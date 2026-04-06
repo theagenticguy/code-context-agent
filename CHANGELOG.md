@@ -1,3 +1,13 @@
+## v3.0.0 (2026-04-06)
+
+### Fix
+
+- **ci**: align SARIF categories between security and rescan workflows
+- remove cairosvg dep (LGPL-3.0 blocked by license check)
+
+
+- revamp documentation for v10 coordinator architecture
+
 ## v2.0.0 (2026-04-06)
 
 ### Feat
