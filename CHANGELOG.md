@@ -1,3 +1,9 @@
+## v3.1.0 (2026-04-06)
+
+### Feat
+
+- add framework detection to heuristic summary
+
 ## v3.0.0 (2026-04-06)
 
 ### Fix
