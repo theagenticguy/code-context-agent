@@ -66,8 +66,6 @@ extra:
 plugins:
   - search:
       separator: '[\s\-]+'
-  - social:
-      enabled: !ENV [CI, false]
   - privacy:
       enabled: !ENV [CI, false]
   - redirects:
