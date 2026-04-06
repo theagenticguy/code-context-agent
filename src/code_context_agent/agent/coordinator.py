@@ -59,6 +59,7 @@ def _render_coordinator_prompt(
 
     # Build a namespace object for the template to access heuristic fields via dot notation.
     # Supports __len__/__iter__ so Jinja2 filters (| length, | join) work on nested dicts.
+    # Missing keys raise AttributeError so Jinja2's StrictUndefined and `is defined` work.
     class _DictProxy:
         def __init__(self, data: dict[str, Any]) -> None:
             self._data = data
@@ -67,9 +68,6 @@ def _render_coordinator_prompt(
                     setattr(self, key, _DictProxy(value))
                 else:
                     setattr(self, key, value)
-
-        def __getattr__(self, name: str) -> Any:
-            return 0  # Safe fallback for missing keys in template
 
         def __len__(self) -> int:
             return len(self._data)
