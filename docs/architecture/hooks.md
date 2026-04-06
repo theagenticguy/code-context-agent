@@ -5,7 +5,7 @@ modifying tool implementations. Hooks intercept events (tool calls, model
 invocations, Swarm node transitions) and can log, warn, enrich, or halt execution.
 
 All 9 hook providers live in `src/code_context_agent/agent/hooks.py`.
-See [Swarm Pipeline](swarm.md) for how hooks integrate with the multi-agent pipeline.
+See [Coordinator Pipeline](coordinator.md) for how hooks integrate with the multi-agent pipeline.
 
 ---
 
@@ -98,19 +98,22 @@ more.
 
 **Monitored tools and prompts:**
 
-- **`code_graph_analyze`** -- "What structural pattern do they reveal? Which files
-  appear as bottlenecks or foundations?"
-- **`code_graph_explore`** -- "Are there unexpected clusters, isolated components,
-  or surprising dependency directions?"
-- **`git_hotspots`** -- "Which high-churn files overlap with structurally central
-  files? High churn + high centrality = fragile bottleneck."
+- **`gitnexus_query`** -- "Which search results are most relevant? Symbols
+  appearing in multiple processes are likely core business logic."
+- **`gitnexus_context`** -- "What does this symbol's relationship map reveal?
+  High incoming = foundational. High outgoing = orchestrator."
+- **`gitnexus_impact`** -- "How wide is the blast radius? Cross-reference with
+  git_hotspots -- high churn + wide blast radius = fragile bottleneck."
+- **`git_hotspots`** -- "Which high-churn files overlap with structurally
+  important symbols from GitNexus?"
 - **`git_files_changed_together`** -- "Do these co-change patterns match the
-  static dependency graph? Files that change together WITHOUT a static dependency
-  edge indicate implicit coupling."
+  structural dependencies from GitNexus? Mismatches indicate implicit coupling."
 - **`git_blame_summary`** -- "Single-author files with high centrality = bus
   factor risk. Many-author files with complex logic = coordination risk."
-- **`read_file_bounded`** -- "Compare what you see against what the graph metrics
-  predicted. What domain invariants does this file maintain?"
+- **`read_file_bounded`** -- "Compare what you see against what GitNexus
+  context/impact data predicted. What domain invariants does this file maintain?"
+- **`write_bundle`** -- "Does every claim have a file:line reference? Did you
+  cross-reference with findings from other teams?"
 
 Prompts are skipped if the tool returned an error.
 
@@ -122,10 +125,9 @@ not exempt.
 
 **Exempt tools:**
 
-- `rg_search`, `lsp_workspace_symbols` -- search tools may legitimately return no results
-- `lsp_shutdown` -- shutdown is best-effort
-- `code_graph_load` -- may fail if no prior graph exists
+- `rg_search` -- search tools may legitimately return no results
 - `context7_resolve-library-id`, `context7_query-docs` -- external MCP tools may be unavailable
+- `gitnexus_*` -- external MCP tools, best-effort
 - `shell` -- user-controlled
 
 See [Full Mode](../getting-started/full-mode.md) for the broader `--full` pipeline.

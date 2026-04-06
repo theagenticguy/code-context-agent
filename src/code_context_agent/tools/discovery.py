@@ -845,7 +845,7 @@ def rg_search(
     DO NOT USE:
     - For listing all files (use create_file_manifest instead)
     - For reading file contents (use read_file_bounded instead)
-    - For structural analysis (use lsp_document_symbols instead)
+    - For structural analysis (use gitnexus_query or gitnexus_context instead)
 
     Args:
         pattern: Regex pattern to search for.

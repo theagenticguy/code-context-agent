@@ -1,6 +1,6 @@
 # Deterministic Indexer
 
-The `index` command builds a code graph deterministically without any LLM invocations. It is faster and cheaper than full analysis, producing a `code_graph.json` that can be immediately queried via the MCP server.
+The `index` command builds a deterministic index of a codebase without any LLM invocations. It runs static analysis tools, git history analysis, and GitNexus graph indexing to produce a `heuristic_summary.json` that bridges cheap indexing with multi-agent analysis.
 
 ## Usage
 
@@ -20,48 +20,56 @@ code-context-agent index . --quiet
 
 ## Pipeline
 
-The indexer runs a fixed seven-step pipeline:
+The indexer runs a fixed 16-step pipeline:
 
 | Step | Source | What It Produces |
 |------|--------|-----------------|
 | 1. File manifest | ripgrep (`rg --files`) | List of all tracked files |
+| 1a. Write manifest | Disk write | `files.all.txt` for BM25 search |
 | 2. Language detection | File extensions | Files grouped by language (py, ts, rust, go, java) |
-| 3. LSP symbols | ty, typescript-language-server, etc. | Function, class, method nodes + containment edges |
-| 4. AST-grep patterns | Rule packs per language | Business logic pattern_match nodes (db, auth, http, etc.) |
-| 5. Git hotspots | `git log` analysis | FILE nodes with churn metadata + COCHANGES edges |
-| 6. Clone detection | jscpd via npx | SIMILAR_TO edges between duplicate code blocks |
-| 7. Save graph | JSON serialization | `.code-context/code_graph.json` |
+| 3. GitNexus analyze | `gitnexus analyze` | Tree-sitter knowledge graph (symbols, relationships, execution flows) |
+| 4. Git hotspots + co-changes | `git log` analysis | `git_hotspots.json`, `git_cochanges.json` |
+| 5. Repomix signatures | repomix + Tree-sitter | `CONTEXT.signatures.md` (compressed API surface) |
+| 6. Repomix orientation | repomix | `CONTEXT.orientation.md` (token distribution tree) |
+| 7. BM25 index | File tokenization | Pre-built search index for `bm25_search` |
+| 8. Semgrep auto | semgrep --config auto | `semgrep_auto.json` (security findings) |
+| 9. Semgrep OWASP | semgrep OWASP rules | `semgrep_owasp.json` (OWASP category findings) |
+| 10. Type checker | ty / pyright | `typecheck.json` (type errors) |
+| 11. Linter | ruff | `lint.json` (lint violations) |
+| 12. Complexity | radon | `complexity.json` (cyclomatic complexity) |
+| 13. Dead code (Python) | vulture | `dead_code_py.json` (unused Python code) |
+| 14. Dead code (TypeScript) | knip | `dead_code_ts.json` (unused TypeScript exports) |
+| 15. Dependencies | pipdeptree / npm ls | `deps.json` |
+| 16. Heuristic summary | All above | `heuristic_summary.json` (compact metrics for coordinator) |
 
 ## Graceful Degradation
 
-Each step operates independently. If a tool is missing (e.g., `ast-grep` not installed, LSP server fails to start), that step is skipped and indexing continues with the remaining tools. The final graph contains whatever data was successfully collected.
+Each step operates independently. If a tool is missing (e.g., `semgrep` not installed, GitNexus unavailable), that step is skipped and indexing continues with the remaining tools. The heuristic summary reflects whatever data was successfully collected.
 
 ## When to Use
 
 | Scenario | Command |
 |----------|---------|
-| Quick graph for MCP queries | `code-context-agent index .` |
+| Quick index for MCP queries | `code-context-agent index .` |
 | Full narrated analysis with AI | `code-context-agent analyze .` |
 | CI pipeline pre-indexing | `code-context-agent index . --quiet` |
 | Re-index after code changes | `code-context-agent index .` (overwrites existing) |
 
-The `index` command produces only `code_graph.json`. It does not generate `CONTEXT.md`, signatures, bundles, or the structured `AnalysisResult`. For those artifacts, use `analyze`.
+The `index` command produces the `.code-context/` artifact set (heuristic summary, git analysis, static scan findings, signatures, orientation). It does not generate `CONTEXT.md`, narrative bundles, or the structured `AnalysisResult`. For those artifacts, use `analyze`.
 
 ## Output
 
-The graph is saved to `.code-context/code_graph.json` (or `<output-dir>/code_graph.json`). After indexing, you can:
+The primary output is `.code-context/heuristic_summary.json`, which summarizes all indexer steps into a compact structure:
+
+- **volume**: file count, lines, tokens, languages, frameworks
+- **health**: semgrep findings, type errors, lint violations, dead code, complexity
+- **git**: commit count, contributors, most coupled file pairs
+- **gitnexus**: whether GitNexus indexed the repo, community/process/symbol counts
+
+After indexing, you can:
 
 - Start the MCP server: `code-context-agent serve`
-- Query the graph: `query_code_graph(repo_path, algorithm="hotspots")`
-- Explore interactively: `explore_code_graph(repo_path, action="overview")`
-- Visualize: `code-context-agent viz .`
-
-## Language Support
-
-| Language | Extension | LSP Server | AST-grep Rules |
-|----------|-----------|------------|----------------|
-| Python | `.py` | ty, pyright | `py_business_logic`, `py_code_smells` |
-| TypeScript/JavaScript | `.ts`, `.tsx`, `.js`, `.jsx` | typescript-language-server | `ts_business_logic`, `ts_code_smells` |
-| Rust | `.rs` | rust-analyzer | -- |
-| Go | `.go` | gopls | -- |
-| Java | `.java` | jdtls | -- |
+- Query git evolution: `git_evolution(repo_path, analysis="hotspots")`
+- Read static findings: `static_scan_findings(repo_path)`
+- Get the summary: `heuristic_summary(repo_path)`
+- Run full analysis: `code-context-agent analyze .` (uses the index as input)

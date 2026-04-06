@@ -50,18 +50,11 @@ tests/
     ├── test_discovery.py             # Discovery tool tests
     ├── test_git.py                   # Git tool tests
     ├── test_shell_security.py        # Shell security enforcement tests
-    ├── graph/
-    │   ├── test_adapters.py          # Graph adapter tests
-    │   ├── test_analysis.py          # Graph analysis tests (blast radius, diff impact)
-    │   ├── test_frameworks.py        # Framework detection tests
-    │   ├── test_model.py             # Graph model tests
-    │   ├── test_storage.py           # KuzuDB storage backend tests
-    │   └── test_tools.py             # Graph tool tests
     └── search/
         └── test_bm25.py             # BM25 ranked search tests
 ```
 
-The test suite covers models, tools, graph analysis, prompt rendering, phase detection, TUI rendering, CLI flags, and security enforcement. Run `uv run pytest` to see the current count.
+The test suite covers models, tools, prompt rendering, phase detection, TUI rendering, CLI flags, and security enforcement. Run `uv run pytest` to see the current count.
 
 ## Configuration
 

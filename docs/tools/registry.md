@@ -11,7 +11,7 @@ When an analysis completes (via `start_analysis` MCP tool or the `analyze` CLI c
 | `alias` | Short name derived from the repo directory name |
 | `path` | Resolved absolute path to the repository |
 | `analyzed_at` | ISO 8601 timestamp of the analysis |
-| `graph_exists` | Whether `code_graph.json` was produced |
+| `graph_exists` | Whether analysis artifacts were produced |
 | `artifact_count` | Number of files in `.code-context/` |
 
 ## MCP Integration
@@ -35,7 +35,7 @@ The MCP server exposes `list_repos()` to discover available repositories:
 }
 ```
 
-AI clients call `list_repos` first to discover what is available, then pass the `path` value to `query_code_graph`, `explore_code_graph`, or other tools.
+AI clients call `list_repos` first to discover what is available, then pass the `path` value to `git_evolution`, `static_scan_findings`, `heuristic_summary`, or other MCP tools.
 
 ## Graph Caching
 

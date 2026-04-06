@@ -16,9 +16,6 @@ All configuration uses environment variables with the `CODE_CONTEXT_` prefix.
 | `CODE_CONTEXT_OTEL_DISABLED` | `true` | Disable OpenTelemetry tracing (avoids context detachment errors) |
 | `CODE_CONTEXT_FULL_MAX_DURATION` | `3600` | Max duration for `--full` mode in seconds (300-14400) |
 | `CODE_CONTEXT_FULL_MAX_TURNS` | `3000` | Max agent turns for `--full` mode (100-10000) |
-| `CODE_CONTEXT_LSP_TIMEOUT` | `30` | LSP operation timeout in seconds (5-300) |
-| `CODE_CONTEXT_LSP_STARTUP_TIMEOUT` | `30` | Max seconds to wait for LSP server init (5-120) |
-| `CODE_CONTEXT_LSP_MAX_FILES` | `5000` | Max files before LSP analysis is skipped (100-50000) |
 | `CODE_CONTEXT_APP_NAME` | `code-context-agent` | Application name for identification and logging |
 | `CODE_CONTEXT_DEBUG` | `false` | Enable debug mode for verbose output and additional diagnostics |
 | `CODE_CONTEXT_LOG_LEVEL` | `INFO` | Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL) |
@@ -27,28 +24,8 @@ All configuration uses environment variables with the `CODE_CONTEXT_` prefix.
 !!! note
     The `plain` format applies only to the root command output. The `analyze` subcommand accepts `rich` or `json` only.
 
-| `CODE_CONTEXT_GRAPH_BACKEND` | `networkx` | Graph storage backend: `networkx` (in-memory) or `kuzu` (persistent KuzuDB) |
 | `CODE_CONTEXT_REASONING_EFFORT` | `high` | Reasoning effort level for standard mode |
 | `CODE_CONTEXT_FULL_REASONING_EFFORT` | `max` | Reasoning effort level for `--full` mode (Opus 4.6 only) |
-
-## LSP Server Registry
-
-The `CODE_CONTEXT_LSP_SERVERS` variable accepts a JSON object mapping language keys to **ordered lists** of server commands. Each list is a fallback chain -- if the first server fails, the next is tried automatically.
-
-```json
-{
-  "py": ["ty server", "pyright-langserver --stdio"],
-  "ts": ["typescript-language-server --stdio"],
-  "rust": ["rust-analyzer"],
-  "go": ["gopls serve"],
-  "java": ["jdtls"]
-}
-```
-
-For example, Python analysis first attempts `ty server`. If that fails to start (e.g., not installed), it falls back to `pyright-langserver --stdio`. If all servers in the chain fail, the agent compensates with other signal sources (see [Tenet 6: Fail loud, fill gaps](../architecture/tenets.md#6-fail-loud-fill-gaps)).
-
-!!! tip
-    To add a new language, extend the JSON with its key and an ordered list of server commands. The language key is matched against file extensions detected during analysis.
 
 ## Configuration via pydantic-settings
 
@@ -86,17 +63,16 @@ These overrides are applied via `Settings.model_copy()` at runtime. The original
 
 See [Full Mode](full-mode.md) for complete details on exhaustive analysis.
 
-## Graph Backend Configuration
+## Code Intelligence Configuration
 
-The `CODE_CONTEXT_GRAPH_BACKEND` variable selects the graph storage backend:
-
-- **`networkx`** (default): In-memory graph using NetworkX. Fast, zero setup, but graph is lost when the process exits (unless saved to `code_graph.json`).
-- **`kuzu`**: Persistent graph backed by [KuzuDB](https://kuzudb.com/). Stores the graph on disk for cross-session reuse and supports Cypher queries via the `execute_cypher` MCP tool.
+Structural code intelligence is provided by GitNexus, which builds a Tree-sitter-powered knowledge graph. It is enabled by default and requires `npx` to be available.
 
 ```bash
-# Use KuzuDB persistent backend
-export CODE_CONTEXT_GRAPH_BACKEND=kuzu
-code-context-agent index .
+# Disable GitNexus (not recommended)
+export CODE_CONTEXT_GITNEXUS_ENABLED=false
+
+# Disable context7 library documentation lookup
+export CODE_CONTEXT_CONTEXT7_ENABLED=false
 ```
 
-See [Graph Storage](../tools/storage.md) for implementation details.
+See [Architecture Overview](../architecture/overview.md) for implementation details.

@@ -12,13 +12,13 @@
   <a href="https://github.com/astral-sh/ty"><img src="https://img.shields.io/badge/types-ty-blue?style=flat-square" alt="ty"></a>
 </p>
 
-<p align="center"><strong>AI-powered codebase analysis with 52+ tools, graph algorithms, and structured output for AI coding assistants.</strong></p>
+<p align="center"><strong>AI-powered codebase analysis with 27+ tools, GitNexus code intelligence, and structured output for AI coding assistants.</strong></p>
 
 ---
 
 # code-context-agent
 
-`code-context-agent` uses Claude Opus 4.6 (via Amazon Bedrock) with 52+ tools to analyze unfamiliar codebases and produce structured context documentation for AI coding assistants. It combines a deterministic indexer, a coordinator agent that dispatches parallel specialist teams, semantic analysis (LSP), structural pattern matching (ast-grep), graph algorithms (NetworkX + KuzuDB), git history analysis, BM25 ranked search, and intelligent code bundling (repomix) to generate narrated markdown that helps developers and AI assistants quickly understand a codebase's architecture and business logic.
+`code-context-agent` uses Claude Opus 4.6 (via Amazon Bedrock) with 27+ tools to analyze unfamiliar codebases and produce structured context documentation for AI coding assistants. It combines a deterministic indexer, a coordinator agent that dispatches parallel specialist teams, GitNexus code intelligence (Tree-sitter parsing, clustering, process tracing), git history analysis, static analysis (semgrep, radon, vulture, knip), BM25 ranked search, and intelligent code bundling (repomix) to generate narrated markdown that helps developers and AI assistants quickly understand a codebase's architecture and business logic.
 
 > [!CAUTION]
 > This CLI runs a **fully autonomous AI agent loop**. The agent decides which tools to invoke, what files to read, and what shell commands to run. While shell commands are restricted to a read-only allowlist and all inputs are validated, the agent makes its own decisions within those bounds. **Review all generated output before using it in production.**
@@ -39,7 +39,7 @@ This project is licensed under the [Apache License 2.0](LICENSE).
 
 ## Tenets
 
-These principles guide every design decision. See [tenets.md](tenets.md) for full details with tie-breakers.
+These principles guide every design decision. See [Design Tenets](docs/architecture/tenets.md) for full details with tie-breakers.
 
 1. **Measure, don't guess** -- Rank code by graph metrics (centrality, PageRank, coupling), not by filename or directory structure
 2. **Layer signals, read less** -- Combine 5 signal types (AST, call graphs, git history, signatures, commit messages) across all files rather than reading a few files deeply
@@ -53,24 +53,20 @@ These principles guide every design decision. See [tenets.md](tenets.md) for ful
 ## Features
 
 - **Claude Opus 4.6** with adaptive thinking and 1M context window
-- **52+ analysis tools**: LSP, ast-grep, ripgrep, repomix, git history, NetworkX graph, BM25 search, coordinator orchestration
-- **Multi-language LSP**: Python (ty), TypeScript, Rust, Go, Java (configurable fallback chains)
-- **Graph-based insights**: Hotspots, foundations (PageRank/TrustRank), modules (Louvain/Leiden), blast radius analysis, execution flow tracing, diff impact mapping
-- **Edge confidence scoring**: Each graph edge carries a confidence value (0.60--0.95) reflecting its data source reliability (LSP, AST, git, heuristic)
+- **27+ analysis tools**: ripgrep, repomix, git history, BM25 search, coordinator orchestration, plus GitNexus MCP and context7 MCP
+- **GitNexus code intelligence**: Tree-sitter parsing, symbol clustering, execution flow tracing, blast radius analysis, and Cypher queries via external MCP server
+- **Deterministic 16-step indexer**: Builds a heuristic summary without LLM calls using GitNexus, git history, repomix, and static analysis (semgrep, radon, vulture, knip)
 - **BM25 ranked search**: TF-IDF-style relevance ranking that complements ripgrep's exact pattern matching
-- **Framework detection**: Automatically identifies Next.js, Express, Django, Flask, FastAPI, pytest, and CLI frameworks to boost entry point scoring
-- **KuzuDB persistent backend**: Optionally persist the code graph to a KuzuDB database for Cypher queries and cross-session reuse
-- **Deterministic indexing**: `code-context-agent index` builds a code graph without LLM calls -- fast, cheap, and reproducible
-- **Git diff impact analysis**: Map changed lines to affected symbols, propagate blast radius, and suggest tests
+- **Verdict command**: Deterministic change assessment for PRs/diffs with CI/CD exit codes, no LLM calls, runs in under 60 seconds
+- **CI/CD integration**: `ci-init` generates GitHub Actions and GitLab CI workflows for nightly analysis, on-merge indexing, and PR verdicts
 - **Multi-repo MCP registry**: Track multiple analyzed repositories in `~/.code-context/registry.json` and switch between them from any MCP client
-- **Interactive D3.js visualization**: Web-based graph explorer with force layout, hotspot charts, module views, and dashboard metrics
 - **Git-aware bundling**: Embeds diffs, commit history, and coupling data directly in context bundles
 - **Tree-sitter compression**: Extract signatures/types only, stripping function bodies for token efficiency
-- **Structured output**: Pydantic-typed `AnalysisResult` with ranked business logic, risks, and graph stats
-- **`--full` mode**: Exhaustive analysis with no size limits, fail-fast error handling, and per-module output
+- **Structured output**: Pydantic-typed `AnalysisResult` with ranked business logic, risks, and risk profiles
+- **`--full` mode**: Exhaustive analysis with no size limits, fail-fast error handling, and extended timeouts
 - **Phase-aware TUI**: 5-phase progress tracking with discovery feed and mode badge
 - **Rich terminal UI**: Real-time progress display with Rich library
-- **MCP server**: Expose graph algorithms, diff impact, Cypher queries, and multi-repo discovery as MCP tools
+- **MCP server**: Expose analysis pipeline, git evolution, static scan findings, change verdicts, and multi-repo discovery as 11 MCP tools
 - **context7 integration**: Library documentation lookup during analysis via MCP
 - **Security hardened**: Shell allowlist, input validation on all tool parameters, path traversal prevention, no network access from agent tools
 
@@ -82,9 +78,11 @@ These principles guide every design decision. See [tenets.md](tenets.md) for ful
 flowchart TD
     A[CLI: cyclopts] --> B1[analyze]
     A --> B2[index]
-    A --> B3[viz]
+    A --> B3[verdict]
     A --> B4[serve]
-    B1 --> IX2[Deterministic Indexer<br/>21 steps: LSP + AST + git, no LLM]
+    A --> B5[ci-init]
+    A --> B6[check]
+    B1 --> IX2[Deterministic Indexer<br/>16 steps: GitNexus + git + static analysis, no LLM]
     IX2 --> HS[heuristic_summary.json<br/>Bridge artifact]
     HS --> CO[Coordinator Agent<br/>reads heuristic summary]
     CO --> DT[dispatch_team<br/>parallel Swarm teams]
@@ -92,11 +90,11 @@ flowchart TD
     T1 & T2 & TN --> RF[read_team_findings<br/>consolidate results]
     RF --> WB[write_bundle<br/>generate output]
     WB --> O[CONTEXT.md +<br/>BUNDLE.area.md]
-    B2 --> IX[Deterministic Indexer<br/>LSP + AST + git, no LLM]
-    B3 --> VZ[D3.js Web Visualization<br/>force layout + dashboards]
+    B2 --> IX[Deterministic Indexer<br/>GitNexus + git + static analysis, no LLM]
+    B3 --> VD[Verdict Engine<br/>deterministic change assessment]
+    B5 --> CI[CI/CD Workflows<br/>GitHub Actions + GitLab CI]
     CO -.-> F[HookProviders<br/>quality + efficiency + fail-fast]
-    CO -.-> GP[Pre-loaded Graph<br/>from index]
-    B4 --> Q[FastMCP Server<br/>MCP protocol]
+    B4 --> Q[FastMCP Server<br/>11 MCP tools]
     Q --> R[Claude Code / Cursor<br/>MCP clients]
     Q --> REG[Multi-Repo Registry<br/>~/.code-context/registry.json]
 ```
@@ -105,13 +103,13 @@ flowchart TD
 
 | Category | Tools | Purpose |
 |----------|-------|---------|
+| **Coordinator** | `dispatch_team`, `read_team_findings`, `write_bundle`, `read_heuristic_summary`, `score_narrative`, `enrich_bundle` | Team orchestration, finding consolidation, bundle generation |
 | **Discovery** | `create_file_manifest`, `repomix_orientation`, `repomix_bundle`, `repomix_compressed_signatures`, `repomix_split_bundle`, `repomix_json_export` | File inventory, bundling, token-aware orientation |
 | **Search** | `rg_search`, `read_file_bounded`, `bm25_search` | Exact pattern matching, bounded reading, and BM25 ranked relevance search |
-| **LSP** | `lsp_start`, `lsp_document_symbols`, `lsp_references`, `lsp_definition`, `lsp_hover`, `lsp_workspace_symbols`, `lsp_diagnostics` | Semantic analysis across multiple languages |
-| **AST** | `astgrep_scan`, `astgrep_scan_rule_pack`, `astgrep_inline_rule` | Structural pattern matching |
-| **Graph** | `code_graph_create`, `code_graph_analyze` (hotspots, foundations, trust, modules, triangles, coupling, blast radius, execution flows, diff impact), `code_graph_explore`, `code_graph_export` | Dependency analysis, impact propagation, execution flow tracing |
 | **Git** | `git_hotspots`, `git_files_changed_together`, `git_blame_summary`, `git_file_history`, `git_contributors`, `git_recent_commits`, `git_diff_file` | Temporal analysis and coupling detection |
 | **Shell** | `shell` | Read-only command execution (allowlisted programs only) |
+| **GitNexus MCP** | `gitnexus_query`, `gitnexus_context`, `gitnexus_impact`, `gitnexus_detect_changes`, `gitnexus_cypher`, `gitnexus_list_repos` | Structural code intelligence via Tree-sitter |
+| **context7 MCP** | `context7_resolve-library-id`, `context7_query-docs` | Live library documentation lookup |
 
 ### Security Model
 
@@ -122,7 +120,7 @@ The agent operates under a defense-in-depth security model:
 - **Shell operator blocking**: Command chaining (`;`, `&&`, `||`, `|`), redirects (`>`, `>>`), backticks, `$()`, and `${}` expansion are all blocked.
 - **Input validation**: All tool parameters (`repo_path`, `file_path`, `glob`, `pattern`) are validated before use. Path traversal to sensitive directories (`/etc`, `/root`, `/proc`, `/sys`) is prevented.
 - **No `sh -c` string interpolation**: All subprocess calls use list-based execution or stdin piping. No user-controlled values are interpolated into shell command strings.
-- **Pinned dependencies**: npm packages invoked at runtime (`context7`, `jscpd`) are pinned to major versions.
+- **Pinned dependencies**: npm packages invoked at runtime (`context7`) are pinned to major versions.
 
 ---
 
@@ -155,10 +153,9 @@ Default model: `global.anthropic.claude-opus-4-6-v1` (configurable via `CODE_CON
 | Tool | Installation | Purpose |
 |------|--------------|---------|
 | **ripgrep** | `cargo install ripgrep` | File search and manifest creation |
-| **ast-grep** | `cargo install ast-grep` | Structural code search |
+| **gitnexus** | `npm install -g gitnexus` | Structural code intelligence (Tree-sitter parsing, clustering) |
 | **repomix** | `npm install -g repomix` | Code bundling with Tree-sitter compression |
-| **typescript-language-server** | `npm install -g typescript-language-server` | TypeScript/JavaScript LSP |
-| **ty** | `uv tool install ty` | Python type checker/LSP server |
+| **ty** | `uv tool install ty` | Python type checker (optional, used by indexer) |
 
 ---
 
@@ -206,7 +203,7 @@ code-context-agent analyze . --debug
 # Generate only bundle files (skip CONTEXT.md)
 code-context-agent analyze . --bundles-only
 
-# Incremental analysis since a date (accepted but not yet implemented in V10)
+# Incremental analysis since a git ref (accepted but not yet fully implemented)
 code-context-agent analyze . --since "2025-01-01"
 ```
 
@@ -214,9 +211,9 @@ The agent automatically determines analysis depth based on repository size and c
 
 ### 5-Phase Pipeline
 
-The V10 analysis pipeline runs in five phases:
+The analysis pipeline runs in five phases:
 
-1. **Indexing** -- Deterministic 21-step indexer builds the code graph (LSP + AST + git, no LLM)
+1. **Indexing** -- Deterministic 16-step indexer runs GitNexus + git + static analysis (no LLM)
 2. **Team Planning** -- Coordinator agent reads `heuristic_summary.json` and plans specialist teams
 3. **Team Execution** -- Parallel Swarm teams run concurrently, each producing `findings.md`
 4. **Consolidation** -- Coordinator reads all team findings and cross-references results
@@ -237,7 +234,7 @@ code-context-agent check
 
 ### Index (LLM-Free)
 
-Build a code graph deterministically without any LLM calls -- fast, cheap, and reproducible. Uses LSP, AST-grep, and git to construct the graph, which can then be queried via MCP tools or visualized.
+Build a deterministic index without any LLM calls -- fast, cheap, and reproducible. Uses GitNexus, git history, repomix, and static analysis tools (semgrep, radon, vulture, knip) to produce artifacts that feed the coordinator agent and verdict engine.
 
 ```bash
 # Index the current directory
@@ -262,32 +259,21 @@ code-context-agent serve
 code-context-agent serve --transport http --port 8000
 ```
 
-The MCP server exposes the core differentiators — graph algorithms, progressive exploration, and the full analysis pipeline — as tools that any MCP client can use. Commodity tools (ripgrep, LSP, git) are intentionally not exposed since they're already available in every coding agent.
+The MCP server complements GitNexus (structural code intelligence) with capabilities GitNexus does not provide: the full analysis pipeline, git evolution data, static scan findings, change verdicts, and risk trends. Commodity tools (ripgrep, git) are intentionally not exposed since they are already available in every coding agent.
 
-**MCP Tools:**
-- `start_analysis` / `check_analysis` — kickoff/poll for the full analysis pipeline
-- `query_code_graph` — run algorithms (PageRank, betweenness centrality, Louvain community detection, blast radius, execution flows, etc.)
-- `explore_code_graph` — progressive drill-down into graph structure
-- `diff_impact` — map git diff hunks to affected symbols, propagate blast radius, and suggest tests
-- `execute_cypher` — run read-only Cypher queries against the KuzuDB persistent graph
+**MCP Tools (11):**
+- `start_analysis` / `check_analysis` — kickoff/poll for the full multi-agent analysis pipeline
 - `list_repos` — discover all analyzed repositories from the multi-repo registry
-- `get_graph_stats` — graph composition summary
+- `git_evolution` — hotspot rankings, co-change coupling, contributor breakdown
+- `static_scan_findings` — semgrep, typecheck, lint, complexity, and dead code results
+- `heuristic_summary` — compact index metrics (volume, health, git, GitNexus)
+- `review_classification` — per-area risk levels and review routing recommendations
+- `change_verdict` — deterministic PR/diff verdict with CI/CD exit codes
+- `consistency_check` — architectural pattern consistency checking
+- `risk_trend` — temporal risk trends across multiple analysis runs
+- `cross_repo_impact` — detect changes affecting service contracts across repos
 
 All MCP tool responses include **next-step hints** guiding the AI client toward useful follow-up actions.
-
-### Visualize Results
-
-Launch an interactive D3.js web visualization with force-directed graph layout, hotspot bar charts, module donut charts, and dashboard metrics.
-
-```bash
-# Launch web visualization (opens browser)
-code-context-agent viz .
-
-# Custom port, don't auto-open browser
-code-context-agent viz /path/to/repo --port 9000 --no-open
-```
-
-Requires a prior `analyze` or `index` run to generate `.code-context/` output files.
 
 ---
 
@@ -297,19 +283,24 @@ All outputs are written to `.code-context/` (or custom `--output-dir`):
 
 | File | Description |
 |------|-------------|
-| `CONTEXT.md` | **Main narrated context** (≤300 lines in standard mode) |
-| `CONTEXT.orientation.md` | Token distribution tree |
-| `CONTEXT.bundle.md` | Bundled source code (compressed) |
-| `CONTEXT.signatures.md` | Signatures-only structural view |
+| `CONTEXT.md` | **Main narrated context** (executive summary) |
+| `CONTEXT.orientation.md` | Token distribution tree (repomix) |
+| `CONTEXT.signatures.md` | Compressed source signatures (Tree-sitter) |
 | `files.all.txt` | Complete file manifest |
-| `files.business.txt` | Curated business logic files |
-| `code_graph.json` | Persisted graph data |
-| `FILE_INDEX.md` | File index with graph metrics (complex repos) |
 | `analysis_result.json` | Structured analysis result (Pydantic JSON) |
 | `heuristic_summary.json` | Bridge artifact between indexer and coordinator |
 | `bundles/BUNDLE.{area}.md` | Targeted narrative bundles per codebase area |
 | `tmp/teams/{id}/findings.md` | Per-team analysis findings |
-| `CONTEXT.modules/` | Per-module context files (`--full` mode) |
+| `git_hotspots.json` | Git churn analysis (top 30 files) |
+| `git_cochanges.json` | File co-change coupling data |
+| `semgrep_auto.json` | Semgrep auto-config findings |
+| `semgrep_owasp.json` | Semgrep OWASP Top Ten findings |
+| `typecheck.json` | Type checker output (ty or pyright) |
+| `lint.json` | Ruff linter output |
+| `complexity.json` | Radon cyclomatic complexity |
+| `dead_code_py.json` | Vulture dead code detection (Python) |
+| `dead_code_ts.json` | Knip dead code detection (TypeScript/JS) |
+| `deps.json` | Dependency tree (pipdeptree or npm) |
 
 ---
 
@@ -322,10 +313,15 @@ All configuration uses the `CODE_CONTEXT_` prefix:
 | `CODE_CONTEXT_MODEL_ID` | `global.anthropic.claude-opus-4-6-v1` | Bedrock model ID |
 | `CODE_CONTEXT_REGION` | `us-east-1` | AWS region |
 | `CODE_CONTEXT_TEMPERATURE` | `1.0` | Model temperature (must be 1.0 for thinking) |
-| `CODE_CONTEXT_LSP_SERVERS` | `{"ts": "typescript-language-server --stdio", "py": "ty server", ...}` | LSP server registry (JSON) |
-| `CODE_CONTEXT_AGENT_MAX_TURNS` | `1000` | Max agent turns |
+| `CODE_CONTEXT_REASONING_EFFORT` | `high` | Standard mode thinking effort |
+| `CODE_CONTEXT_FULL_REASONING_EFFORT` | `max` | Full mode thinking effort (Opus 4.6 only) |
+| `CODE_CONTEXT_AGENT_MAX_TURNS` | `1000` | Max agent turns (standard mode) |
 | `CODE_CONTEXT_AGENT_MAX_DURATION` | `1200` | Timeout in seconds (default: 20 min) |
+| `CODE_CONTEXT_FULL_MAX_TURNS` | `3000` | Max agent turns (full mode) |
+| `CODE_CONTEXT_FULL_MAX_DURATION` | `3600` | Timeout in seconds for full mode (default: 60 min) |
+| `CODE_CONTEXT_GITNEXUS_ENABLED` | `true` | Enable GitNexus MCP for structural code intelligence |
 | `CODE_CONTEXT_CONTEXT7_ENABLED` | `true` | Enable context7 MCP for library doc lookup |
+| `CODE_CONTEXT_OTEL_DISABLED` | `true` | Disable OpenTelemetry tracing |
 
 ---
 
@@ -346,40 +342,40 @@ All configuration uses the `CODE_CONTEXT_` prefix:
 
 ```
 src/code_context_agent/
-├── cli.py              # CLI entry point: analyze, index, viz, serve, check
+├── cli.py              # CLI entry point: analyze, index, verdict, ci-init, serve, check
 ├── config.py           # Configuration (pydantic-settings)
-├── indexer.py          # Deterministic indexer (no LLM)
+├── indexer.py          # Deterministic 16-step indexer (no LLM)
+├── verdict.py          # Deterministic change verdict engine
+├── temporal.py         # Risk trend computation across analysis snapshots
+├── display.py          # Welcome display and CLI formatting
+├── exceptions.py       # Custom exception types
 ├── agent/              # Agent orchestration
 │   ├── factory.py      # Agent creation with tools + MCP providers
-│   ├── runner.py       # Analysis runner with event streaming
+│   ├── runner.py       # Analysis runner with hook-based display
 │   ├── coordinator.py  # Coordinator agent with parallel team dispatch
 │   └── hooks.py        # HookProviders: quality, efficiency, fail-fast
-├── mcp/                # FastMCP v3 server
+├── mcp/                # FastMCP v3 server (11 tools)
 │   ├── server.py       # MCP tools, resources, and server definition
 │   └── registry.py     # Multi-repo registry (~/.code-context/registry.json)
+├── ci/                 # CI/CD workflow generation (GitHub Actions, GitLab CI)
+├── issues/             # Issue provider integration (GitHub)
 ├── templates/          # Jinja2 prompt templates
 │   ├── partials/       # Composable prompt sections
 │   └── steering/       # Quality guidance fragments
 ├── models/             # Pydantic models
 │   ├── base.py         # StrictModel, FrozenModel
-│   └── output.py       # AnalysisResult, BusinessLogicItem, etc.
+│   └── output.py       # AnalysisResult, BusinessLogicItem, VerdictResponse, etc.
 ├── consumer/           # Phase-aware TUI (5 phases + discovery feed)
 │   ├── phases.py       # Phase detection, discovery events
 │   ├── rich_consumer.py # Dashboard with phase indicator
 │   └── state.py        # Mutable display state
-├── tools/              # Analysis tools (52+)
+├── tools/              # Analysis tools (27+)
 │   ├── discovery.py    # ripgrep, repomix, write_file (11 tools)
-│   ├── coordinator_tools.py # dispatch_team, read_team_findings, write_bundle
-│   ├── astgrep.py      # ast-grep (3 tools)
+│   ├── coordinator_tools.py # dispatch_team, read_team_findings, write_bundle (6 tools)
 │   ├── git.py          # git history (7 tools)
 │   ├── search/         # BM25 ranked search (1 tool)
-│   ├── lsp/            # LSP integration (8 tools)
-│   └── graph/          # NetworkX + KuzuDB analysis (14 tools)
-│       ├── analysis.py # Graph algorithms incl. blast radius, execution flows, diff impact
-│       ├── storage.py  # KuzuDB persistent backend with Cypher query support
-│       └── frameworks.py # Framework detection (Next.js, Express, Django, Flask, FastAPI, etc.)
-├── viz/                # D3.js web visualization (HTML, JS, CSS)
-└── rules/              # ast-grep rule packs
+│   ├── shell_tool.py   # Read-only shell execution (1 tool)
+│   └── validation.py   # Input validation for all tool parameters
 ```
 
 ---
@@ -397,13 +393,11 @@ Contributions are welcome. Please open an issue or pull request.
 ## Related Projects
 
 - [strands-agents](https://github.com/strands-agents/sdk-python) — Agent framework
-- [ast-grep](https://ast-grep.github.io/) — Structural code search
+- [GitNexus](https://www.npmjs.com/package/gitnexus) — Structural code intelligence (Tree-sitter parsing, clustering, process tracing)
 - [repomix](https://github.com/yamadashy/repomix) — Code bundling with Tree-sitter
-- [ty](https://docs.astral.sh/ty/) — Python type checker/LSP server
-- [NetworkX](https://networkx.org/) -- Graph algorithms
-- [KuzuDB](https://kuzudb.com/) -- Embedded graph database with Cypher support
-- [rank-bm25](https://github.com/dorianbrown/rank_bm25) -- BM25 ranking algorithm
-- [FastMCP](https://github.com/jlowin/fastmcp) -- Model Context Protocol server framework
+- [ty](https://docs.astral.sh/ty/) — Python type checker
+- [rank-bm25](https://github.com/dorianbrown/rank_bm25) — BM25 ranking algorithm
+- [FastMCP](https://github.com/jlowin/fastmcp) — Model Context Protocol server framework
 
 ---
 

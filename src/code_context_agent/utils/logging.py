@@ -1,8 +1,10 @@
 """Common logging configuration using loguru."""
 
+from __future__ import annotations
+
 import sys
 
-from loguru import logger
+from loguru import Logger, logger
 
 
 def setup_logger(level: str = "INFO", log_file: str | None = None) -> None:
@@ -37,7 +39,7 @@ def setup_logger(level: str = "INFO", log_file: str | None = None) -> None:
         )
 
 
-def get_logger(name: str):
+def get_logger(name: str) -> Logger:
     """Get a logger instance bound to a specific module name.
 
     Args:

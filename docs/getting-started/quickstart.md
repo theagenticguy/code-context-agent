@@ -33,6 +33,12 @@ code-context-agent analyze . --debug
 # Exhaustive analysis (no size limits, all algorithms)
 code-context-agent analyze . --full
 
+# Compute a change verdict for a PR (no LLM, <60s)
+code-context-agent verdict --base main --exit-code
+
+# Generate CI/CD workflow files for automated verdicts
+code-context-agent ci-init . --provider github
+
 # Verify external tool dependencies
 code-context-agent check
 ```
@@ -41,16 +47,16 @@ The agent automatically determines analysis depth based on repository size and c
 
 ## What Happens During Analysis
 
-1. **File manifest** -- The agent creates a complete inventory of the repository using ripgrep
-2. **Orientation** -- repomix generates a token distribution tree showing project structure
-3. **Signal gathering** -- Multiple tools run in parallel:
-    - LSP: semantic analysis (definitions, references, symbols)
-    - ast-grep: structural pattern matching against rule packs
-    - Git: hotspots, coupling, churn, blame analysis
-    - Graph: NetworkX dependency graph with centrality/PageRank metrics
-4. **Ranking** -- Files are scored across all signal layers
-5. **Bundling** -- Top-ranked files are bundled with Tree-sitter compression
-6. **Output** -- Structured `AnalysisResult` written as narrated markdown to `.code-context/`
+1. **Deterministic index** (~30-90s, no LLM) -- Builds structural intelligence:
+    - GitNexus: Tree-sitter parsing, clustering, execution flow tracing
+    - Git: hotspot and co-change analysis
+    - Repomix: compressed signatures and orientation
+    - Static scanners: semgrep, typecheck, lint, complexity, dead code
+    - Produces `heuristic_summary.json` (compact metrics for the coordinator)
+2. **Coordinator agent** -- Reads the heuristic summary and plans parallel teams
+3. **Team dispatch** -- Specialist Swarm teams investigate in parallel using GitNexus, ripgrep, repomix, and git tools
+4. **Consolidation** -- Coordinator cross-references team findings
+5. **Bundle writing** -- Narrated bundles written to `.code-context/`
 
 ## Output Files
 
@@ -58,17 +64,16 @@ All outputs land in `.code-context/` (or your custom `--output-dir`):
 
 | File | Description |
 |------|-------------|
-| `CONTEXT.md` | Main narrated context (<=300 lines in standard mode) |
+| `CONTEXT.md` | Main narrated context (executive summary) |
+| `bundles/BUNDLE.{area}.md` | Targeted narrative bundles per investigation area |
+| `CONTEXT.signatures.md` | Signatures-only structural view (Tree-sitter compressed) |
 | `CONTEXT.orientation.md` | Token distribution tree |
-| `CONTEXT.bundle.md` | Bundled source code (compressed) |
-| `CONTEXT.signatures.md` | Signatures-only structural view |
+| `CONTEXT.bundle.md` | Curated source code bundle |
 | `files.all.txt` | Complete file manifest |
-| `files.business.txt` | Curated business logic files |
-| `code_graph.json` | Persisted graph data |
-| `FILE_INDEX.md` | File index with graph metrics (complex repos) |
+| `heuristic_summary.json` | Compact metrics bridging indexer and coordinator |
 | `analysis_result.json` | Structured analysis result (Pydantic JSON) |
-| `CONTEXT.modules/` | Per-module context files (full mode only) |
-| `CONTEXT.business.*.md` | Category-specific business logic files |
+| `git_hotspots.json` | File churn ranking from git history |
+| `git_cochanges.json` | Co-change coupling data |
 
 ## Using the Output
 
@@ -83,29 +88,17 @@ The narrated context includes architecture diagrams, ranked file tables, risk as
 
 ## Quick Indexing (No LLM)
 
-For a fast, cheap graph without AI narration:
+For a fast, deterministic index without AI narration:
 
 ```bash
-# Build a code graph deterministically
+# Build the index deterministically
 code-context-agent index .
 
-# Then query it via MCP or visualize it
+# Then expose it via MCP
 code-context-agent serve
-code-context-agent viz .
 ```
 
 See the [Deterministic Indexer documentation](../tools/indexer.md) for details.
-
-## Visualization
-
-After analysis or indexing, launch an interactive web UI:
-
-```bash
-code-context-agent viz .
-code-context-agent viz . --port 9000
-```
-
-This opens a multi-view visualizer with 10 views: dashboard, graph, modules, hotspots, dependencies, narrative, bundles, insights, signatures, and landing. See the [Visualization guide](viz.md) for details.
 
 ## MCP Server
 
@@ -123,6 +116,6 @@ After analysis, you can expose the results to coding agents via MCP:
     code-context-agent serve --transport http --port 8000
     ```
 
-The MCP server provides tools for querying the code graph (`query_code_graph`), progressive exploration (`explore_code_graph`), graph statistics (`get_graph_stats`), diff impact analysis (`diff_impact`), multi-repo discovery (`list_repos`), Cypher queries (`execute_cypher`), and kicking off new analyses (`start_analysis`). It also exposes the analysis artifacts as MCP resources.
+The MCP server provides tools for kicking off analyses (`start_analysis`, `check_analysis`), git evolution data (`git_evolution`), static scan findings (`static_scan_findings`), heuristic summaries (`heuristic_summary`), change verdicts (`change_verdict`), review classification (`review_classification`), risk trends (`risk_trend`), consistency checks (`consistency_check`), cross-repo impact (`cross_repo_impact`), and multi-repo discovery (`list_repos`). It also exposes analysis artifacts as MCP resources.
 
 See the [MCP Server documentation](../tools/mcp.md) for full details and client configuration.

@@ -14,7 +14,7 @@ Token consumption depends on the analysis mode and codebase size:
 | Full | 200K--500K | 30K--50K |
 | Index only (`index` command) | 0 | 0 |
 
-The `index` command makes zero LLM calls -- it builds the code graph entirely with deterministic tools (LSP, AST-grep, git, framework detection). Cost depends on your Amazon Bedrock pricing tier (on-demand vs. provisioned throughput).
+The `index` command makes zero LLM calls -- it builds the index entirely with deterministic tools (GitNexus, git history, repomix, semgrep, radon, vulture, knip, ruff, ty). Cost depends on your Amazon Bedrock pricing tier (on-demand vs. provisioned throughput).
 
 !!! tip
     Run `code-context-agent index .` first (free). The `analyze` command loads the pre-built graph automatically, reducing the token budget spent on structural discovery.
@@ -39,7 +39,7 @@ See the [Security](security/overview.md) page for full details on shell hardenin
 
 Opus 4.6 is selected as the default for several reasons:
 
-- **Complex multi-tool reasoning** -- the analysis pipeline involves 52+ tools used by the coordinator and parallel team agents. Opus-class models handle long tool chains and cross-signal synthesis more reliably.
+- **Complex multi-tool reasoning** -- the analysis pipeline involves 26+ tools used by the coordinator and parallel team agents, plus GitNexus and context7 MCP tools. Opus-class models handle long tool chains and cross-signal synthesis more reliably.
 - **Adaptive thinking (extended reasoning)** -- improves architectural analysis quality by allowing the model to reason through ambiguous structural patterns.
 - **1M context window** -- via `anthropic_beta: context-1m-2025-08-07`, the model can process large codebases without truncation.
 - **Cross-region inference** -- the `global.` prefix in the default model ID (`global.anthropic.claude-opus-4-6-v1`) provides best availability across AWS regions.
@@ -68,45 +68,30 @@ Yes, but large monorepos (more than 10,000 files) benefit from these strategies:
     code-context-agent analyze . --focus "payments service"
     ```
 
-2. **Use the KuzuDB backend** for persistent, disk-backed graph storage:
-    ```bash
-    export CODE_CONTEXT_GRAPH_BACKEND=kuzu
-    ```
-
-3. **Pre-index** to separate the (free) graph-building step from the (token-consuming) analysis step:
+2. **Pre-index** to separate the (free) index-building step from the (token-consuming) analysis step:
     ```bash
     code-context-agent index .
     code-context-agent analyze .
-    ```
-
-4. **Adjust LSP file limits** if the monorepo has many files:
-    ```bash
-    export CODE_CONTEXT_LSP_MAX_FILES=20000
     ```
 
 ---
 
 ### What languages are supported?
 
-The analysis is **language-agnostic** at the core level. Ripgrep, AST-grep, git history, and framework detection work with any programming language.
+The analysis is **language-agnostic** at the core level. Ripgrep, git history, repomix, and GitNexus (Tree-sitter parsing) work with any programming language.
 
-**LSP integration** provides deeper semantic analysis (definitions, references, hover docs) for languages with configured servers:
+**GitNexus** provides structural code intelligence (symbols, relationships, execution flows, community detection) for languages supported by Tree-sitter.
 
-| Language | Default LSP servers |
-|----------|-------------------|
-| Python | `ty server`, `pyright-langserver --stdio` |
-| TypeScript / JavaScript | `typescript-language-server --stdio` |
-| Rust | `rust-analyzer` |
-| Go | `gopls serve` |
-| Java | `jdtls` |
+**Static analysis tools** provide deeper analysis for specific languages:
 
-**Framework detection** covers: Next.js, Express, Django, Flask, FastAPI, pytest, CLI frameworks, and more (8 framework patterns total).
-
-To add a new language, extend `CODE_CONTEXT_LSP_SERVERS` with its key and an ordered list of server commands:
-
-```bash
-export CODE_CONTEXT_LSP_SERVERS='{"py": ["ty server"], "ts": ["typescript-language-server --stdio"], "rb": ["solargraph stdio"]}'
-```
+| Tool | Languages | What it provides |
+|------|-----------|-----------------|
+| semgrep | Most languages | Security findings, OWASP Top Ten |
+| ty / pyright | Python | Type checking |
+| ruff | Python | Linting |
+| radon | Python | Cyclomatic complexity |
+| vulture | Python | Dead code detection |
+| knip | TypeScript / JavaScript | Dead code detection |
 
 ---
 
@@ -117,9 +102,12 @@ The MCP (Model Context Protocol) server exposes code-context-agent's unique capa
 Through the MCP server, an AI assistant can:
 
 - **Start and poll analysis** (`start_analysis`, `check_analysis`)
-- **Query the code graph** with 12 graph algorithms including blast radius, flow analysis, and diff impact (`query_code_graph`)
-- **Explore the graph progressively** with guided next-step hints (`explore_code_graph`)
-- **Run Cypher queries** against the graph (`execute_cypher`)
+- **Query git evolution data** -- hotspots, coupling, contributors (`git_evolution`)
+- **Read static scan findings** -- semgrep, typecheck, lint, complexity, dead code (`static_scan_findings`)
+- **Get a compact heuristic summary** of codebase metrics (`heuristic_summary`)
+- **Compute change verdicts** for PR review routing (`change_verdict`)
+- **Check review classification** with per-area risk profiles (`review_classification`)
+- **Track risk trends** over time (`risk_trend`)
 - **List registered repos** across the multi-repo registry (`list_repos`)
 
 Start the server:
@@ -140,14 +128,14 @@ See the [MCP Server](tools/mcp.md) documentation for full setup and tool referen
 
 | | `index` | `analyze` |
 |---|---------|-----------|
-| **What it does** | Builds a structural code graph | Full LLM-driven codebase analysis |
-| **Time** | ~30 seconds | ~5--10 minutes (standard), ~30--60 minutes (full) |
+| **What it does** | Builds a deterministic index (16-step pipeline) | Full LLM-driven codebase analysis |
+| **Time** | ~30--90 seconds | ~5--15 minutes (standard), ~30--60 minutes (full) |
 | **LLM calls** | None (deterministic) | Yes (Coordinator dispatches parallel specialist teams) |
 | **Cost** | Free | Token-based (see cost FAQ above) |
-| **Output** | `code_graph.json`, `heuristic_summary.json` | `CONTEXT.md`, `bundles/BUNDLE.{area}.md`, `CONTEXT.bundle.md`, `analysis_result.json`, `code_graph.json` |
-| **Uses** | LSP, AST-grep, git, framework detection | All index tools + LLM reasoning + ripgrep + repomix |
+| **Output** | `heuristic_summary.json`, signatures, hotspots, static scan results | `CONTEXT.md`, `bundles/BUNDLE.{area}.md`, `analysis_result.json`, + all index artifacts |
+| **Uses** | GitNexus, git, repomix, semgrep, radon, vulture, knip, ruff, ty | All index tools + LLM reasoning + ripgrep + repomix |
 
-**Best practice**: Run `index` first, then `analyze`. The analysis agent loads the pre-built graph from `.code-context/code_graph.json`, which saves significant time and tokens on structural discovery.
+**Best practice**: Run `index` first, then `analyze`. The analysis coordinator reads the pre-built `heuristic_summary.json` and uses GitNexus's knowledge graph, which saves significant time and tokens on structural discovery.
 
 ```bash
 code-context-agent index /path/to/repo
@@ -165,22 +153,9 @@ After running `analyze`, the `.code-context/` directory contains:
 | `CONTEXT.md` | Feeding to AI coding assistants as context. This is the narrated architecture document. |
 | `bundles/BUNDLE.{area}.md` | Targeted narrative bundles per investigation area. Each bundle covers a specific subsystem or concern identified by the coordinator. |
 | `CONTEXT.bundle.md` | Compressed source code bundle (via repomix Tree-sitter compression). Useful as supplementary context. |
-| `heuristic_summary.json` | Bridge artifact between the deterministic indexer and the LLM coordinator. Contains volume, symbols, health, topology, and git metrics. |
-| `analysis_result.json` | Programmatic consumption. Contains the structured `AnalysisResult` with business logic items, architectural risks, and module metadata. |
-| `code_graph.json` | Graph queries via the MCP server or the `viz` command. Contains the full node-link graph. |
-
-For **full mode** (`--full`), additional files are produced:
-
-| File | Best for |
-|------|----------|
-| `CONTEXT.modules/<module>.md` | Per-module context documents for scoped AI assistance |
-| `FILE_INDEX.md` | Comprehensive file index with centrality, PageRank, and churn metrics |
-
-To explore the graph interactively:
-
-```bash
-code-context-agent viz .
-```
+| `CONTEXT.signatures.md` | Compressed Tree-sitter signatures (function/class signatures, bodies stripped). |
+| `heuristic_summary.json` | Bridge artifact between the deterministic indexer and the LLM coordinator. Contains volume, health, git, and GitNexus metrics. |
+| `analysis_result.json` | Programmatic consumption. Contains the structured `AnalysisResult` with business logic items, architectural risks, and risk profiles. |
 
 ---
 
@@ -208,7 +183,7 @@ code-context-agent analyze . --focus "database layer"
 code-context-agent analyze . --focus "API endpoints"
 ```
 
-The focus string is passed to the LLM agents, which prioritize exploring files, symbols, and patterns related to that area. The code graph and git history analysis are still performed on the full repository, but the narrative output concentrates on the focused area.
+The focus string is passed to the LLM agents, which prioritize exploring files, symbols, and patterns related to that area. The deterministic index and git history analysis are still performed on the full repository, but the narrative output concentrates on the focused area.
 
 `--focus` can be combined with `--full` for exhaustive analysis scoped to a specific area:
 
