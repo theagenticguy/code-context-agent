@@ -1,3 +1,9 @@
+## v3.1.2 (2026-04-06)
+
+### Fix
+
+- **ci**: use tag ref for SLSA provenance generator
+
 ## v3.1.1 (2026-04-06)
 
 ### Fix
