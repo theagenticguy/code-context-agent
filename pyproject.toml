@@ -10,7 +10,7 @@ readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.13"
 dependencies = [
-    "cyclopts>=4.6.0",
+    "cyclopts>=4.10.2",
     "fastmcp>=3.0.2,<4",
     "jinja2>=3.1.6",
     "loguru>=0.7.3",
